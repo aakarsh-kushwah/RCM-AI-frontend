@@ -1,0 +1,357 @@
+:root {
+    --primary-glow: #5b9dff;
+    --secondary-glow: #a36eff;
+    --text-primary: #eaf0f6;
+    --text-secondary: #a9c1d9;
+    --background-dark: #0a0f1e;
+    --container-bg: rgba(15, 22, 46, 0.5);
+    --card-bg: rgba(20, 30, 60, 0.5);
+    --white: #ffffff;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* Use a different class for the body wrapper to avoid conflicts */
+.AppBody {
+    font-family: 'Poppins', sans-serif;
+    background-color: var(--background-dark);
+    color: var(--text-primary);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    text-align: center;
+    padding: 40px 20px;
+    position: relative;
+}
+
+#particles-js {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -1;
+}
+
+.container {
+    width: 100%;
+    max-width: 1200px;
+    position: relative;
+}
+
+.hero-section {
+    position: relative;
+    background: var(--container-bg);
+    padding: 40px;
+    border-radius: 24px;
+    box-shadow: 0 15px 50px rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    opacity: 0;
+    transform: translateY(20px);
+    animation: pop-in 1s ease-out 0.5s forwards;
+    margin-bottom: 40px;
+}
+
+@keyframes pop-in {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.top-left-logo {
+    position: absolute;
+    top: 25px;
+    left: 25px;
+    z-index: 10;
+}
+
+.top-left-logo img {
+    max-height: 60px;
+    width: auto;
+}
+
+.lang-switcher {
+    position: absolute;
+    top: 25px;
+    right: 25px;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    z-index: 10;
+}
+
+.lang-switcher span {
+    padding: 5px;
+    transition: color 0.3s;
+}
+
+.lang-switcher span.active {
+    color: var(--white);
+    font-weight: 600;
+}
+
+.center-logo {
+    margin-bottom: 10px;
+}
+
+.center-logo img {
+    max-height: 70px;
+    width: auto;
+}
+
+h1 {
+    font-size: 4rem;
+    margin-bottom: 0;
+    font-weight: 700;
+}
+
+h1 span {
+    background: -webkit-linear-gradient(45deg, var(--primary-glow), var(--secondary-glow));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.tagline {
+    font-size: 1.1rem;
+    font-weight: 400;
+    color: var(--text-secondary);
+    margin-bottom: 25px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    opacity: 0;
+    animation: fadeIn 1.2s ease-in-out 1s forwards;
+}
+
+@keyframes fadeIn {
+    to {
+        opacity: 0.8;
+    }
+}
+
+p.subtitle {
+    font-size: 1.1rem;
+    color: var(--text-secondary);
+    line-height: 1.7;
+    max-width: 650px;
+    margin: 0 auto 30px auto;
+}
+
+.signup-form {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap; /* Added to handle multiple inputs gracefully */
+}
+
+.input-wrapper {
+    position: relative;
+    width: 45%; /* Adjusted for two inputs */
+    max-width: 350px;
+}
+
+/* General input styles */
+.signup-form input {
+    width: 100%;
+    padding: 15px 20px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    background-color: rgba(0, 0, 0, 0.2);
+    color: var(--white);
+    font-size: 1rem;
+    transition: all 0.3s ease;
+}
+
+/* Specific style for tel input with icon */
+.signup-form input[type="tel"] {
+    padding-left: 45px; /* Space for the icon */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%23a9c1d9' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81 .7A2 2 0 0 1 22 16.92z'%3E%3C/path%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: 15px center;
+}
+
+.signup-form input:focus {
+    outline: none;
+    border-color: var(--primary-glow);
+    box-shadow: 0 0 15px rgba(91, 157, 255, 0.3);
+}
+
+.signup-form input::placeholder {
+    color: var(--text-secondary);
+}
+
+.signup-form button {
+    padding: 15px 30px;
+    border: none;
+    border-radius: 12px;
+    background-image: linear-gradient(45deg, var(--primary-glow) 0%, var(--secondary-glow) 100%);
+    color: var(--white);
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.signup-form button:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 7px 25px rgba(91, 157, 255, 0.4), 0 5px 15px rgba(163, 110, 255, 0.3);
+}
+
+/* --- Features Section --- */
+.features-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 25px;
+    width: 100%;
+}
+
+.feature-card {
+    background: var(--card-bg);
+    padding: 30px;
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    opacity: 0;
+    transform: translateY(20px);
+    animation: pop-in 1s ease-out forwards;
+}
+
+.feature-card:nth-child(1) { animation-delay: 0.7s; }
+.feature-card:nth-child(2) { animation-delay: 0.85s; }
+.feature-card:nth-child(3) { animation-delay: 1s; }
+.feature-card:nth-child(4) { animation-delay: 1.15s; }
+.feature-card:nth-child(5) { animation-delay: 1.3s; }
+
+.feature-card:hover {
+    transform: translateY(-10px);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+}
+
+.feature-icon {
+    width: 60px;
+    height: 60px;
+    margin: 0 auto 20px auto;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--primary-glow), var(--secondary-glow));
+    box-shadow: 0 0 20px rgba(91, 157, 255, 0.5);
+}
+
+.feature-card h3 {
+    font-size: 1.4rem;
+    margin-bottom: 10px;
+    color: var(--text-primary);
+}
+
+.feature-card p {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    line-height: 1.6;
+}
+
+/* --- Install App Popup --- */
+#install-popup {
+    position: fixed;
+    bottom: -100%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 90%;
+    max-width: 400px;
+    background: var(--container-bg);
+    padding: 20px;
+    border-radius: 15px 15px 0 0;
+    box-shadow: 0 -5px 30px rgba(0,0,0,0.3);
+    border-top: 1px solid rgba(255,255,255,0.1);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    z-index: 1000;
+    transition: bottom 0.5s ease-in-out;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+#install-popup.show {
+    bottom: 0;
+}
+
+#install-popup img {
+    width: 60px;
+    height: 60px;
+    border-radius: 10px;
+}
+
+#install-popup .info {
+    text-align: left;
+    flex-grow: 1;
+}
+
+#install-popup .info h4 {
+    font-size: 1.1rem;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+#install-popup .info p {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+#install-popup-button {
+    padding: 10px 20px;
+    border-radius: 8px;
+    background-image: linear-gradient(45deg, var(--primary-glow) 0%, var(--secondary-glow) 100%);
+    color: white;
+    border: none;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+#close-popup-button {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 1.5rem;
+    cursor: pointer;
+}
+
+/* Responsive Design */
+@media (max-width: 992px) {
+    .features-grid {
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    }
+}
+
+@media (max-width: 768px) {
+    h1 { font-size: 3rem; }
+    p.subtitle { font-size: 1rem; }
+}
+
+@media (max-width: 600px) {
+    .AppBody { padding: 20px; }
+    .hero-section { padding: 30px 25px; }
+    .top-left-logo { top: 20px; left: 20px; }
+    .lang-switcher { top: 20px; right: 20px; }
+    .top-left-logo img { max-height: 50px; }
+    h1 { font-size: 2.8rem; }
+    .features-grid { grid-template-columns: 1fr; }
+    .signup-form { flex-direction: column; align-items: center; }
+    .input-wrapper, .signup-form button { width: 100%; }
+}
