@@ -1,0 +1,74 @@
+/* src/VideoPage.css */
+.video-page-container {
+    padding: 20px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.video-page-container h2 {
+    color: #004c99;
+    border-bottom: 2px solid #007bff;
+    padding-bottom: 10px;
+    margin-bottom: 25px;
+}
+
+.search-bar {
+    width: 100%;
+    padding: 12px;
+    margin-bottom: 25px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    box-sizing: border-box;
+    font-size: 1em;
+}
+
+.video-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 30px;
+}
+
+.video-card {
+    background: #ffffff;
+    border-radius: 10px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+    transition: transform 0.2s;
+}
+
+.video-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 15px rgba(0, 0, 0, 0.15);
+}
+
+.html-video-player {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+.video-info {
+    padding: 15px;
+}
+
+.video-info h4 {
+    margin-top: 0;
+    color: #007bff;
+    font-size: 1.1em;
+}
+
+.video-info p {
+    font-size: 0.85em;
+    color: #666;
+}
+
+.status-text {
+    color: #007bff;
+    text-align: center;
+    padding: 20px;
+}
+
+.error-message {
+    color: #e74c3c;
+    text-align: center;
+    padding: 20px;
+}

@@ -1,0 +1,89 @@
+/* src/UserAuth.css */
+.auth-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background: linear-gradient(135deg, #007bff, #004c99); /* Blue Gradient */
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    padding: 20px;
+}
+
+.auth-form-card {
+    background: #ffffff;
+    padding: 35px;
+    border-radius: 12px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+    width: 100%;
+    max-width: 400px;
+    text-align: center;
+}
+
+.auth-form-card h1 {
+    color: #004c99;
+    margin-bottom: 25px;
+    font-size: 1.8em;
+}
+
+.auth-form-card input {
+    width: 100%;
+    padding: 12px 15px;
+    margin-bottom: 15px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    box-sizing: border-box; /* Important for padding/width calculation */
+    transition: border-color 0.3s;
+}
+
+.auth-form-card input:focus {
+    border-color: #007bff;
+    outline: none;
+}
+
+.auth-form-card button[type="submit"] {
+    width: 100%;
+    padding: 12px 20px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1.1em;
+    font-weight: 600;
+    transition: background-color 0.3s;
+}
+
+.auth-form-card button[type="submit"]:hover {
+    background-color: #0056b3;
+}
+
+.error-message {
+    color: #e74c3c;
+    margin-top: 15px;
+    font-weight: 500;
+}
+
+.success-message {
+    color: #2ecc71;
+    margin-top: 15px;
+    font-weight: 500;
+}
+
+.auth-form-card p {
+    margin-top: 20px;
+    font-size: 0.9em;
+}
+
+.auth-form-card p a {
+    color: #007bff;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+/* Responsive adjustment */
+@media (max-width: 600px) {
+    .auth-form-card {
+        padding: 25px;
+        margin: 10px;
+    }
+}

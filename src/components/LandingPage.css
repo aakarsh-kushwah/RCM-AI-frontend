@@ -15,7 +15,6 @@
     box-sizing: border-box;
 }
 
-/* Use a different class for the body wrapper to avoid conflicts */
 .AppBody {
     font-family: 'Poppins', sans-serif;
     background-color: var(--background-dark);
@@ -112,8 +111,12 @@ h1 {
     font-size: 4rem;
     margin-bottom: 0;
     font-weight: 700;
+    display: flex; /* Added for alignment */
+    align-items: center; /* Added for alignment */
+    justify-content: center; /* Added for alignment */
 }
 
+/* This styles "RCM" text */
 h1 span {
     background: -webkit-linear-gradient(45deg, var(--primary-glow), var(--secondary-glow));
     -webkit-background-clip: text;
@@ -149,16 +152,15 @@ p.subtitle {
     display: flex;
     justify-content: center;
     gap: 10px;
-    flex-wrap: wrap; /* Added to handle multiple inputs gracefully */
+    flex-wrap: wrap; 
 }
 
 .input-wrapper {
     position: relative;
-    width: 45%; /* Adjusted for two inputs */
+    width: 45%; 
     max-width: 350px;
 }
 
-/* General input styles */
 .signup-form input {
     width: 100%;
     padding: 15px 20px;
@@ -170,9 +172,8 @@ p.subtitle {
     transition: all 0.3s ease;
 }
 
-/* Specific style for tel input with icon */
 .signup-form input[type="tel"] {
-    padding-left: 45px; /* Space for the icon */
+    padding-left: 45px;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%23a9c1d9' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81 .7A2 2 0 0 1 22 16.92z'%3E%3C/path%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: 15px center;
@@ -206,7 +207,6 @@ p.subtitle {
     box-shadow: 0 7px 25px rgba(91, 157, 255, 0.4), 0 5px 15px rgba(163, 110, 255, 0.3);
 }
 
-/* --- Features Section --- */
 .features-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -262,7 +262,6 @@ p.subtitle {
     line-height: 1.6;
 }
 
-/* --- Install App Popup --- */
 #install-popup {
     position: fixed;
     bottom: -100%;
@@ -332,7 +331,6 @@ p.subtitle {
     cursor: pointer;
 }
 
-/* Responsive Design */
 @media (max-width: 992px) {
     .features-grid {
         grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -354,4 +352,22 @@ p.subtitle {
     .features-grid { grid-template-columns: 1fr; }
     .signup-form { flex-direction: column; align-items: center; }
     .input-wrapper, .signup-form button { width: 100%; }
+}
+
+/* ===== NEW CODE FOR AI BOX ===== */
+.ai-box {
+  /* This creates the colored box background */
+  background-image: linear-gradient(45deg, var(--primary-glow) 0%, var(--secondary-glow) 100%);
+  
+  /* This makes the text inside the box white */
+  -webkit-text-fill-color: var(--white); 
+  
+  /* Styling for the box itself */
+  color: var(--white);
+  padding: 5px 12px;
+  border-radius: 9px;
+  font-size: 0.6em; /* Makes "AI" slightly smaller than "RCM" */
+  margin-left: 10px;
+  vertical-align: middle; /* Aligns the box nicely */
+  text-transform: uppercase;
 }

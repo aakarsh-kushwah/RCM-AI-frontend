@@ -12,7 +12,7 @@ function LandingPage() {
     const [installPrompt, setInstallPrompt] = useState(null);
     const [isInstallPopupVisible, setIsInstallPopupVisible] = useState(false);
 
-    // --- Effect for initializing Particles.js ---
+    // --- Effects and other functions remain the same ---
     useEffect(() => {
         if (window.particlesJS) {
             window.particlesJS('particles-js', {
@@ -22,33 +22,26 @@ function LandingPage() {
         }
     }, []);
 
-    // --- Effect for PWA Install Prompt ---
     useEffect(() => {
         const handleBeforeInstallPrompt = (e) => {
             e.preventDefault();
             setInstallPrompt(e);
             setIsInstallPopupVisible(true);
         };
-
         window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-
         return () => {
             window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
         };
     }, []);
     
-    // --- PWA Install Button Handler ---
     const handleInstallClick = async () => {
         setIsInstallPopupVisible(false);
-        if (!installPrompt) {
-            return;
-        }
+        if (!installPrompt) return;
         const result = await installPrompt.prompt();
         console.log(`Install prompt outcome: ${result.outcome}`);
         setInstallPrompt(null);
     };
 
-    // --- Language Translations ---
     const translations = {
         en: {
             launchingSoon: "Launching Soon",
@@ -91,12 +84,16 @@ function LandingPage() {
         event.preventDefault();
         setMessage('Submitting...');
         try {
-            // ***** THIS IS THE ONLY LINE THAT HAS CHANGED *****
-            const response = await fetch('https://rcmbackendai.onrender.com/api/subscribe', {
+            // ✅ **बदलाव यहाँ किया गया है**
+            // यह .env.local या Vercel के वेरिएबल से URL उठाएगा
+            const apiUrl = `${process.env.REACT_APP_API_URL}/api/subscribe`;
+
+            const response = await fetch(apiUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name, phone }),
             });
+
             const data = await response.json();
             if (data.success) {
                 setMessage('Thank you for subscribing!');
@@ -111,6 +108,7 @@ function LandingPage() {
         }
     };
 
+    // --- JSX remains the same ---
     return (
         <div className="AppBody">
             <div id="particles-js"></div>
