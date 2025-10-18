@@ -124,7 +124,7 @@ function LandingPage() {
                     <div className="center-logo">
                         <img src="https://i.ibb.co/GrMTmd0/Gemini-Generated-Image-q98hyq98hyq98hyq-removebg-preview-removebg-preview.png" alt="RCM AI Logo" />
                     </div>
-                    <h1>RCM <span dangerouslySetInnerHTML={{ __html: 'AI.LAUNCHED' }} /></h1>
+                    <h1>RCM <span dangerouslySetInnerHTML={{ __html: 'AI' }} /></h1>
                     <h2 className="tagline">{translations[language].launchingSoon}</h2>
                     <p className="subtitle">{translations[language].subtitle}</p>
 
