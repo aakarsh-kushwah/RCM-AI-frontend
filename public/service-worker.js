@@ -3,10 +3,8 @@ const CACHE_NAME = 'rcm-ai-cache-v1';
 const urlsToCache = [
   '/',
   '/index.html',
-  // Add core assets that the app needs to load quickly
-  // '/static/js/bundle.js', // This is handled by workbox in modern React apps
-  // '/static/css/main.css',
-  '/logo192.png'
+  // ✅ FIX: Use root path for assets, remove %PUBLIC_URL%
+  '/logo192.png' 
 ];
 
 // Installation: Cache essential assets
@@ -15,6 +13,7 @@ self.addEventListener('install', event => {
     caches.open(CACHE_NAME)
       .then(cache => {
         console.log('Opened cache');
+        // CRITICAL: .catch is added to handle failed fetches without breaking SW registration
         return cache.addAll(urlsToCache).catch(error => {
             console.error('Failed to cache required assets:', error);
         });
