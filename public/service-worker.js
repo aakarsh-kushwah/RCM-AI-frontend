@@ -1,10 +1,12 @@
+// public/service-worker.js
+
 // Service Worker Registration Handler
 const CACHE_NAME = 'rcm-ai-cache-v1';
 const urlsToCache = [
+  // Cache root path and index HTML only. 
+  // Browser will handle static/js/ and static/css paths automatically.
   '/',
   '/index.html',
-  // ✅ FIX: Use root path for assets, remove %PUBLIC_URL%
-  '/logo192.png' 
 ];
 
 // Installation: Cache essential assets
@@ -13,9 +15,9 @@ self.addEventListener('install', event => {
     caches.open(CACHE_NAME)
       .then(cache => {
         console.log('Opened cache');
-        // CRITICAL: .catch is added to handle failed fetches without breaking SW registration
+        // CRITICAL: Catch errors during caching to prevent SW failure
         return cache.addAll(urlsToCache).catch(error => {
-            console.error('Failed to cache required assets:', error);
+            console.error('Failed to cache required assets. This is normal if assets are not at root:', error);
         });
       })
   );
