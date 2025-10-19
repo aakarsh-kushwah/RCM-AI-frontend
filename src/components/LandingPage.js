@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import './LandingPage.css'; 
+// NOTE: This code assumes that the particle.js script is included in public/index.html
 
 function LandingPage() {
     // --- State variables ---
@@ -13,33 +14,43 @@ function LandingPage() {
     const [deferredPrompt, setDeferredPrompt] = useState(null); 
     const [isInstallPopupVisible, setIsInstallPopupVisible] = useState(false); 
 
-    // --- Translations (defined as before) ---
+    // --- Translations ---
     const translations = {
         en: {
              launchingSoon: "Launching Soon",
-             subtitle: "The official AI assistant for your RCM Business...",
+             subtitle: "The official AI assistant for your RCM Business. Built on the principles of Gurukul education, it provides instant access to product info, updates, webinars, and leader biographies.",
              namePlaceholder: "Enter your name",
              phonePlaceholder: "Enter your WhatsApp number",
              submitButton: "Get Launch Updates",
              installApp: "Install App",
              aiAssistantTitle: "AI Assistant",
+             aiAssistantDesc: "Get instant answers to all your questions. Ask about products, plans, or updates, and our AI will provide information in seconds.",
              gurukulTitle: "Gurukul Education",
+             gurukulDesc: "Our AI provides true knowledge and mentorship for your business growth, based on the core principles of Gurukul education.",
              cataloguesTitle: "Product Catalogues",
+             cataloguesDesc: "Access the complete and always updated digital catalogue of all RCM products. Search and find any product with ease.",
              biographiesTitle: "Leader Biographies",
+             biographiesDesc: "Get inspired by the journeys of our top leaders. Access their biographies, achievements, and success stories in one place.",
              webinarTitle: "Webinar Hub",
+             webinarDesc: "Never miss an update. Get timely information and direct links for all Zoom meetings and Gurukul webinars in one place."
         },
         hi: {
              launchingSoon: "जल्द ही लॉन्च हो रहा है",
-             subtitle: "आपके RCM बिजनेस का ऑफिशियल AI असिस्टेंट...",
+             subtitle: "आपके RCM बिजनेस का ऑफिशियल AI असिस्टेंट। गुरुकुल की शिक्षा के सिद्धांतों पर आधारित, यह आपको प्रोडक्ट्स की जानकारी, अपडेट्स, वेबिनार और लीडर्स की बायोग्राफी तक तुरंत पहुंच प्रदान करता है।",
              namePlaceholder: "अपना नाम दर्ज करें",
              phonePlaceholder: "अपना व्हाट्सएप नंबर दर्ज करें",
              submitButton: "लॉन्च अपडेट्स पाएं",
              installApp: "ऐप इंस्टॉल करें",
              aiAssistantTitle: "AI असिस्टेंट",
+             aiAssistantDesc: "अपने सभी सवालों के जवाब तुरंत पाएं। प्रोडक्ट्स, प्लान्स या अपडेट्स के बारे में पूछें, और हमारा AI सेकंडों में जानकारी देगा।",
              gurukulTitle: "गुरुकुल शिक्षा",
+             gurukulDesc: "हमारा AI गुरुकुल शिक्षा के मूल सिद्धांतों पर आधारित, आपके व्यापार के विकास के लिए सच्चा ज्ञान और मार्गदर्शन प्रदान करता है।",
              cataloguesTitle: "प्रोडक्ट कैटलॉग",
+             cataloguesDesc: "सभी RCM प्रोडक्ट्स का पूरा और हमेशा अपडेटेड डिजिटल कैटलॉग एक्सेस करें। किसी भी प्रोडक्ट को आसानी से खोजें और पाएं।",
              biographiesTitle: "लीडर बायोग्राफी",
+             biographiesDesc: "हमारे शीर्ष लीडर्स की यात्रा से प्रेरणा लें। उनकी बायोग्राफी, उपलब्धियों और सफलता की कहानियों को एक ही स्थान पर एक्सेस करें।",
              webinarTitle: "वेबिनार हब",
+             webinarDesc: "कोई भी अपडेट मिस न करें। सभी ज़ूम मीटिंग्स और गुरुकुल वेबिनार की समय पर जानकारी और डायरेक्ट लिंक एक ही स्थान पर प्राप्त करें।"
         }
     };
     const t = translations[language];
@@ -55,7 +66,7 @@ function LandingPage() {
             e.preventDefault(); 
             setDeferredPrompt(e); 
             
-            // Only show the custom popup if the app hasn't been installed ('true')
+            // Only show the custom popup if the app hasn't been installed
             if (localStorage.getItem('pwa_installed_dismissed') !== 'true') { 
                 setIsInstallPopupVisible(true);
             }
@@ -69,6 +80,14 @@ function LandingPage() {
 
         window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
         window.addEventListener('appinstalled', handleAppInstalled);
+        
+        // Particle JS Initialization (assuming script is linked in index.html)
+        if (window.particlesJS) {
+            window.particlesJS('particles-js', {
+                 "particles": { "number": { "value": 60, "density": { "enable": true, "value_area": 800 } }, "color": { "value": "#ffffff" }, "shape": { "type": "circle" }, "opacity": { "value": 0.5, "random": true }, "size": { "value": 3, "random": true }, "line_linked": { "enable": true, "distance": 150, "color": "#ffffff", "opacity": 0.2, "width": 1 }, "move": { "enable": true, "speed": 1, "direction": "none", "out_mode": "out" } },
+                 "interactivity": { "events": { "onhover": { "enable": true, "mode": "repulse" }, "onclick": { "enable": true, "mode": "push" } } }
+            });
+        }
         
         return () => {
             window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -94,17 +113,6 @@ function LandingPage() {
         setIsInstallPopupVisible(false);
         localStorage.setItem('pwa_installed_dismissed', 'maybe'); 
     };
-
-    // Particle JS Initialization (Retained)
-    useEffect(() => {
-        if (window.particlesJS) {
-            // ... (Particle JS initialization logic) ...
-            window.particlesJS('particles-js', {
-                 "particles": { "number": { "value": 60, "density": { "enable": true, "value_area": 800 } }, "color": { "value": "#ffffff" }, "shape": { "type": "circle" }, "opacity": { "value": 0.5, "random": true }, "size": { "value": 3, "random": true }, "line_linked": { "enable": true, "distance": 150, "color": "#ffffff", "opacity": 0.2, "width": 1 }, "move": { "enable": true, "speed": 1, "direction": "none", "out_mode": "out" } },
-                 "interactivity": { "events": { "onhover": { "enable": true, "mode": "repulse" }, "onclick": { "enable": true, "mode": "push" } } }
-            });
-        }
-    }, []);
 
 
     // --- Form Submission Handler (Subscribers) ---
@@ -135,7 +143,7 @@ function LandingPage() {
     };
 
     // =======================================================
-    // RENDER UI (Matching the desired structure)
+    // RENDER UI
     // =======================================================
 
     return (
@@ -144,7 +152,7 @@ function LandingPage() {
             <div className="container">
                 <div className="hero-section">
                     
-                    {/* Top Left Logo (Retained from original desired UI) */}
+                    {/* Top Left Logo (RCM World Logo) */}
                     <div className="top-left-logo">
                          <img src="https://i.ibb.co/jZvQqHt6/rcm-world-logo-removebg-preview.png" alt="RCM World Logo" />
                     </div>
@@ -160,7 +168,7 @@ function LandingPage() {
                         <span onClick={() => setLanguage('hi')} className={language === 'hi' ? 'active' : ''}>HI</span>
                     </div>
                     
-                    {/* Center Logo/Content */}
+                    {/* Center AI Logo */}
                     <div className="center-logo">
                          <img src="https://i.ibb.co/GrMTmd0/Gemini-Generated-Image-q98hyq98hyq98hyq-removebg-preview-removebg-preview.png" alt="RCM AI Logo" />
                     </div>
@@ -181,29 +189,33 @@ function LandingPage() {
                     {message && <p style={{ marginTop: '15px', color: '#a9c1d9' }}>{message}</p>}
                 </div>
 
-                {/* Features Grid (Retained desired UI structure) */}
+                {/* Features Grid */}
                 <div className="features-grid">
-                    {/* Feature Card Structure (Use your existing SVG icons/content) */}
+                    {/* Feature Card 1: AI Assistant */}
                     <div className="feature-card">
                         <div className="feature-icon">🤖</div>
                         <h3>{t.aiAssistantTitle}</h3>
                         <p>{t.aiAssistantDesc}</p>
                     </div>
+                    {/* Feature Card 2: Gurukul Education */}
                     <div className="feature-card">
                         <div className="feature-icon">🎓</div>
                         <h3>{t.gurukulTitle}</h3>
                         <p>{t.gurukulDesc}</p>
                     </div>
+                    {/* Feature Card 3: Product Catalogues */}
                     <div className="feature-card">
                         <div className="feature-icon">🛍️</div>
                         <h3>{t.cataloguesTitle}</h3>
                         <p>{t.cataloguesDesc}</p>
                     </div>
+                    {/* Feature Card 4: Leader Biographies */}
                     <div className="feature-card">
                         <div className="feature-icon">👤</div>
                         <h3>{t.biographiesTitle}</h3>
                         <p>{t.biographiesDesc}</p>
                     </div>
+                    {/* Feature Card 5: Webinar Hub */}
                     <div className="feature-card">
                         <div className="feature-icon">📺</div>
                         <h3>{t.webinarTitle}</h3>
@@ -216,8 +228,8 @@ function LandingPage() {
             {isInstallPopupVisible && deferredPrompt && (
                 <div id="install-popup">
                     <button id="close-popup-button" onClick={handleDismissPrompt}>&times;</button>
-                    {/* NOTE: PWA logos must be relative to the public folder */}
-                    <img src="%PUBLIC_URL%/logo192.png" alt="RCM AI Logo" style={{width: '30px', height: '30px'}} /> 
+                    {/* FIX: Logo path hardcoded to root '/' to prevent %PUBLIC_URL% errors */}
+                    <img src="/logo192.png" alt="RCM AI Logo" style={{width: '30px', height: '30px'}} /> 
                     <div className="info">
                         <h4>{t.installApp}</h4>
                         <p>Add to your home screen for instant access.</p>
