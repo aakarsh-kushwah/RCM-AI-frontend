@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import './LandingPage.css'; 
-// NOTE: This code assumes that the particle.js script is included in public/index.html
 
 function LandingPage() {
     // --- State variables ---
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
     const [message, setMessage] = useState('');
-    const [language, setLanguage] = useState('hi'); 
+    const [language, setLanguage] = useState('en'); // Default to English
     
     // --- PWA State ---
     const [deferredPrompt, setDeferredPrompt] = useState(null); 
@@ -66,7 +65,6 @@ function LandingPage() {
             e.preventDefault(); 
             setDeferredPrompt(e); 
             
-            // Only show the custom popup if the app hasn't been installed
             if (localStorage.getItem('pwa_installed_dismissed') !== 'true') { 
                 setIsInstallPopupVisible(true);
             }
