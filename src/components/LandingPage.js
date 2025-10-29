@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import './LandingPage.css'; 
+// import { Link } from 'react-router-dom'; // REMOVED: No longer needed
+import './LandingPage.css';
 
 function LandingPage() {
     // --- State variables ---
@@ -10,8 +10,8 @@ function LandingPage() {
     const [language, setLanguage] = useState('en'); // Default to English
     
     // --- PWA State ---
-    const [deferredPrompt, setDeferredPrompt] = useState(null); 
-    const [isInstallPopupVisible, setIsInstallPopupVisible] = useState(false); 
+    const [deferredPrompt, setDeferredPrompt] = useState(null);
+    const [isInstallPopupVisible, setIsInstallPopupVisible] = useState(false);
 
     // --- Translations ---
     const translations = {
@@ -56,16 +56,16 @@ function LandingPage() {
 
 
     // =======================================================
-    // PWA & PARTICLE JS LOGIC
+    // PWA & PARTICLE JS LOGIC (Unchanged)
     // =======================================================
 
     // PWA Logic: Detect install prompt and manage persistence
     useEffect(() => {
         const handleBeforeInstallPrompt = (e) => {
-            e.preventDefault(); 
-            setDeferredPrompt(e); 
+            e.preventDefault();
+            setDeferredPrompt(e);
             
-            if (localStorage.getItem('pwa_installed_dismissed') !== 'true') { 
+            if (localStorage.getItem('pwa_installed_dismissed') !== 'true') {
                 setIsInstallPopupVisible(true);
             }
         };
@@ -95,12 +95,12 @@ function LandingPage() {
 
     const handleInstallClick = () => {
         if (deferredPrompt) {
-            setIsInstallPopupVisible(false); 
-            deferredPrompt.prompt(); 
+            setIsInstallPopupVisible(false);
+            deferredPrompt.prompt();
             
             deferredPrompt.userChoice.then((choiceResult) => {
                 if (choiceResult.outcome !== 'accepted') {
-                    localStorage.setItem('pwa_installed_dismissed', 'maybe'); 
+                    localStorage.setItem('pwa_installed_dismissed', 'maybe');
                 }
                 setDeferredPrompt(null);
             });
@@ -109,11 +109,11 @@ function LandingPage() {
     
     const handleDismissPrompt = () => {
         setIsInstallPopupVisible(false);
-        localStorage.setItem('pwa_installed_dismissed', 'maybe'); 
+        localStorage.setItem('pwa_installed_dismissed', 'maybe');
     };
 
 
-    // --- Form Submission Handler (Subscribers) ---
+    // --- Form Submission Handler (Subscribers) (Unchanged) ---
     const handleSubmit = async (event) => {
         event.preventDefault();
         setMessage('Submitting...');
@@ -152,15 +152,12 @@ function LandingPage() {
                     
                     {/* Top Left Logo (RCM World Logo) */}
                     <div className="top-left-logo">
-                         <img src="https://i.ibb.co/jZvQqHt6/rcm-world-logo-removebg-preview.png" alt="RCM World Logo" />
+                           <img src="https://i.ibb.co/jZvQqHt6/rcm-world-logo-removebg-preview.png" alt="RCM World Logo" />
                     </div>
 
-                    {/* Top Right Login Link */}
-                    <Link to="/login" className="top-right-login-link">
-                         <button className="login-button">Login</button>
-                    </Link>
-
-
+                    {/* Top Right Login Link (REMOVED) */}
+                    
+                    {/* Language Switcher */}
                     <div className="lang-switcher">
                         <span onClick={() => setLanguage('en')} className={language === 'en' ? 'active' : ''}>EN</span> |
                         <span onClick={() => setLanguage('hi')} className={language === 'hi' ? 'active' : ''}>HI</span>
@@ -168,7 +165,7 @@ function LandingPage() {
                     
                     {/* Center AI Logo */}
                     <div className="center-logo">
-                         <img src="https://i.ibb.co/GrMTmd0/Gemini-Generated-Image-q98hyq98hyq98hyq-removebg-preview-removebg-preview.png" alt="RCM AI Logo" />
+                           <img src="https://i.ibb.co/GrMTmd0/Gemini-Generated-Image-q98hyq98hyq98hyq-removebg-preview-removebg-preview.png" alt="RCM AI Logo" />
                     </div>
 
                     <h1>RCM <span dangerouslySetInnerHTML={{ __html: 'AI' }} /></h1>
@@ -226,8 +223,7 @@ function LandingPage() {
             {isInstallPopupVisible && deferredPrompt && (
                 <div id="install-popup">
                     <button id="close-popup-button" onClick={handleDismissPrompt}>&times;</button>
-                    {/* FIX: Logo path hardcoded to root '/' to prevent %PUBLIC_URL% errors */}
-                    <img src="/logo192.png" alt="RCM AI Logo" style={{width: '30px', height: '30px'}} /> 
+                    <img src="/logo192.png" alt="RCM AI Logo" style={{width: '30px', height: '30px'}} />
                     <div className="info">
                         <h4>{t.installApp}</h4>
                         <p>Add to your home screen for instant access.</p>
