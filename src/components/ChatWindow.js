@@ -92,24 +92,26 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
         setInput('');
         setIsLoading(true);
 
+        // ✅ --- यह है Live Backend URL ---
+        // यह 'process.env.REACT_APP_API_URL' का उपयोग करता है
+        // जो आपकी .env फ़ाइल से आएगा
+        // 🛑 नोट: हमने "/api/chat" को बदल दिया है
+        // -------------------------------------
+        const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3001"; // फॉलबैक
+
         try {
-            // ⬇️⬇️✅ यही वह लाइन है जिसे ठीक किया गया है ⬇️⬇️
-            // यह अब 'proxy' सेटिंग का इस्तेमाल करेगा
-            const response = await fetch("/api/chat", { 
+            const response = await fetch(`${API_URL}/api/chat`, { // ✅ यहाँ बदलाव किया गया है
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify({ message: messageToSend, mode: aiMode }),
             });
-            // ⬆️⬆️✅ कोड फिक्स ⬆️⬆️
-
-            // 404 या 500 एरर को बेहतर तरीके से हैंडल करने के लिए
+            
             if (!response.ok) {
-                const errorText = await response.text(); // HTML एरर को टेक्स्ट के रूप में पढ़ें
-                // यह 'SyntaxError' को रोकता है
+                const errorText = await response.text();
                 throw new Error(errorText || `Server error: ${response.statusText}`); 
             }
 
-            const data = await response.json(); // अब यह सुरक्षित है
+            const data = await response.json(); 
             
             let botMessage;
 
@@ -136,11 +138,10 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
             console.error('Chat error:', error);
             let errorMessageText = "Sorry, I couldn't connect to the server.";
             
-            // JSON एरर को पहचानें
             if (error instanceof SyntaxError) {
-                errorMessageText = "Error: Invalid response from server (Not JSON). Check proxy.";
+                errorMessageText = "Error: Invalid response from server (Not JSON).";
             } else if (error.message.includes("DOCTYPE")) {
-                errorMessageText = "Error: 404 Not Found. Check proxy settings and restart server.";
+                errorMessageText = "Error: 404 Not Found. Check API URL.";
             }
 
             const errorMessage = { sender: 'BOT', type: 'text', content: errorMessageText };
