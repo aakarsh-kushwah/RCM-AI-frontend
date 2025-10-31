@@ -1,12 +1,12 @@
 // public/service-worker.js
 
-// Service Worker Registration Handler
-const CACHE_NAME = 'rcm-ai-cache-v1';
+const CACHE_NAME = 'rcm-ai-cache-v2'; // v2 में अपडेट किया गया ताकि ब्राउज़र नए SW को मजबूरन लोड करे
 const urlsToCache = [
-  // Cache root path and index HTML only. 
-  // Browser will handle static/js/ and static/css paths automatically.
   '/',
   '/index.html',
+  '/manifest.json',
+  
+  // CSS और JS बंडल्स को यहाँ न जोड़ें, वे स्वचालित रूप से कैश हो जाएँगे
 ];
 
 // Installation: Cache essential assets
@@ -15,9 +15,9 @@ self.addEventListener('install', event => {
     caches.open(CACHE_NAME)
       .then(cache => {
         console.log('Opened cache');
-        // CRITICAL: Catch errors during caching to prevent SW failure
+        // केवल मुख्य फ़ाइलों को प्री-कैश करें
         return cache.addAll(urlsToCache).catch(error => {
-            console.error('Failed to cache required assets. This is normal if assets are not at root:', error);
+          console.error('Failed to cache initial assets:', error);
         });
       })
   );
@@ -40,16 +40,29 @@ self.addEventListener('activate', event => {
   );
 });
 
-// Fetch: Serve cached content when offline, or fetch from network
+// Fetch: Serve cached content or fetch from network
 self.addEventListener('fetch', event => {
+  const requestUrl = new URL(event.request.url);
+
+  // ✅ CRITICAL FIX: 
+  // 1. अगर यह API कॉल है (Render पर जा रही है), तो इसे अनदेखा करें और नेटवर्क को संभालने दें।
+  // 2. यह 'chrome-extension' अनुरोधों को भी अनदेखा करता है।
+  if (!event.request.url.startsWith(self.location.origin) || requestUrl.pathname.startsWith('/api/')) {
+    return event.respondWith(fetch(event.request));
+  }
+
+  // 3. अन्य सभी (स्थानीय) अनुरोधों के लिए: नेटवर्क पहले (Stale-While-Revalidate)
   event.respondWith(
-    caches.match(event.request)
-      .then(response => {
-        if (response) {
-          return response;
-        }
-        return fetch(event.request);
-      }
-    )
+    caches.open(CACHE_NAME).then(cache => {
+      return fetch(event.request).then(networkResponse => {
+        // अगर नेटवर्क से मिलता है, तो इसे कैश में डालें और वापस भेजें
+        cache.put(event.request, networkResponse.clone());
+        return networkResponse;
+      }).catch(() => {
+        // अगर नेटवर्क विफल होता है (ऑफ़लाइन), तो कैश से वापस भेजें
+        return cache.match(event.request);
+      });
+    })
   );
 });
+
