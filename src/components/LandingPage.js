@@ -206,7 +206,7 @@ function LandingPage() {
             {isInstallPopupVisible && deferredPrompt && (
                 <div id="install-popup">
                     <button id="close-popup-button" onClick={handleDismissPrompt}>&times;</button>
-                    <img src="/logo192.png" alt="RCM AI Logo" style={{width: '30px', height: '30px'}} /> 
+                    <img src="https://i.ibb.co/GrMTmd0/Gemini-Generated-Image-q98hyq98hyq98hyq-removebg-preview-removebg-preview.png" alt="RCM AI Logo" style={{width: '30px', height: '30px'}} /> 
                     <div className="info">
                         <h4>{t.installApp}</h4>
                         <p>Add to your home screen for instant access.</p>
