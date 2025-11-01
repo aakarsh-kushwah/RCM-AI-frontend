@@ -10,6 +10,7 @@ import UserProtectedRoute from './components/UserProtectedRoute';
 
 // ✅ NEW: सीधे VideoPage को इंपोर्ट करें
 import VideoPage from './components/VideoPage'; 
+import PaymentPage from './components/PaymentPage';
 
 function App() {
     return (
@@ -19,6 +20,8 @@ function App() {
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+            <Route path="/payment-setup" element={<PaymentPage />} />
+
             
             {/* 2. USER PROTECTED ROUTES */}
             <Route path="/dashboard" element={<UserProtectedRoute><UserDashboard /></UserProtectedRoute>} />

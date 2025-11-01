@@ -1,0 +1,109 @@
+.payment-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  background: linear-gradient(135deg, #007bff, #00c6ff);
+  font-family: "Poppins", sans-serif;
+}
+
+.payment-card {
+  background: #fff;
+  padding: 40px;
+  border-radius: 20px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+  text-align: center;
+  width: 90%;
+  max-width: 450px;
+  animation: fadeIn 0.6s ease-in-out;
+}
+
+.payment-logo {
+  width: 100px;
+  margin-bottom: 20px;
+}
+
+.payment-title {
+  font-size: 1.8rem;
+  color: #333;
+  margin-bottom: 10px;
+  font-weight: 600;
+}
+
+.payment-subtitle {
+  color: #666;
+  font-size: 1rem;
+  margin-bottom: 25px;
+}
+
+.payment-details {
+  margin-bottom: 30px;
+}
+
+.payment-details ul {
+  list-style: none;
+  padding: 0;
+  text-align: left;
+}
+
+.payment-details li {
+  color: #444;
+  font-size: 1rem;
+  margin: 8px 0;
+  display: flex;
+  align-items: center;
+}
+
+.payment-details li::before {
+  content: "💎";
+  margin-right: 10px;
+}
+
+.payment-btn {
+  background-color: #007bff;
+  color: #fff;
+  border: none;
+  padding: 14px 40px;
+  border-radius: 30px;
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  width: 100%;
+}
+
+.payment-btn:hover {
+  background-color: #0056b3;
+  transform: translateY(-2px);
+}
+
+.payment-btn.disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Responsive Design */
+@media (max-width: 480px) {
+  .payment-card {
+    padding: 25px;
+    border-radius: 15px;
+  }
+
+  .payment-title {
+    font-size: 1.5rem;
+  }
+
+  .payment-subtitle {
+    font-size: 0.9rem;
+  }
+}
