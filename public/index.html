@@ -2,14 +2,27 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" /> 
-    <!-- PWA Setup -->
-    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#004c99" />
-    <!-- End PWA Setup -->
     
     <title>RCM AI Assistant</title>
+    
+    <!-- SEO & PWA Description -->
+    <meta name="description" content="The official AI assistant for your RCM Business." />
+    
+    <!-- PWA Theme Color -->
+    <meta name="theme-color" content="#004c99" />
+
+    <!-- Performance Boost: Preconnect to Render Backend -->
+    <link rel="preconnect" href="https://rcm-ai-backend.onrender.com" />
+    
+    <!-- PWA & Favicon Setup -->
+    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+    
+    <!-- 🛑 Apple/iOS Support (180x180 icon reference REMOVED) -->
+    <!-- <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo180.png" /> -->
+    
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
@@ -17,8 +30,12 @@
     
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 
-    <!-- PWA Registration Script - Loads sw-register.js from the correct public path -->
+    <!-- External Scripts (e.g., particles.js) -->
+    <script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script>
+
+    <!-- PWA Registration Script -->
     <script src="%PUBLIC_URL%/sw-register.js"></script> 
     
   </body>
 </html>
+

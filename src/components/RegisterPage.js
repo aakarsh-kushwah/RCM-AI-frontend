@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import './UserAuth.css'; 
+
 
 function RegisterPage() {
   const [fullName, setFullName] = useState('');

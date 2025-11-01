@@ -1,346 +1,342 @@
-/* --- Base Styles & Background --- */
+/* src/LandingPage.css */
 
-/* Ensure the whole page takes up the viewport */
-.AppBody {
-    min-height: 100vh;
-    background: #0d1117; /* Dark background for a 'space' theme */
-    color: #c9d1d9; /* Light text color */
-    font-family: 'Arial', sans-serif;
-    position: relative; /* For particle background */
+/* --- Global & Body Styles --- */
+body, html {
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    color: white;
+    
+    /* ✅ Simple, non-animated dark blue background */
+    background-color: #050F33; 
+
+    scroll-behavior: smooth;
     overflow-x: hidden;
 }
 
-/* Particle JS Container - Absolute position to cover background */
+/* --- Particle JS Background --- */
 #particles-js {
-    position: absolute;
+    position: fixed;
     width: 100%;
     height: 100%;
     top: 0;
     left: 0;
-    z-index: 1; /* Below content */
+    z-index: 1; /* Background layer */
 }
 
-/* Main content container */
-.container {
+.AppBody {
     position: relative;
-    z-index: 2; /* Above particle background */
+    min-height: 100vh;
+    padding-bottom: 50px;
+}
+
+.container {
     max-width: 1200px;
     margin: 0 auto;
-    padding: 20px;
+    padding: 0 20px;
+    
+    /* ✅ CRITICAL Z-INDEX FIX: */
+    position: relative; 
+    z-index: 2; /* Sits on top of particles-js */
 }
 
-/* --- Header Elements --- */
+/* --- Hero Section (Top) --- */
+.hero-section {
+    padding: 80px 0 60px;
+    text-align: center;
+    position: relative;
+}
 
-.top-left-logo {
-    position: absolute;
-    top: 20px;
-    left: 20px;
-    width: 80px; /* Smaller, modern logo size */
-    z-index: 10;
+.top-left-logo, .center-logo {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 20px;
 }
 
 .top-left-logo img {
-    width: 100%;
-    height: auto;
+    height: 40px; 
+    position: absolute;
+    top: 40px;
+    left: 20px;
+    opacity: 0.8;
 }
 
-/* Language Switcher */
+.center-logo img {
+    width: 100px;
+    height: 100px;
+}
+
 .lang-switcher {
     position: absolute;
-    top: 30px;
-    right: 30px;
-    font-size: 1.1rem;
+    top: 45px;
+    right: 20px; /* FIX: Position updated */
+    font-size: 1em;
     cursor: pointer;
-    z-index: 10;
 }
 
 .lang-switcher span {
-    padding: 5px;
-    transition: color 0.3s;
+    padding: 0 5px;
+    transition: color 0.2s;
 }
 
-.lang-switcher span:hover {
-    color: #58a6ff; /* Light blue on hover */
-}
-
-.lang-switcher .active {
+.lang-switcher span.active {
+    color: #4CAF50; /* Green accent for active language */
     font-weight: bold;
-    color: #58a6ff;
 }
 
-/* --- Hero Section --- */
+/* 🛑 REMOVED: Login Button Styles */
 
-.hero-section {
-    padding: 100px 0 50px;
-    text-align: center;
+
+.hero-section h1 {
+    font-size: 3.5em;
+    font-weight: 800;
+    margin-bottom: 5px;
+}
+
+.ai-accent {
+    color: #4CAF50; /* Green accent */
+}
+
+.hero-section h2.tagline {
+    font-size: 1.5em;
+    font-weight: 300;
+    color: #4CAF50; 
+    margin-top: 0;
+    margin-bottom: 25px;
+}
+
+.hero-section p.subtitle {
+    max-width: 700px;
+    margin: 0 auto 40px auto;
+    line-height: 1.6;
+    color: #A0B3CC; /* Light gray-blue */
+}
+
+/* --- Subscriber Signup Form --- */
+.signup-form {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
     max-width: 700px;
     margin: 0 auto;
 }
 
-.center-logo {
-    width: 120px;
-    height: 120px;
-    margin: 0 auto 20px;
-    animation: pulse 2s infinite; /* Subtle animation for the logo */
-}
-
-.center-logo img {
-    width: 100%;
-    height: 100%;
-}
-
-@keyframes pulse {
-    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(88, 166, 255, 0.7); }
-    70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(88, 166, 255, 0); }
-    100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(88, 166, 255, 0); }
-}
-
-.hero-section h1 {
-    font-size: 3.5rem;
-    margin-bottom: 10px;
-    font-weight: 900;
-    letter-spacing: 2px;
-}
-
-.hero-section h1 span {
-    color: #58a6ff; /* Highlight the 'AI' part */
-}
-
-.tagline {
-    font-size: 1.5rem;
-    color: #8b949e;
-    margin-bottom: 20px;
-}
-
-.subtitle {
-    font-size: 1.1rem;
-    line-height: 1.6;
-    margin-bottom: 40px;
-    color: #a9c1d9;
-    padding: 0 15px; /* Padding for small screens */
-}
-
-/* --- Signup Form --- */
-
-.signup-form {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 15px;
-    max-width: 400px;
-    margin: 0 auto;
-}
-
 .input-wrapper {
-    width: 100%;
+    flex-grow: 1;
 }
 
 .signup-form input {
     width: 100%;
-    padding: 15px;
-    border: 1px solid #30363d; /* Dark border */
-    border-radius: 6px;
-    background-color: #161b22; /* Slightly lighter than body */
-    color: #c9d1d9;
-    font-size: 1rem;
-    transition: border-color 0.3s, box-shadow 0.3s;
+    padding: 14px 20px;
+    border: 1px solid #1A284A; 
+    border-radius: 8px;
+    background: #1A284A; 
+    color: white;
+    box-sizing: border-box; 
 }
 
 .signup-form input::placeholder {
-    color: #8b949e;
-}
-
-.signup-form input:focus {
-    border-color: #58a6ff;
-    outline: none;
-    box-shadow: 0 0 5px rgba(88, 166, 255, 0.5);
+    color: #8C99A8;
 }
 
 .signup-form button {
-    width: 100%;
-    padding: 15px;
-    background-color: #58a6ff; /* Vibrant blue */
-    color: #0d1117;
+    padding: 14px 30px;
+    background: #007bff;
+    color: white;
     border: none;
-    border-radius: 6px;
-    font-size: 1.1rem;
-    font-weight: bold;
+    border-radius: 8px;
     cursor: pointer;
-    transition: background-color 0.3s, transform 0.1s;
+    font-weight: 600;
+    transition: background-color 0.2s;
 }
 
 .signup-form button:hover {
-    background-color: #79c0ff;
+    background: #0056b3;
 }
 
-.signup-form button:active {
-    transform: scale(0.98);
+.response-msg {
+    margin-top: 15px;
+    color: #4CAF50 !important; 
 }
 
 /* --- Features Grid --- */
-
 .features-grid {
+    padding: 60px 0;
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
     gap: 30px;
-    padding: 50px 0 100px;
+    text-align: center;
 }
 
 .feature-card {
-    background: #161b22; /* Darker card background */
-    padding: 25px;
+    background: #1A284A; 
+    padding: 30px;
     border-radius: 12px;
-    border: 1px solid #30363d;
-    text-align: center;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-    transition: transform 0.3s, border-color 0.3s;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    transition: transform 0.2s, box-shadow 0.2s;
+    border: 1px solid #1A284A; 
 }
 
 .feature-card:hover {
     transform: translateY(-5px);
-    border-color: #58a6ff;
+    box-shadow: 0 8px 15px rgba(0, 0, 0, 0.4);
 }
 
 .feature-icon {
-    font-size: 3rem;
+    font-size: 2.5em;
     margin-bottom: 15px;
+    color: #4CAF50; 
 }
 
 .feature-card h3 {
-    color: #58a6ff;
-    font-size: 1.4rem;
-    margin-bottom: 10px;
+    margin-top: 0;
+    font-size: 1.25em;
+    font-weight: 600;
 }
 
 .feature-card p {
-    color: #8b949e;
-    line-height: 1.5;
+    color: #A0B3CC;
+    font-size: 0.95em;
 }
 
-/* --- PWA Install Popup --- */
-
+/* --- PWA INSTALL POPUP STYLES --- */
 #install-popup {
     position: fixed;
     bottom: 20px;
     left: 50%;
     transform: translateX(-50%);
+    background: white;
+    color: #333;
+    padding: 15px 20px;
+    border-radius: 10px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
     display: flex;
     align-items: center;
-    background-color: #21262d; /* Dark, noticeable background */
-    border: 1px solid #30363d;
-    padding: 10px 15px;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-    z-index: 100;
-    max-width: 90%; /* Responsive width */
-    gap: 10px;
+    gap: 15px;
+    z-index: 1000; /* Must be highest z-index */
+    max-width: 90%;
+    opacity: 0;
+    animation: slideIn 0.5s forwards;
 }
 
-#install-popup .info {
-    text-align: left;
-    flex-grow: 1;
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translate(-50%, 20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(-50%);
+    }
 }
 
-#install-popup h4 {
+
+#install-popup img {
+    width: 30px;
+    height: 30px;
+}
+
+#install-popup .info h4 {
+    margin: 0 0 5px 0;
+    font-size: 1em;
+    font-weight: bold;
+}
+
+#install-popup .info p {
     margin: 0;
-    color: #c9d1d9;
-    font-size: 1rem;
-}
-
-#install-popup p {
-    margin: 0;
-    font-size: 0.85rem;
-    color: #8b949e;
-    display: none; /* Hide subtitle on small screens for brevity */
+    font-size: 0.9em;
+    color: #666;
 }
 
 #install-popup-button {
-    background-color: #58a6ff;
-    color: #0d1117;
+    background: #007bff;
+    color: white;
     border: none;
     padding: 8px 15px;
     border-radius: 5px;
-    font-weight: bold;
     cursor: pointer;
-    flex-shrink: 0;
+    font-weight: bold;
+    white-space: nowrap;
 }
 
 #close-popup-button {
+    position: absolute;
+    top: 5px;
+    right: 5px;
     background: none;
     border: none;
-    color: #8b949e;
-    font-size: 1.5rem;
+    font-size: 1.2em;
+    color: #ccc;
     cursor: pointer;
-    padding: 0 5px;
 }
 
-
-/* --- Media Queries for Responsiveness --- */
-
-/* Mobile: Default styles are fine, but adjust some sizes */
-@media (max-width: 600px) {
+/* --- RESPONSIVENESS --- */
+@media (max-width: 768px) {
     .hero-section {
-        padding-top: 80px;
+        padding-top: 100px;
     }
-    
     .hero-section h1 {
-        font-size: 2.5rem;
+        font-size: 2.5em;
     }
 
-    .tagline {
-        font-size: 1.2rem;
+    .signup-form {
+        flex-direction: column;
+        gap: 10px;
     }
-
-    .subtitle {
-        font-size: 1rem;
-    }
-
-    .top-left-logo {
-        width: 60px;
+    .input-wrapper {
+        flex-grow: 0;
     }
     
+    /* ✅ FIX 1: Keep top-left logo positioned absolutely */
+    .top-left-logo {
+        position: absolute; /* Keep absolute */
+        padding-top: 0;     /* Remove override */
+    }
+    .top-left-logo img {
+        position: absolute; /* Keep absolute */
+        height: 123px;       /* Slightly smaller */
+        top: -104px;          /* Adjust position */
+        left: -20px;
+    }
+    
+    /* ✅ FIX 3: Move lang-switcher to top-right */
     .lang-switcher {
         top: 25px;
-        right: 25px;
-    }
-
-    /* Make feature icons and headings smaller on mobile */
-    .feature-icon {
-        font-size: 2.5rem;
-    }
-
-    .feature-card h3 {
-        font-size: 1.2rem;
-    }
-
-    /* PWA Popup adjustments */
-    #install-popup {
-        padding: 8px 10px;
-    }
-
-    #install-popup p {
-        /* Keep hidden */
-        display: none;
-    }
-}
-
-/* Tablet: Fine-tuning layout */
-@media (min-width: 601px) {
-    .hero-section h1 {
-        font-size: 3rem;
+        position: absolute;
+        left: auto;     /* Remove left override */
+        right: 20px;    /* Add right position */
     }
     
-    .tagline {
-        font-size: 1.4rem;
+    /* ✅ FIX 2: Move center logo up and make it bigger */
+    .center-logo {
+        margin-top: 10px; /* Moved up from 30px */
+    }
+    .center-logo img {
+        width: 120px;  /* Make bigger */
+        height: 120px;
+        margin-top: -24px;
     }
 
-    /* Show PWA subtitle on tablet and desktop */
-    #install-popup p {
-        display: block;
+    .features-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    /* (PWA Popup styles remain unchanged) */
+    #install-popup {
+        flex-direction: column;
+        text-align: center;
+        width: 95%;
+        bottom: 5px;
+        gap: 10px;
+        padding: 20px;
+    }
+    #install-popup-button {
+        width: 100%;
+        margin-top: 5px;
+    }
+    #close-popup-button {
+        top: 10px;
+        right: 10px;
     }
 }
 
-/* Desktop: Max width applied to container ensures central focus */
-@media (min-width: 1200px) {
-    /* No major changes needed, max-width handles centering */
-}

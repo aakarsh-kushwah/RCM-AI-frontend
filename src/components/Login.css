@@ -1,0 +1,118 @@
+/* * CSS for User Login (src/Login.css)
+ * Theme: AI Platform / Modern Tech
+ */
+
+.auth-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    /* AI-themed gradient background */
+    background: linear-gradient(135deg, #050F33 0%, #1A284A 100%);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+.auth-card {
+    background: #ffffff;
+    padding: 2.5rem 2.5rem;
+    border-radius: 16px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    width: 100%;
+    max-width: 420px;
+    box-sizing: border-box;
+    text-align: center;
+}
+
+.auth-logo {
+    width: 70px;
+    height: 70px;
+    margin-bottom: 1rem;
+    /* Prevent image drag */
+    -webkit-user-drag: none;
+    user-select: none;
+}
+
+.auth-card h2 {
+    color: #1a202c; /* Dark text */
+    font-size: 1.75rem;
+    font-weight: 700;
+    margin-top: 0;
+    margin-bottom: 1.5rem;
+}
+
+form {
+    text-align: left;
+}
+
+.input-group {
+    margin-bottom: 1.25rem;
+}
+
+.input-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    color: #4a5568; /* Gray text */
+}
+
+.input-group input {
+    width: 100%;
+    padding: 12px 15px;
+    border: 1px solid #e2e8f0; /* Light gray border */
+    border-radius: 8px;
+    box-sizing: border-box;
+    font-size: 1rem;
+    transition: all 0.2s ease-in-out;
+}
+
+.input-group input:focus {
+    border-color: #4f46e5; /* Indigo focus */
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+.auth-button {
+    width: 100%;
+    padding: 14px;
+    border: none;
+    border-radius: 8px;
+    /* Attractive gradient button */
+    background: linear-gradient(90deg, #4f46e5, #7c3aed);
+    color: white;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.auth-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(79, 70, 229, 0.3);
+}
+
+.error-message {
+    color: #e53e3e; /* Red */
+    background: #fff5f5;
+    border: 1px solid #fed7d7;
+    padding: 10px;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    text-align: center;
+    font-size: 0.9rem;
+}
+
+/* 🛑 Removed .auth-footer and .secondary-button styles 🛑 */
+
+
+/* --- Responsive Media Query --- */
+@media (max-width: 600px) {
+    .auth-card {
+        padding: 2rem 1.5rem;
+    }
+    .auth-card h2 {
+        font-size: 1.5rem;
+    }
+}
+
