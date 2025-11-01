@@ -1,9 +1,10 @@
+// src/components/ChatWindow.js
+
 import React, { useState, useEffect, useRef } from 'react';
-// ✅ नए आइकन्स जोड़े गए
 import { SendHorizontal, Mic, X, MoreVertical, Video, ShoppingBag, BookOpen, UserCheck, Award } from 'lucide-react'; 
 import './ChatWindow.css'; 
 
-// --- Speech Recognition (वॉइस-टू-टेक्स्ट) ---
+// --- Speech Recognition ---
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recognition;
 let isSpeechApiAvailable = false;
@@ -16,24 +17,17 @@ try {
         isSpeechApiAvailable = true;
     }
 } catch (error) {
-    console.error("Speech Recognition API is not supported in this browser or is blocked.", error);
+    console.error("Speech Recognition API is not supported in this browser.", error);
     isSpeechApiAvailable = false;
 }
-// ---------------------------------------------
 
-
-// ✅ नया prop: onNavigateToVideo
-// यह फ़ंक्शन App.js से आएगा और वीडियो पेज पर नेविगेट करेगा
 function ChatWindow({ token, onClose, onNavigateToVideo }) {
-    
-    // ✅ मैसेज स्ट्रक्चर अपडेट किया गया: { sender, type, content }
     const [messages, setMessages] = useState([
         { sender: 'BOT', type: 'text', content: 'Hi! I am the RCM AI Assistant. How can I help you today? Ask me about leaders, products, or seminars.' }
     ]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [isListening, setIsListening] = useState(false);
-    
     const [aiMode, setAiMode] = useState('General');
     const [isMenuOpen, setIsMenuOpen] = useState(false);
 
@@ -42,14 +36,14 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
     const menuRef = useRef(null);
     const menuButtonRef = useRef(null);
 
-    // New message aane par apne aap neeche scroll karen
+    // Auto-scroll
     useEffect(() => {
         if (chatBodyRef.current) {
             chatBodyRef.current.scrollTop = chatBodyRef.current.scrollHeight;
         }
     }, [messages]);
 
-    // --- वॉयस रिकग्निशन Effect ---
+    // Speech Recognition setup
     useEffect(() => {
         if (!isSpeechApiAvailable || !recognitionRef.current) return;
         const rec = recognitionRef.current;
@@ -60,7 +54,7 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
         return () => rec.stop();
     }, []);
 
-    // --- मेनू के बाहर क्लिक करने पर बंद करें Effect ---
+    // Menu close on outside click
     useEffect(() => {
         function handleClickOutside(event) {
             if (
@@ -82,7 +76,7 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
         else { setInput(''); recognitionRef.current.start(); }
     };
 
-    // --- सेंड बटन ---
+    // --- सेंड बटन (Live API) ---
     const handleSend = async () => {
         const messageToSend = input.trim();
         if (!messageToSend || isLoading) return;
@@ -92,15 +86,20 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
         setInput('');
         setIsLoading(true);
 
-        // ✅ --- यह है Live Backend URL ---
-        // यह 'process.env.REACT_APP_API_URL' का उपयोग करता है
-        // जो आपकी .env फ़ाइल से आएगा
-        // 🛑 नोट: हमने "/api/chat" को बदल दिया है
-        // -------------------------------------
-        const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3001"; // फॉलबैक
+        // ✅ प्रोडक्शन: .env फ़ाइल से Live URL का उपयोग करें
+        const API_URL = process.env.REACT_APP_API_URL;
+
+        if (!API_URL) {
+             console.error("CRITICAL: REACT_APP_API_URL is not set in .env file.");
+             setIsLoading(false);
+             setMessages(prev => [...prev, {
+                 sender: 'BOT', type: 'text', content: 'Configuration error: API URL is missing.'
+             }]);
+             return;
+        }
 
         try {
-            const response = await fetch(`${API_URL}/api/chat`, { // ✅ यहाँ बदलाव किया गया है
+            const response = await fetch(`${API_URL}/api/chat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify({ message: messageToSend, mode: aiMode }),
@@ -112,17 +111,18 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
             }
 
             const data = await response.json(); 
-            
             let botMessage;
 
             if (data.success) {
                 if (typeof data.reply === 'object' && data.reply.type) {
+                    // वीडियो या प्रोडक्ट कार्ड
                     botMessage = {
                         sender: 'BOT',
                         type: data.reply.type, 
                         content: data.reply.content
                     };
                 } else {
+                    // सिंपल टेक्स्ट
                     botMessage = {
                         sender: 'BOT',
                         type: 'text',
@@ -137,13 +137,13 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
         } catch (error) {
             console.error('Chat error:', error);
             let errorMessageText = "Sorry, I couldn't connect to the server.";
-            
             if (error instanceof SyntaxError) {
                 errorMessageText = "Error: Invalid response from server (Not JSON).";
-            } else if (error.message.includes("DOCTYPE")) {
-                errorMessageText = "Error: 404 Not Found. Check API URL.";
+            } else if (error.message.includes("DOCTYPE") || error.message.includes("404")) {
+                errorMessageText = "Error: API endpoint not found. Check API URL.";
+            } else if (error.message.includes("CORS")) {
+                 errorMessageText = "Error: CORS policy is blocking the request.";
             }
-
             const errorMessage = { sender: 'BOT', type: 'text', content: errorMessageText };
             setMessages(prev => [...prev, errorMessage]);
         } finally {
@@ -171,10 +171,8 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
         }
     };
 
-
     return (
         <div className="chat-window">
-            {/* --- हेडर --- */}
             <div className="chat-header">
                 <div className="avatar-icon">
                     <img 
@@ -196,19 +194,15 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
                 </button>
             </div>
             
-            {/* --- चैट बॉडी --- */}
             <div className="chat-body" ref={chatBodyRef}>
                 <div className="chat-background-image"></div>
                 
                 {messages.map((msg, index) => (
                     <div key={index} className={`chat-message ${msg.sender.toLowerCase()}`}>
-                        
                         <div className={`message-bubble ${msg.type || 'text'}`}>
                             
-                            {/* --- 1. टेक्स्ट मैसेज --- */}
                             {msg.type === 'text' && msg.content}
 
-                            {/* --- 2. वीडियो कार्ड --- */}
                             {msg.type === 'video' && (
                                 <div className="card-message">
                                     {msg.content.thumbnailUrl && (
@@ -224,7 +218,6 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
                                 </div>
                             )}
                             
-                            {/* --- 3. प्रोडक्ट कार्ड --- */}
                             {msg.type === 'product' && (
                                 <div className="card-message">
                                     {msg.content.image && (
@@ -241,7 +234,6 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
                         </div>
                     </div>
                 ))}
-                {/* --- टाइपिंग इंडिकेटर --- */}
                 {isLoading && (
                     <div className="chat-message bot typing-indicator">
                         <div className="message-bubble">
@@ -251,7 +243,6 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
                 )}
             </div>
 
-            {/* --- फूटर --- */}
             <div className="chat-footer">
                 <div className="input-container">
                     <input

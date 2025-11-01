@@ -1,28 +1,25 @@
 // src/components/VideoPage.js
+
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
+import { useLocation, useNavigate } from 'react-router-dom'; // ✅ चैट से वीडियो चलाने के लिए
 import './VideoPage.css';
 import { Search, PlayCircle, X } from 'lucide-react';
 
-// --- ✅ ऑप्टिमाइज़ेशन: Debounce हुक ---
-// यह सर्च इनपुट को लैग-फ्री बनाता है
+// --- ✅ हाई-ट्रैफ़िक ऑप्टिमाइज़ेशन: Debounce हुक ---
+// यह सर्च को लैग-फ्री बनाता है
 function useDebounce(value, delay) {
     const [debouncedValue, setDebouncedValue] = useState(value);
     useEffect(() => {
-        const handler = setTimeout(() => {
-            setDebouncedValue(value);
-        }, delay);
-        return () => {
-            clearTimeout(handler);
-        };
+        const handler = setTimeout(() => { setDebouncedValue(value); }, delay);
+        return () => { clearTimeout(handler); };
     }, [value, delay]);
     return debouncedValue;
 }
 
-// --- ✅ ऑप्टिमाइज़ेशन: Memoization ---
+// --- Memoized कंपोनेंट्स (परफॉरमेंस के लिए) ---
 const VideoSidebarItem = React.memo(({ video, onVideoSelect, isActive }) => {
-    // ... (यह कंपोनेंट बदला नहीं है) ...
     const thumbnailUrl = video.thumbnailUrl; 
     return (
         <div 
@@ -30,11 +27,7 @@ const VideoSidebarItem = React.memo(({ video, onVideoSelect, isActive }) => {
             onClick={() => onVideoSelect(video)}
         >
             <div className="item-thumbnail">
-                {thumbnailUrl ? (
-                    <img src={thumbnailUrl} alt={video.title} />
-                ) : (
-                    <PlayCircle size={40} />
-                )}
+                {thumbnailUrl ? <img src={thumbnailUrl} alt={video.title} /> : <PlayCircle size={40} />}
             </div>
             <div className="item-details">
                 <h4 className="item-title">{video.title}</h4>
@@ -44,7 +37,6 @@ const VideoSidebarItem = React.memo(({ video, onVideoSelect, isActive }) => {
     );
 });
 
-// --- ✅ ऑप्टिमाइज़ेशन: Memoization ---
 const VideoGridItem = React.memo(({ video, onVideoSelect }) => (
     <div className="video-grid-item" onClick={() => onVideoSelect(video)}>
         <div className="grid-item-thumbnail">
@@ -69,106 +61,109 @@ function VideoPage({ pageTitle, videoType }) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     
-    // सर्च स्टेट
     const [searchTerm, setSearchTerm] = useState('');
     const debouncedSearchTerm = useDebounce(searchTerm, 300); // ✅ डिबाउंस्ड वैल्यू
     
-    // मिनी-प्लेयर स्टेट
     const [isMiniPlayer, setIsMiniPlayer] = useState(false);
     
-    // ✅ पेजिनेशन (Pagination) स्टेट
-    const [page, setPage] = useState(1); // वर्तमान पेज
-    const [hasMore, setHasMore] = useState(true); // क्या और वीडियो हैं?
-    const [loadingMore, setLoadingMore] = useState(false); // "Load More" के लिए लोडर
+    // ✅ हाई-ट्रैफ़िक ऑप्टिमाइज़ेशन: पेजिनेशन (Pagination)
+    const [page, setPage] = useState(1);
+    const [hasMore, setHasMore] = useState(true);
+    const [loadingMore, setLoadingMore] = useState(false);
 
     const { token, API_URL } = useAuth();
+    
+    // ✅ चैट से भेजे गए वीडियो को पकड़ने के लिए
+    const location = useLocation();
+    const navigate = useNavigate();
 
-    // --- ✅ ऑप्टिमाइज़ेशन: API कॉल को useCallback में रैप किया ---
+    // --- API कॉल (पेजिनेशन के साथ) ---
     const fetchVideos = useCallback(async (pageNum, isInitialLoad = false) => {
         if (isInitialLoad) setLoading(true); else setLoadingMore(true);
         setError('');
         
-        // ⚠️ HEAVY TRAFFIC: 'page' और 'limit' बहुत ज़रूरी हैं।
-        // आपके बैकएंड (API) को इन्हें सपोर्ट करना चाहिए।
-        const limit = 20; // एक बार में 20 वीडियो
+        const limit = 20; // ⚠️ हाई-ट्रैफ़िक: एक बार में सिर्फ 20 वीडियो
         const url = `${API_URL}/api/videos/${videoType}?page=${pageNum}&limit=${limit}`;
 
         try {
             const response = await axios.get(url, { headers: { Authorization: `Bearer ${token}` } });
-            
             if (response.data.success && Array.isArray(response.data.data)) {
                 const newData = response.data.data;
                 
-                if (isInitialLoad) {
-                    // पहली बार लोड
-                    setAllVideos(newData);
-                    if (newData.length > 0) setSelectedVideo(newData[0]);
-                } else {
-                    // "Load More" क्लिक पर
-                    setAllVideos(prev => [...prev, ...newData]);
+                // नए वीडियो को पुरानी लिस्ट में जोड़ें
+                setAllVideos(prev => isInitialLoad ? newData : [...prev, ...newData]);
+                
+                // अगर यह पहला लोड है, तो पहला वीडियो चुनें
+                if (isInitialLoad && newData.length > 0 && !selectedVideo) {
+                    setSelectedVideo(newData[0]);
                 }
                 
-                // अगर API से 'limit' से कम वीडियो आए, मतलब और वीडियो नहीं हैं
-                setHasMore(newData.length === limit); 
+                setHasMore(newData.length === limit); // क्या और वीडियो हैं?
             } else {
                 if (isInitialLoad) setAllVideos([]);
                 setHasMore(false);
             }
         } catch (err) {
-            console.error(`Error fetching ${videoType} videos:`, err);
             setError(err.response?.data?.message || 'Failed to load videos.');
         } finally {
             if (isInitialLoad) setLoading(false); else setLoadingMore(false);
         }
-    }, [videoType, token, API_URL]); // ये बदलने पर ही फ़ंक्शन दोबारा बनेगा
+    }, [videoType, token, API_URL, selectedVideo]);
 
     // --- आरम्भिक (Initial) डेटा लोड ---
     useEffect(() => {
         if (token && API_URL) {
-            setPage(1); // पेज रीसेट करें
+            setPage(1); 
             setHasMore(true);
-            fetchVideos(1, true); // पेज 1 मंगाएँ (शुरुआती लोड)
+            
+            // ✅ चैट से आया वीडियो चेक करें
+            if (location.state && location.state.selectedVideo) {
+                // अगर वीडियो चैट से आया है, तो उसे चुनें
+                setSelectedVideo(location.state.selectedVideo);
+                // और बाकी वीडियो लोड करें
+                fetchVideos(1, true); 
+                // state को साफ़ करें ताकि रिफ्रेश करने पर यह दोबारा न हो
+                navigate(location.pathname, { replace: true, state: {} });
+            } else {
+                // अगर चैट से नहीं आया, तो नॉर्मल लोड करें
+                fetchVideos(1, true);
+            }
         }
-    }, [fetchVideos, token, API_URL]); // `fetchVideos` अब एक dependency है
+    }, [fetchVideos, token, API_URL, location.state, navigate, location.pathname]);
 
 
     // --- फिल्टर्ड वीडियो (डिबाउंस्ड) ---
     const filteredVideos = useMemo(() => {
         if (!debouncedSearchTerm) {
-            return allVideos; // अगर सर्च खाली है, तो सारे दिखाएँ
+            return allVideos; 
         }
         return allVideos.filter(video =>
             video.title.toLowerCase().includes(debouncedSearchTerm.toLowerCase())
         );
-    }, [allVideos, debouncedSearchTerm]); // ✅ `debouncedSearchTerm` का उपयोग करें
+    }, [allVideos, debouncedSearchTerm]);
 
 
-    // --- ✅ ऑप्टिमाइज़ेशन: सभी इवेंट हैंडलर्स को useCallback में रैप किया ---
-
+    // --- इवेंट हैंडलर्स (useCallback के साथ ऑप्टिमाइज़) ---
     const handleSearchChange = useCallback((e) => {
         setSearchTerm(e.target.value);
-        if (selectedVideo) {
-            setIsMiniPlayer(true); // मिनी-प्लेयर सक्रिय करें
-        }
+        if (selectedVideo) setIsMiniPlayer(true);
     }, [selectedVideo]);
 
     const handleSearchFocus = useCallback(() => {
-        if (selectedVideo) {
-            setIsMiniPlayer(true); // मिनी-प्लेयर सक्रिय करें
-        }
+        if (selectedVideo) setIsMiniPlayer(true);
     }, [selectedVideo]);
 
     const handleVideoSelect = useCallback((video) => {
         setSelectedVideo(video);
-        setIsMiniPlayer(false); // मिनी-प्लेयर बंद करें
-        setSearchTerm(''); // सर्च साफ़ करें
-        window.scrollTo(0, 0); // पेज ऊपर स्क्रॉल करें
+        setIsMiniPlayer(false); 
+        setSearchTerm(''); 
+        window.scrollTo(0, 0); 
     }, []);
 
     const closeMiniPlayer = useCallback((e) => {
         e.stopPropagation(); 
         setIsMiniPlayer(false);
-        setSelectedVideo(null); // वीडियो को पूरी तरह बंद करें
+        setSelectedVideo(null); 
     }, []);
 
     const maximizePlayer = useCallback(() => {
@@ -176,7 +171,6 @@ function VideoPage({ pageTitle, videoType }) {
         window.scrollTo(0, 0);
     }, []);
 
-    // "Load More" बटन का हैंडलर
     const handleLoadMore = useCallback(() => {
         if (!loadingMore && hasMore) {
             const nextPage = page + 1;
@@ -185,12 +179,8 @@ function VideoPage({ pageTitle, videoType }) {
         }
     }, [page, loadingMore, hasMore, fetchVideos]);
 
-
-    // --- रेंडर ---
     return (
         <div className="leader-video-page">
-            
-            {/* --- हेडर --- */}
             <div className="page-header">
                 <h1 className="page-main-title">{pageTitle}</h1>
                 <div className="search-bar-container">
@@ -200,23 +190,20 @@ function VideoPage({ pageTitle, videoType }) {
                         value={searchTerm}
                         onChange={handleSearchChange}
                         onFocus={handleSearchFocus}
-                        placeholder="Search leaders..."
+                        placeholder="Search..."
                         className="search-input"
                     />
                 </div>
             </div>
 
-            {/* --- मुख्य कंटेंट (2-कॉलम लेआउट) --- */}
             <div className="main-content-layout">
-
                 {/* --- 1. मुख्य वीडियो कॉलम (बायाँ हिस्सा) --- */}
                 <div className="video-player-column">
-                    
                     {isMiniPlayer ? (
-                        // --- 1A. जब यूज़र सर्च कर रहा है: सर्च रिजल्ट ग्रिड ---
+                        // --- 1A. सर्च रिजल्ट ग्रिड ---
                         <div className="search-results-main">
                             <h2 className="sidebar-title">
-                                {debouncedSearchTerm ? `Results for "${debouncedSearchTerm}"` : "All Leaders"}
+                                {debouncedSearchTerm ? `Results for "${debouncedSearchTerm}"` : "All Videos"}
                             </h2>
                             <div className="results-grid">
                                 {filteredVideos.length > 0 ? (
@@ -228,10 +215,10 @@ function VideoPage({ pageTitle, videoType }) {
                                         />
                                     ))
                                 ) : (
-                                    <p className="sidebar-message">No leaders found.</p>
+                                    <p className="sidebar-message">No videos found.</p>
                                 )}
                             </div>
-                            {/* ✅ ग्रिड के लिए "Load More" बटन */}
+                            {/* "Load More" बटन सिर्फ़ तब दिखे जब सर्च न कर रहे हों */}
                             {hasMore && !debouncedSearchTerm && (
                                 <button className="load-more-btn" onClick={handleLoadMore} disabled={loadingMore}>
                                     {loadingMore ? 'Loading...' : 'Load More'}
@@ -239,18 +226,15 @@ function VideoPage({ pageTitle, videoType }) {
                             )}
                         </div>
                     ) : (
-                        // --- 1B. जब यूज़र सर्च नहीं कर रहा है: बड़ा प्लेयर ---
+                        // --- 1B. बड़ा प्लेयर ---
                         <>
                             {loading && <div className="video-skeleton-loader"></div>}
                             {error && <div className="video-error-message">{error}</div>}
-                            
                             {!selectedVideo && !loading && !error && (
-                                <div className="video-error-message">Please select a video to play.</div>
+                                <div className="video-error-message">Please select a video.</div>
                             )}
-
                             {selectedVideo && !loading && (
                                 <>
-                                    {/* --- वीडियो प्लेयर और वॉटरमार्क --- */}
                                     <div className="video-player-wrapper">
                                         <iframe
                                             className="video-iframe"
@@ -261,16 +245,11 @@ function VideoPage({ pageTitle, videoType }) {
                                             allowFullScreen
                                             key={selectedVideo.publicId} 
                                         ></iframe>
-                                        
-                                        {/* ✅ YouTube रीडायरेक्ट रोकने वाला ब्लॉकर */}
                                         <div className="iframe-click-blocker"></div>
-
                                         <div className="video-watermark-logo">
                                             <img src="/rcm-ai-logo.png" alt="RCM AI" />
                                         </div>
                                     </div>
-
-                                    {/* --- वीडियो डिटेल्स --- */}
                                     <div className="video-details-container">
                                         <h2 className="video-title">{selectedVideo.title}</h2>
                                         <p className="video-motivation-quote">
@@ -288,7 +267,7 @@ function VideoPage({ pageTitle, videoType }) {
 
                 {/* --- 2. साइडबार वीडियो लिस्ट (दायाँ हिस्सा) --- */}
                 <div className="video-sidebar-column">
-                    <h3 className="sidebar-title">Motivational Leaders</h3>
+                    <h3 className="sidebar-title">All Videos</h3>
                     <div className="video-list-scroll">
                         {loading && !loadingMore && <p className="sidebar-message">Loading list...</p>}
                         
@@ -301,22 +280,19 @@ function VideoPage({ pageTitle, videoType }) {
                             />
                         ))}
                         
-                        {/* ✅ साइडबार के लिए "Load More" बटन */}
                         {hasMore && !debouncedSearchTerm && (
                             <button className="load-more-btn" onClick={handleLoadMore} disabled={loadingMore}>
                                 {loadingMore ? 'Loading...' : 'Load More'}
                             </button>
                         )}
-                        
-                        {!hasMore && !loading && (
+                        {!hasMore && !loading && allVideos.length > 0 && (
                              <p className="sidebar-message">No more videos.</p>
                         )}
                     </div>
                 </div>
-
             </div>
 
-            {/* --- 3. मिनी-प्लेयर (पूरी स्क्रीन पर फिक्स्ड) --- */}
+            {/* --- 3. मिनी-प्लेयर --- */}
             {isMiniPlayer && selectedVideo && (
                 <div className="mini-player" onClick={maximizePlayer}>
                     <div className="mini-player-video-wrapper">

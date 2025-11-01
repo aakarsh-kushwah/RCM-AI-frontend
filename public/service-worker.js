@@ -1,68 +1,81 @@
-// public/service-worker.js
+/* eslint-disable no-restricted-globals */
 
-const CACHE_NAME = 'rcm-ai-cache-v2'; // v2 में अपडेट किया गया ताकि ब्राउज़र नए SW को मजबूरन लोड करे
+const CACHE_NAME = 'rcm-ai-v1';
 const urlsToCache = [
   '/',
   '/index.html',
   '/manifest.json',
   
-  // CSS और JS बंडल्स को यहाँ न जोड़ें, वे स्वचालित रूप से कैश हो जाएँगे
+  '/favicon.ico',
 ];
 
-// Installation: Cache essential assets
-self.addEventListener('install', event => {
+// 1. Install Event: ऐप इंस्टॉल होते ही कैश खोलें और फ़ाइलें डालें
+self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then(cache => {
+      .then((cache) => {
         console.log('Opened cache');
-        // केवल मुख्य फ़ाइलों को प्री-कैश करें
-        return cache.addAll(urlsToCache).catch(error => {
-          console.error('Failed to cache initial assets:', error);
+        return cache.addAll(urlsToCache);
+      })
+  );
+});
+
+// 2. Fetch Event: (यह सबसे ज़रूरी है)
+self.addEventListener('fetch', (event) => {
+  
+  // ✅ --- यही वह नया फिक्स है ---
+  // अगर यह एक API रिक्वेस्ट है, तो सर्विस वर्कर कुछ नहीं करेगा
+  // और ब्राउज़र को इसे नॉर्मल तरीके से हैंडल करने देगा।
+  if (event.request.url.includes('/api/')) {
+    return; // सर्विस वर्कर को रोकें
+  }
+  // --- फिक्स खत्म ---
+
+  // बाकी सभी रिक्वेस्ट (जैसे CSS, JS, Images) के लिए कैश का इस्तेमाल करें
+  event.respondWith(
+    caches.match(event.request)
+      .then((response) => {
+        // 1. अगर कैश में है, तो कैश से जवाब दें
+        if (response) {
+          return response;
+        }
+
+        // 2. अगर कैश में नहीं है, तो नेटवर्क पर जाएँ
+        return fetch(event.request).then(
+          (networkResponse) => {
+            // 3. जवाब मिलने पर, उसे कैश में डालें और फिर जवाब दें
+            if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
+              return networkResponse;
+            }
+
+            const responseToCache = networkResponse.clone();
+            caches.open(CACHE_NAME)
+              .then((cache) => {
+                cache.put(event.request, responseToCache);
+              });
+
+            return networkResponse;
+          }
+        ).catch(() => {
+          // ऑफ़लाइन होने पर, यहाँ एक फ़ॉलबैक पेज दिखा सकते हैं
         });
       })
   );
 });
 
-// Activation: Clean up old caches
-self.addEventListener('activate', event => {
+// 3. Activate Event: पुराने कैश को साफ़ करें
+self.addEventListener('activate', (event) => {
   const cacheWhitelist = [CACHE_NAME];
   event.waitUntil(
-    caches.keys().then(cacheNames => {
+    caches.keys().then((cacheNames) => {
       return Promise.all(
-        cacheNames.map(cacheName => {
+        cacheNames.map((cacheName) => {
           if (cacheWhitelist.indexOf(cacheName) === -1) {
-            console.log('Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
+          return null;
         })
       );
     })
   );
 });
-
-// Fetch: Serve cached content or fetch from network
-self.addEventListener('fetch', event => {
-  const requestUrl = new URL(event.request.url);
-
-  // ✅ CRITICAL FIX: 
-  // 1. अगर यह API कॉल है (Render पर जा रही है), तो इसे अनदेखा करें और नेटवर्क को संभालने दें।
-  // 2. यह 'chrome-extension' अनुरोधों को भी अनदेखा करता है।
-  if (!event.request.url.startsWith(self.location.origin) || requestUrl.pathname.startsWith('/api/')) {
-    return event.respondWith(fetch(event.request));
-  }
-
-  // 3. अन्य सभी (स्थानीय) अनुरोधों के लिए: नेटवर्क पहले (Stale-While-Revalidate)
-  event.respondWith(
-    caches.open(CACHE_NAME).then(cache => {
-      return fetch(event.request).then(networkResponse => {
-        // अगर नेटवर्क से मिलता है, तो इसे कैश में डालें और वापस भेजें
-        cache.put(event.request, networkResponse.clone());
-        return networkResponse;
-      }).catch(() => {
-        // अगर नेटवर्क विफल होता है (ऑफ़लाइन), तो कैश से वापस भेजें
-        return cache.match(event.request);
-      });
-    })
-  );
-});
-
