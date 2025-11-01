@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import './UserAuth.css'; // (optional) if you have a CSS file
 
 function RegisterPage() {
   const [fullName, setFullName] = useState('');
