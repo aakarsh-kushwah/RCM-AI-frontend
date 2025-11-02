@@ -1,52 +1,68 @@
-import React from 'react';
-import { Routes, Route } from 'react-router-dom';
+import React, { Suspense, lazy } from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import LoadingSpinner from './components/LoadingSpinner'; // ✅ एक लोडिंग कंपोनेंट
 
 // --- Component Imports ---
-import LandingPage from './components/LandingPage';
-import LoginPage from './components/LoginPage';
-import RegisterPage from './components/RegisterPage';
-import UserDashboard from './components/UserDashboard';
 import UserProtectedRoute from './components/UserProtectedRoute'; 
 
-// ✅ NEW: सीधे VideoPage को इंपोर्ट करें
-import VideoPage from './components/VideoPage'; 
-import PaymentPage from './components/PaymentPage';
+// ✅ LAZY LOADING: कंपोनेंट्स को तभी इंपोर्ट करें जब उनकी ज़रूरत हो
+// इससे आपका ऐप "Production Ready" और बहुत तेज़ हो जाता है
+
+// पब्लिक पेज
+const LandingPage = lazy(() => import('./components/LandingPage'));
+const LoginPage = lazy(() => import('./components/LoginPage'));
+const RegisterPage = lazy(() => import('./components/RegisterPage'));
+const PaymentPage = lazy(() => import('./components/PaymentPage'));
+
+// प्रोटेक्टेड पेज
+const UserDashboard = lazy(() => import('./components/UserDashboard'));
+const VideoPage = lazy(() => import('./components/VideoPage')); 
 
 function App() {
     return (
-        <Routes>
-            
-            {/* 1. PUBLIC ROUTES */}
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
-            <Route path="/payment-setup" element={<PaymentPage />} />
+        // ✅ Suspense: जब तक पेज लोड हो रहा है, यह लोडिंग स्पिनर दिखाएगा
+        <Suspense fallback={<LoadingSpinner />}>
+            <Routes>
+                
+                {/* 1. PUBLIC ROUTES */}
+                <Route path="/" element={<LandingPage />} />
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/register" element={<RegisterPage />} />
+                <Route path="/payment-setup" element={<PaymentPage />} />
 
-            
-            {/* 2. USER PROTECTED ROUTES */}
-            <Route path="/dashboard" element={<UserProtectedRoute><UserDashboard /></UserProtectedRoute>} />
-            
-            {/* ✅ UPDATED ROUTES: सीधे VideoPage का उपयोग करें */}
-            <Route 
-                path="/leaders-videos" 
-                element={
-                    <UserProtectedRoute>
-                        <VideoPage pageTitle="Leaders' Videos" videoType="leaders" />
-                    </UserProtectedRoute>
-                } 
-            />
-            <Route 
-                path="/products-videos" 
-                element={
-                    <UserProtectedRoute>
-                        <VideoPage pageTitle="Products' Videos" videoType="products" />
-                    </UserProtectedRoute>
-                } 
-            />
+                
+                {/* 2. USER PROTECTED ROUTES */}
+                <Route 
+                    path="/dashboard" 
+                    element={
+                        <UserProtectedRoute>
+                            <UserDashboard />
+                        </UserProtectedRoute>
+                    } 
+                />
+                
+                <Route 
+                    path="/leaders-videos" 
+                    element={
+                        <UserProtectedRoute>
+                            <VideoPage pageTitle="Leaders' Videos" videoType="leaders" />
+                        </UserProtectedRoute>
+                    } 
+                />
+                <Route 
+                    path="/products-videos" 
+                    element={
+                        <UserProtectedRoute>
+                            <VideoPage pageTitle="Products' Videos" videoType="products" />
+                        </UserProtectedRoute>
+                    } 
+                />
 
-            {/* 3. FALLBACK ROUTE */}
-            <Route path="*" element={<h1>404: Page Not Found</h1>} />
-        </Routes>
+                {/* 3. FALLBACK ROUTE */}
+                {/* 404: Page Not Found - यूज़र को वापस डैशबोर्ड पर भेजें */}
+                <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            </Routes>
+        </Suspense>
     );
 }
 

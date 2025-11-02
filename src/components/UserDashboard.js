@@ -1,13 +1,15 @@
-// src/components/UserDashboard.js
-
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom'; 
 import ChatWindow from './ChatWindow'; 
 import './UserDashboard.css'; 
 
+// आइकन्स (वैकल्पिक, लेकिन अच्छे लुक के लिए)
+import { MessageSquare, LogOut } from 'lucide-react';
+
 function UserDashboard() {
     const navigate = useNavigate();
     const [isChatOpen, setIsChatOpen] = useState(false);
+    
     const token = localStorage.getItem('token'); 
     const userData = JSON.parse(localStorage.getItem('userData'));
     const userName = userData ? userData.fullName || 'RCM User' : 'RCM User';
@@ -26,24 +28,24 @@ function UserDashboard() {
      */
     const handleNavigateToVideo = (videoContent) => {
         // AI बैकएंड से उम्मीद है कि वह बताएगा कि यह किस टाइप का वीडियो है।
-        // हम 'videoType' नाम की एक फ़ील्ड की उम्मीद कर रहे हैं।
-        const videoType = videoContent.videoType || 'leaders'; 
+        const videoType = videoContent.videoType || 'leaders'; // डिफ़ॉल्ट 'leaders'
 
         const targetPath = videoType === 'products' 
             ? '/products-videos' 
             : '/leaders-videos';
 
         // वीडियो पेज पर जाएँ और 'state' के ज़रिए वीडियो डेटा पास करें
-        // ताकि VideoPage.js इसे खोल सके।
         navigate(targetPath, { state: { selectedVideo: videoContent } });
         
         // वीडियो पर जाने के बाद चैट को बंद कर दें
         setIsChatOpen(false);
     };
     
+    // ✅ --- 1. यह है आपका समाधान ---
     // यह फ़ंक्शन चैट को बंद करता है, लॉगइन पर नहीं भेजता।
     const handleCloseChat = () => {
         setIsChatOpen(false);
+        // (यहाँ कोई navigate('/login') नहीं है)
     };
 
     return (
@@ -51,15 +53,16 @@ function UserDashboard() {
             <header className="dashboard-header">
                 <h1>Hello, {userName}! 👋</h1>
                 <button onClick={handleLogout} className="logout-btn">
-                    Logout
+                    <LogOut size={16} /> Logout
                 </button>
             </header>
             
             <main className="dashboard-main">
+                <h2>Your Tools</h2>
                 <div className="card-grid">
                     <div className="dashboard-card" onClick={() => setIsChatOpen(true)}>
                         <h3>🤖 AI Chatbot</h3>
-                        <p>Ask questions and get instant answers from our AI assistant. Click here to chat!</p>
+                        <p>Ask questions and get instant answers from our AI assistant.</p>
                     </div>
                     
                     <Link to="/leaders-videos" className="dashboard-card">
@@ -74,16 +77,15 @@ function UserDashboard() {
                 </div>
             </main>
             
-            {/* Floating Chat Icon */}
-            <div className="chat-icon" onClick={() => setIsChatOpen(true)}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+            <div className="chat-icon" onClick={() => setIsChatOpen(true)} title="Open AI Chat">
+                <MessageSquare size={28} />
             </div>
             
-            {/* Chat Window */}
+            {/* ✅ ChatWindow को दोनों सही props पास किए गए */}
             {isChatOpen && (
                 <ChatWindow 
                     token={token} 
-                    onClose={handleCloseChat} 
+                    onClose={handleCloseChat} // ✅ यह 'लॉगिन' पर नहीं भेजेगा
                     onNavigateToVideo={handleNavigateToVideo} 
                 />
             )}
@@ -92,3 +94,4 @@ function UserDashboard() {
 }
 
 export default UserDashboard;
+

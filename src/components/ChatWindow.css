@@ -258,3 +258,23 @@
   .chat-header { border-radius: 0; }
   .message-bubble { max-width: 90%; }
 }
+/* src/components/ChatWindow.css (इसे नीचे जोड़ें) */
+
+/* ... आपके बाकी .css के नीचे ... */
+
+.message-bubble.calculator {
+  padding: 0;
+  background-color: var(--incoming-bg);
+  overflow: hidden;
+}
+
+.calculator-card .card-body {
+  padding: 10px 12px;
+}
+
+.calculator-card .card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--whatsapp-green); /* हरा टाइटल */
+}

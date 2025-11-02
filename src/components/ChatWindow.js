@@ -1,8 +1,9 @@
 // src/components/ChatWindow.js
 
 import React, { useState, useEffect, useRef } from 'react';
-import { SendHorizontal, Mic, X, MoreVertical, Video, ShoppingBag, BookOpen, UserCheck, Award } from 'lucide-react'; 
+import { SendHorizontal, Mic, X, MoreVertical, Video, ShoppingBag, BookOpen, UserCheck, Award, Calculator } from 'lucide-react'; 
 import './ChatWindow.css'; 
+import CommissionCalculator from './CommissionCalculator'; // कैलकुलेटर कंपोनेंट
 
 // --- Speech Recognition ---
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -51,7 +52,7 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
         rec.onend = () => setIsListening(false);
         rec.onerror = (event) => { console.error('Speech recognition error:', event.error); setIsListening(false); };
         rec.onresult = (event) => setInput(event.results[0][0].transcript);
-        return () => rec.stop();
+        return () => { if (rec) rec.stop(); };
     }, []);
 
     // Menu close on outside click
@@ -72,11 +73,15 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
     // --- माइक बटन ---
     const handleMicClick = () => {
         if (!isSpeechApiAvailable) return alert("Sorry, your browser does not support speech recognition.");
-        if (isListening) recognitionRef.current.stop();
-        else { setInput(''); recognitionRef.current.start(); }
+        if (isListening) {
+            recognitionRef.current.stop();
+        } else { 
+            setInput(''); 
+            recognitionRef.current.start(); 
+        }
     };
 
-    // --- सेंड बटन (Live API) ---
+    // --- सेंड बटन (AI Chat) ---
     const handleSend = async () => {
         const messageToSend = input.trim();
         if (!messageToSend || isLoading) return;
@@ -86,11 +91,10 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
         setInput('');
         setIsLoading(true);
 
-        // ✅ प्रोडक्शन: .env फ़ाइल से Live URL का उपयोग करें
         const API_URL = process.env.REACT_APP_API_URL;
 
         if (!API_URL) {
-             console.error("CRITICAL: REACT_APP_API_URL is not set in .env file.");
+            console.error("CRITICAL: REACT_APP_API_URL is not set in .env file.");
              setIsLoading(false);
              setMessages(prev => [...prev, {
                  sender: 'BOT', type: 'text', content: 'Configuration error: API URL is missing.'
@@ -99,6 +103,7 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
         }
 
         try {
+            // यह AI चैट एंडपॉइंट है
             const response = await fetch(`${API_URL}/api/chat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -106,29 +111,33 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
             });
             
             if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(errorText || `Server error: ${response.statusText}`); 
+                throw new Error(await response.text()); 
             }
 
             const data = await response.json(); 
+            
+            let replyFromAI = data.reply;
             let botMessage;
-
+            
             if (data.success) {
-                if (typeof data.reply === 'object' && data.reply.type) {
-                    // वीडियो या प्रोडक्ट कार्ड
-                    botMessage = {
-                        sender: 'BOT',
-                        type: data.reply.type, 
-                        content: data.reply.content
-                    };
-                } else {
-                    // सिंपल टेक्स्ट
-                    botMessage = {
-                        sender: 'BOT',
-                        type: 'text',
-                        content: data.reply.toString()
-                    };
+                
+                // 1. AI का जवाब JSON है या टेक्स्ट, यह चेक करें
+                try {
+                    // पहले कोशिश करें कि AI का जवाब JSON है (e.g., {"type": "calculator"})
+                    // (अगर data.reply पहले से ऑब्जेक्ट है, तो यह वही रहेगा)
+                    replyFromAI = (typeof data.reply === 'string') ? JSON.parse(data.reply) : data.reply;
+                } catch (e) {
+                    // अगर JSON नहीं है, तो यह सिंपल टेक्स्ट है
+                    replyFromAI = { type: "text", content: data.reply.toString() };
                 }
+
+                // 2. ✅ एरर फिक्स: 'sender' को यहाँ जोड़ें
+                botMessage = {
+                    sender: 'BOT',
+                    type: replyFromAI.type || 'text',
+                    content: replyFromAI.content || "Sorry, I received an empty response."
+                };
+
             } else {
                 botMessage = { sender: 'BOT', type: 'text', content: data.message || 'Sorry, an error occurred.' };
             }
@@ -151,6 +160,55 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
         }
     };
 
+    // --- कैलकुलेटर सबमिट हैंडलर ---
+    const handleCalculatorSubmit = async (data) => {
+        setIsLoading(true);
+        
+        const legBVs = data.legs.map(leg => leg.bv || 0).join(', ');
+        const userCalcMessage = {
+            sender: 'USER',
+            type: 'text',
+            content: `Calculating for: Self BV: ${data.selfBV || 0}, Legs: [${legBVs}]`
+        };
+        // आख़िरी मैसेज (जो कैलकुलेटर था) को हटाएँ और नया यूज़र मैसेज दिखाएँ
+        setMessages(prev => [
+            ...prev.slice(0, -1), 
+            userCalcMessage
+        ]);
+
+        const API_URL = process.env.REACT_APP_API_URL;
+
+        try {
+            const response = await fetch(`${API_URL}/api/chat/calculate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify(data), 
+            });
+
+            if (!response.ok) {
+                throw new Error(await response.text());
+            }
+
+            const result = await response.json(); // { success: true, reply: { type: 'text', content: '...' } }
+            
+            // ✅ --- यह है एरर फिक्स ---
+            // जवाब में 'sender: "BOT"' जोड़ें
+            const botReply = {
+                sender: 'BOT',
+                type: result.reply.type || 'text',
+                content: result.reply.content
+            };
+            setMessages(prev => [...prev, botReply]);
+
+        } catch (error) {
+            console.error('Calculation error:', error);
+            const errorMessage = { sender: 'BOT', type: 'text', content: "Sorry, I couldn't calculate. Please try again."};
+            setMessages(prev => [...prev, errorMessage]);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     // --- AI मोड बदलना ---
     const handleChangeMode = (newMode) => {
         if (newMode === aiMode) return setIsMenuOpen(false);
@@ -167,12 +225,14 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
     const handlePlayVideo = (videoContent) => {
         if (onNavigateToVideo) {
             onNavigateToVideo(videoContent);
-            onClose(); // चैट को बंद करें
+            onClose(); 
         }
     };
 
+
     return (
         <div className="chat-window">
+            {/* --- हेडर --- */}
             <div className="chat-header">
                 <div className="avatar-icon">
                     <img 
@@ -194,15 +254,22 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
                 </button>
             </div>
             
+            {/* --- चैट बॉडी --- */}
             <div className="chat-body" ref={chatBodyRef}>
                 <div className="chat-background-image"></div>
                 
                 {messages.map((msg, index) => (
+                    // ✅ 'msg.sender' अब हमेशा मौजूद रहेगा
                     <div key={index} className={`chat-message ${msg.sender.toLowerCase()}`}>
+                        
                         <div className={`message-bubble ${msg.type || 'text'}`}>
                             
-                            {msg.type === 'text' && msg.content}
+                            {/* --- 1. टेक्स्ट मैसेज --- */}
+                            {msg.type === 'text' && (
+                                <div className="text-content" dangerouslySetInnerHTML={{ __html: msg.content.replace(/\n/g, '<br />') }} />
+                            )}
 
+                            {/* --- 2. वीडियो कार्ड --- */}
                             {msg.type === 'video' && (
                                 <div className="card-message">
                                     {msg.content.thumbnailUrl && (
@@ -218,6 +285,7 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
                                 </div>
                             )}
                             
+                            {/* --- 3. प्रोडक्ट कार्ड --- */}
                             {msg.type === 'product' && (
                                 <div className="card-message">
                                     {msg.content.image && (
@@ -231,9 +299,24 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
                                 </div>
                             )}
 
+                            {/* --- 4. कैलकुलेटर कार्ड --- */}
+                            {msg.type === 'calculator' && (
+                                <div className="card-message calculator-card">
+                                    <div className="card-body">
+                                        <strong className="card-title"><Calculator size={18} /> Commission Calculator</strong>
+                                        {msg.content && <p>{msg.content}</p>}
+                                        <CommissionCalculator 
+                                            onSubmit={handleCalculatorSubmit} 
+                                            isLoading={isLoading} 
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
                         </div>
                     </div>
                 ))}
+                {/* --- टाइपिंग इंडिकेटर --- */}
                 {isLoading && (
                     <div className="chat-message bot typing-indicator">
                         <div className="message-bubble">
@@ -243,6 +326,7 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
                 )}
             </div>
 
+            {/* --- फूटर --- */}
             <div className="chat-footer">
                 <div className="input-container">
                     <input
