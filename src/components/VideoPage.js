@@ -3,12 +3,11 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
-import { useLocation, useNavigate } from 'react-router-dom'; // ✅ चैट से वीडियो चलाने के लिए
+import { useLocation, useNavigate } from 'react-router-dom';
 import './VideoPage.css';
 import { Search, PlayCircle, X } from 'lucide-react';
 
-// --- ✅ हाई-ट्रैफ़िक ऑप्टिमाइज़ेशन: Debounce हुक ---
-// यह सर्च को लैग-फ्री बनाता है
+// --- Debounce Hook (Performance ke liye) ---
 function useDebounce(value, delay) {
     const [debouncedValue, setDebouncedValue] = useState(value);
     useEffect(() => {
@@ -18,7 +17,7 @@ function useDebounce(value, delay) {
     return debouncedValue;
 }
 
-// --- Memoized कंपोनेंट्स (परफॉरमेंस के लिए) ---
+// --- Memoized Components (Performance ke liye) ---
 const VideoSidebarItem = React.memo(({ video, onVideoSelect, isActive }) => {
     const thumbnailUrl = video.thumbnailUrl; 
     return (
@@ -27,11 +26,11 @@ const VideoSidebarItem = React.memo(({ video, onVideoSelect, isActive }) => {
             onClick={() => onVideoSelect(video)}
         >
             <div className="item-thumbnail">
-                {thumbnailUrl ? <img src={thumbnailUrl} alt={video.title} /> : <PlayCircle size={40} />}
+                {thumbnailUrl ? <img src={thumbnailUrl} alt={video.title} onError={(e) => e.target.src = 'https://placehold.co/120x68/e0e0e0/777?text=RCM'} /> : <PlayCircle size={40} />}
             </div>
             <div className="item-details">
                 <h4 className="item-title">{video.title}</h4>
-                <p className="item-subtitle">RCM Leader</p>
+                <p className="item-subtitle">RCM Video</p>
             </div>
         </div>
     );
@@ -41,20 +40,20 @@ const VideoGridItem = React.memo(({ video, onVideoSelect }) => (
     <div className="video-grid-item" onClick={() => onVideoSelect(video)}>
         <div className="grid-item-thumbnail">
             {video.thumbnailUrl ? (
-                 <img src={video.thumbnailUrl} alt={video.title} />
+                 <img src={video.thumbnailUrl} alt={video.title} onError={(e) => e.target.src = 'https://placehold.co/320x180/e0e0e0/777?text=RCM'} />
             ) : (
                 <div className="thumbnail-placeholder"><PlayCircle size={40} /></div>
             )}
         </div>
         <div className="grid-item-details">
             <h4 className="grid-item-title">{video.title}</h4>
-            <p className="grid-item-subtitle">RCM Leader</p>
+            <p className="grid-item-subtitle">RCM Video</p>
         </div>
     </div>
 ));
 
 
-// --- मुख्य VideoPage कंपोनेंट ---
+// --- Mukhya VideoPage Component ---
 function VideoPage({ pageTitle, videoType }) {
     const [allVideos, setAllVideos] = useState([]);
     const [selectedVideo, setSelectedVideo] = useState(null); 
@@ -62,43 +61,47 @@ function VideoPage({ pageTitle, videoType }) {
     const [error, setError] = useState('');
     
     const [searchTerm, setSearchTerm] = useState('');
-    const debouncedSearchTerm = useDebounce(searchTerm, 300); // ✅ डिबाउंस्ड वैल्यू
+    const debouncedSearchTerm = useDebounce(searchTerm, 300);
     
     const [isMiniPlayer, setIsMiniPlayer] = useState(false);
     
-    // ✅ हाई-ट्रैफ़िक ऑप्टिमाइज़ेशन: पेजिनेशन (Pagination)
+    // "Heavy Traffic" ke liye Pagination State
     const [page, setPage] = useState(1);
     const [hasMore, setHasMore] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
 
-    const { token, API_URL } = useAuth();
+    const { token, API_URL } = useAuth(); 
     
-    // ✅ चैट से भेजे गए वीडियो को पकड़ने के लिए
     const location = useLocation();
     const navigate = useNavigate();
 
-    // --- API कॉल (पेजिनेशन के साथ) ---
+    // --- API Call (Pagination ke saath) ---
     const fetchVideos = useCallback(async (pageNum, isInitialLoad = false) => {
+        if (!token || !API_URL) {
+             setError("Authentication error. Please log in again.");
+             setLoading(false);
+             return;
+        }
+        
         if (isInitialLoad) setLoading(true); else setLoadingMore(true);
         setError('');
         
-        const limit = 20; // ⚠️ हाई-ट्रैफ़िक: एक बार में सिर्फ 20 वीडियो
+        const limit = 20; // Ek baar mein sirf 20 videos
         const url = `${API_URL}/api/videos/${videoType}?page=${pageNum}&limit=${limit}`;
 
         try {
             const response = await axios.get(url, { headers: { Authorization: `Bearer ${token}` } });
+            
             if (response.data.success && Array.isArray(response.data.data)) {
                 const newData = response.data.data;
                 
-                // नए वीडियो को पुरानी लिस्ट में जोड़ें
                 setAllVideos(prev => isInitialLoad ? newData : [...prev, ...newData]);
                 
-                // अगर यह पहला लोड है, तो पहला वीडियो चुनें
                 if (isInitialLoad && newData.length > 0 && !selectedVideo) {
                     setSelectedVideo(newData[0]);
                 }
                 
-                setHasMore(newData.length === limit); // क्या और वीडियो हैं?
+                setHasMore(response.data.pagination.currentPage < response.data.pagination.totalPages); 
             } else {
                 if (isInitialLoad) setAllVideos([]);
                 setHasMore(false);
@@ -110,29 +113,32 @@ function VideoPage({ pageTitle, videoType }) {
         }
     }, [videoType, token, API_URL, selectedVideo]);
 
-    // --- आरम्भिक (Initial) डेटा लोड ---
+    // --- Initial Data Load ---
     useEffect(() => {
         if (token && API_URL) {
             setPage(1); 
+            setAllVideos([]); // List ko saaf karein
             setHasMore(true);
             
-            // ✅ चैट से आया वीडियो चेक करें
             if (location.state && location.state.selectedVideo) {
-                // अगर वीडियो चैट से आया है, तो उसे चुनें
-                setSelectedVideo(location.state.selectedVideo);
-                // और बाकी वीडियो लोड करें
-                fetchVideos(1, true); 
-                // state को साफ़ करें ताकि रिफ्रेश करने पर यह दोबारा न हो
+                const chatVideo = location.state.selectedVideo;
+                
+                if (chatVideo.videoType === videoType) {
+                    setSelectedVideo(chatVideo);
+                }
+                // Chat se video aane par bhi, list hamesha fetch karein
+                fetchVideos(1, true);
+                
                 navigate(location.pathname, { replace: true, state: {} });
             } else {
-                // अगर चैट से नहीं आया, तो नॉर्मल लोड करें
                 fetchVideos(1, true);
             }
         }
-    }, [fetchVideos, token, API_URL, location.state, navigate, location.pathname]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [token, API_URL, videoType]);
 
 
-    // --- फिल्टर्ड वीडियो (डिबाउंस्ड) ---
+    // --- Filtered Videos (Debounced) ---
     const filteredVideos = useMemo(() => {
         if (!debouncedSearchTerm) {
             return allVideos; 
@@ -143,7 +149,7 @@ function VideoPage({ pageTitle, videoType }) {
     }, [allVideos, debouncedSearchTerm]);
 
 
-    // --- इवेंट हैंडलर्स (useCallback के साथ ऑप्टिमाइज़) ---
+    // --- Event Handlers (Optimized) ---
     const handleSearchChange = useCallback((e) => {
         setSearchTerm(e.target.value);
         if (selectedVideo) setIsMiniPlayer(true);
@@ -175,7 +181,7 @@ function VideoPage({ pageTitle, videoType }) {
         if (!loadingMore && hasMore) {
             const nextPage = page + 1;
             setPage(nextPage);
-            fetchVideos(nextPage, false); // अगला पेज मंगाएँ
+            fetchVideos(nextPage, false);
         }
     }, [page, loadingMore, hasMore, fetchVideos]);
 
@@ -197,10 +203,10 @@ function VideoPage({ pageTitle, videoType }) {
             </div>
 
             <div className="main-content-layout">
-                {/* --- 1. मुख्य वीडियो कॉलम (बायाँ हिस्सा) --- */}
+                {/* --- 1. Mukhya Video Column --- */}
                 <div className="video-player-column">
                     {isMiniPlayer ? (
-                        // --- 1A. सर्च रिजल्ट ग्रिड ---
+                        // --- 1A. Search Result Grid ---
                         <div className="search-results-main">
                             <h2 className="sidebar-title">
                                 {debouncedSearchTerm ? `Results for "${debouncedSearchTerm}"` : "All Videos"}
@@ -218,7 +224,6 @@ function VideoPage({ pageTitle, videoType }) {
                                     <p className="sidebar-message">No videos found.</p>
                                 )}
                             </div>
-                            {/* "Load More" बटन सिर्फ़ तब दिखे जब सर्च न कर रहे हों */}
                             {hasMore && !debouncedSearchTerm && (
                                 <button className="load-more-btn" onClick={handleLoadMore} disabled={loadingMore}>
                                     {loadingMore ? 'Loading...' : 'Load More'}
@@ -226,12 +231,12 @@ function VideoPage({ pageTitle, videoType }) {
                             )}
                         </div>
                     ) : (
-                        // --- 1B. बड़ा प्लेयर ---
+                        // --- 1B. Bada Player ---
                         <>
                             {loading && <div className="video-skeleton-loader"></div>}
                             {error && <div className="video-error-message">{error}</div>}
-                            {!selectedVideo && !loading && !error && (
-                                <div className="video-error-message">Please select a video.</div>
+                            {!selectedVideo && !loading && !error && allVideos.length === 0 && (
+                                <div className="video-error-message">No videos found for this category.</div>
                             )}
                             {selectedVideo && !loading && (
                                 <>
@@ -265,7 +270,7 @@ function VideoPage({ pageTitle, videoType }) {
                     )}
                 </div>
 
-                {/* --- 2. साइडबार वीडियो लिस्ट (दायाँ हिस्सा) --- */}
+                {/* --- 2. Sidebar Video List --- */}
                 <div className="video-sidebar-column">
                     <h3 className="sidebar-title">All Videos</h3>
                     <div className="video-list-scroll">
@@ -292,7 +297,7 @@ function VideoPage({ pageTitle, videoType }) {
                 </div>
             </div>
 
-            {/* --- 3. मिनी-प्लेयर --- */}
+            {/* --- 3. Mini-Player --- */}
             {isMiniPlayer && selectedVideo && (
                 <div className="mini-player" onClick={maximizePlayer}>
                     <div className="mini-player-video-wrapper">
@@ -306,7 +311,7 @@ function VideoPage({ pageTitle, videoType }) {
                     </div>
                     <div className="mini-player-details">
                         <p className="mini-player-title">{selectedVideo.title}</p>
-                        <p className="mini-player-subtitle">RCM Leader</p>
+                        <p className="mini-player-subtitle">RCM Video</p>
                     </div>
                     <button className="mini-player-close" onClick={closeMiniPlayer}>
                         <X size={20} />
