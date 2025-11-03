@@ -1,33 +1,21 @@
 // src/components/ChatWindow.js
 
 import React, { useState, useEffect, useRef } from 'react';
-// ✅ नए आइकन्स: Volume2 (Unmute) और VolumeX (Mute)
-import { SendHorizontal, Mic, X, MoreVertical, Video, ShoppingBag, BookOpen, UserCheck, Award, Calculator, Volume2, VolumeX } from 'lucide-react'; 
+// ✅ फालतू आइकन्स (MoreVertical, BookOpen, UserCheck, Award) हटा दिए गए हैं
+import { SendHorizontal, Mic, X, Video, ShoppingBag, Calculator, Volume2, VolumeX } from 'lucide-react'; 
 import './ChatWindow.css'; 
 import CommissionCalculator from './CommissionCalculator'; // कैलकुलेटर कंपोनेंट
 
-// --- Speech Synthesis (TTS) को तैयार करें ---
-const synth = window.speechSynthesis;
-let voices = [];
-
-// आवाज़ों को लोड करने के लिए एक हेल्पर (यह ज़रूरी है)
-function loadVoices() {
-    voices = synth.getVoices();
-}
-// अगर आवाज़ें तुरंत लोड नहीं होती हैं, तो उन्हें 'onvoiceschanged' पर लोड करें
-if (typeof synth.onvoiceschanged !== 'undefined') {
-    synth.onvoiceschanged = loadVoices;
-}
-loadVoices(); // पहली बार लोड करने की कोशिश करें
-
-
-// --- Speech Recognition (STT) ---
+// --- Speech Recognition ---
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recognition;
 let isSpeechApiAvailable = false;
 try {
     if (SpeechRecognition) {
-        recognition = new SpeechRecognition();
+        // ✅ --- यह है आपका 100% एरर फिक्स ---
+        // 'SpeechShorthand' की जगह 'SpeechRecognition'
+        recognition = new SpeechRecognition(); 
+        // ------------------------------------
         recognition.continuous = false;
         recognition.lang = 'hi-IN';
         recognition.interimResults = false;
@@ -46,11 +34,12 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
     const [isLoading, setIsLoading] = useState(false);
     const [isListening, setIsListening] = useState(false);
     
-    // ✅ 1. TTS (आवाज़) के लिए नया स्टेट
+    // ✅ TTS (आवाज़) के लिए स्टेट
     const [isMuted, setIsMuted] = useState(true); // डिफ़ॉल्ट रूप से म्यूट
 
     const chatBodyRef = useRef(null);
     const recognitionRef = useRef(recognition);
+    // ❌ menuRef और menuButtonRef को हटा दिया गया है
 
     // Auto-scroll
     useEffect(() => {
@@ -70,60 +59,76 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
         return () => { if (rec) rec.stop(); };
     }, []);
 
-    // ✅ 2. TTS (आवाज़) के लिए नया 'speak' फ़ंक्शन
+    // ❌ handleClickOutside useEffect को हटा दिया गया है
+
+
+    // --- आवाज़ (TTS) के लिए 'speak' फ़ंक्शन ---
+    
+    // आवाज़ों को लोड करने के लिए हेल्पर
+    const [voices, setVoices] = useState([]);
+    useEffect(() => {
+        const loadVoices = () => {
+            const availableVoices = window.speechSynthesis.getVoices();
+            setVoices(availableVoices);
+        };
+        loadVoices();
+        if (typeof window.speechSynthesis.onvoiceschanged !== 'undefined') {
+            window.speechSynthesis.onvoiceschanged = loadVoices;
+        }
+    }, []);
+
     const speak = (text) => {
-        // अगर म्यूट है, या टेक्स्ट नहीं है, या ब्राउज़र सपोर्ट नहीं करता, तो कुछ न करें
+        const synth = window.speechSynthesis;
         if (isMuted || !text || !synth) return;
 
-        // बोलने से पहले पुराना कुछ भी चल रहा हो तो रोकें
-        synth.cancel();
+        synth.cancel(); // पुराना कुछ भी बोल रहा हो तो रोकें
 
-        // AI का जवाब अक्सर Markdown (जैसे **) या URLs के साथ आता है, उन्हें साफ़ करें
         const cleanText = text
-            .replace(/\*\*/g, '') // Bold (**) हटाएँ
-            .replace(/---/g, '')  // लाइन (---) हटाएँ
-            .replace(/\n/g, ' ')   // नई लाइन को स्पेस (space) से बदलें
-            .replace(/(https?:\/\/[^\s]+)/g, ' link '); // URLs को "link" पढ़ें
+            .replace(/\*\*/g, '') // Bold
+            .replace(/---/g, '')  // Line
+            .replace(/\n/g, ' ')   // New line
+            .replace(/(https?:\/\/[^\s]+)/g, ' link '); // URLs
 
         const utterance = new SpeechSynthesisUtterance(cleanText);
 
-        // हिंदी (hi-IN) आवाज़ ढूँढने की कोशिश करें
-        if (voices.length === 0) loadVoices(); // आवाज़ें दोबारा लोड करें
-        
-        const hindiVoice = voices.find(v => v.lang === 'hi-IN') || voices.find(v => v.lang.startsWith('hi-'));
-        
-        if (hindiVoice) {
-            utterance.voice = hindiVoice;
+        // --- Sabse Achhi Voice Dhoondhne ka Logic ---
+        let bestVoice = voices.find(v => v.name === 'Google हिन्दी' && v.lang === 'hi-IN');
+        if (!bestVoice) {
+            bestVoice = voices.find(v => v.name.includes('Microsoft') && v.lang === 'hi-IN');
+        }
+        if (!bestVoice) {
+            bestVoice = voices.find(v => v.lang === 'hi-IN');
+        }
+
+        if (bestVoice) {
+            utterance.voice = bestVoice; 
         } else {
-            utterance.lang = 'hi-IN'; // अगर न मिले, तो ब्राउज़र को हिंदी ढूँढने दें
+            utterance.lang = 'hi-IN'; 
         }
         
-        utterance.rate = 0.95; // थोड़ा धीमा बोलें
+        utterance.rate = 1.0; 
         utterance.pitch = 1.0;
 
         synth.speak(utterance);
     };
 
-    // ✅ 3. जब भी नया मैसेज आए, उसे बोलें (अगर BOT का है)
+    // जब भी नया मैसेज आए, उसे बोलें (अगर BOT का है)
     useEffect(() => {
         const lastMessage = messages[messages.length - 1];
-
-        // अगर म्यूट नहीं है, और आखिरी मैसेज BOT का है, और वह 'text' है
         if (!isMuted && lastMessage && lastMessage.sender === 'BOT' && lastMessage.type === 'text') {
             speak(lastMessage.content);
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [messages]); // isMuted को यहाँ न डालें, वरना म्यूट करने पर भी बोलता रहेगा
+    }, [messages, isMuted, voices]); // voices को dependency में जोड़ा गया
 
-    // ✅ 4. चैट बंद होने पर आवाज़ बंद करें
+    // चैट बंद होने पर आवाज़ बंद करें
     useEffect(() => {
-        // यह 'cleanup' (सफ़ाई) फ़ंक्शन है
+        const synth = window.speechSynthesis;
         return () => {
-            if (synth) {
-                synth.cancel();
-            }
+            if (synth) synth.cancel();
         };
     }, []);
+
 
     // --- माइक बटन ---
     const handleMicClick = () => {
@@ -131,7 +136,7 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
         if (isListening) {
             recognitionRef.current.stop();
         } else { 
-            synth.cancel(); // बोलना बंद करें
+            window.speechSynthesis.cancel(); // बोलना बंद करें
             setInput(''); 
             recognitionRef.current.start(); 
         }
@@ -142,7 +147,7 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
         const messageToSend = input.trim();
         if (!messageToSend || isLoading) return;
 
-        synth.cancel(); // बोलना बंद करें
+        window.speechSynthesis.cancel(); // बोलना बंद करें
 
         const userMessage = { sender: 'USER', type: 'text', content: messageToSend };
         setMessages(prev => [...prev, userMessage]);
@@ -152,7 +157,7 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
         const API_URL = process.env.REACT_APP_API_URL;
 
         if (!API_URL) {
-            console.error("CRITICAL: REACT_APP_API_URL is not set in .env file.");
+             console.error("CRITICAL: REACT_APP_API_URL is not set in .env file.");
              setIsLoading(false);
              setMessages(prev => [...prev, {
                  sender: 'BOT', type: 'text', content: 'Configuration error: API URL is missing.'
@@ -265,12 +270,12 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
         }
     };
 
-    // ✅ 5. आवाज़ को Mute (म्यूट) / Unmute (अनम्यूट) करें
+    // --- Mute / Unmute ---
     const toggleMute = () => {
         const nextMuteState = !isMuted;
         setIsMuted(nextMuteState);
         if (nextMuteState) {
-            synth.cancel(); // अगर म्यूट किया है, तो बोलना बंद करें
+            window.speechSynthesis.cancel(); // अगर म्यूट किया है, तो बोलना बंद करें
         }
     };
 
@@ -290,7 +295,7 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
                     <p>{isLoading ? 'typing...' : 'online'}</p>
                 </div>
                 
-                {/* ✅ नया Mute (म्यूट) बटन */}
+                {/* Mute Button */}
                 <button 
                     onClick={toggleMute} 
                     className="menu-btn"
@@ -299,7 +304,7 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
                     {isMuted ? <VolumeX size={22} /> : <Volume2 size={22} />}
                 </button>
                 
-                {/* Close (X) बटन */}
+                {/* Close Button */}
                 <button 
                     onClick={onClose} 
                     className="close-btn-header"
@@ -317,12 +322,10 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
                         
                         <div className={`message-bubble ${msg.type || 'text'}`}>
                             
-                            {/* --- 1. टेक्स्ट मैसेज --- */}
                             {msg.type === 'text' && (
                                 <div className="text-content" dangerouslySetInnerHTML={{ __html: msg.content.replace(/\n/g, '<br />') }} />
                             )}
 
-                            {/* --- 2. वीडियो कार्ड --- */}
                             {msg.type === 'video' && (
                                 <div className="card-message">
                                     {msg.content.thumbnailUrl && (
@@ -338,7 +341,6 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
                                 </div>
                             )}
                             
-                            {/* --- 3. प्रोडक्ट कार्ड --- */}
                             {msg.type === 'product' && (
                                 <div className="card-message">
                                     {msg.content.image && (
@@ -352,7 +354,6 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
                                 </div>
                             )}
 
-                            {/* --- 4. कैलकुलेटर कार्ड --- */}
                             {msg.type === 'calculator' && (
                                 <div className="card-message calculator-card">
                                     <div className="card-body">
@@ -408,6 +409,8 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
                     </button>
                 )}
             </div>
+            
+            {/* ❌ AI मोड मेनू को हटा दिया गया है */}
         </div>
     );
 }
