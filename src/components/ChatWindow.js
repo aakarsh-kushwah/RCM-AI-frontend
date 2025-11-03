@@ -1,11 +1,27 @@
 // src/components/ChatWindow.js
 
 import React, { useState, useEffect, useRef } from 'react';
-import { SendHorizontal, Mic, X, MoreVertical, Video, ShoppingBag, BookOpen, UserCheck, Award, Calculator } from 'lucide-react'; 
+// ✅ नए आइकन्स: Volume2 (Unmute) और VolumeX (Mute)
+import { SendHorizontal, Mic, X, MoreVertical, Video, ShoppingBag, BookOpen, UserCheck, Award, Calculator, Volume2, VolumeX } from 'lucide-react'; 
 import './ChatWindow.css'; 
 import CommissionCalculator from './CommissionCalculator'; // कैलकुलेटर कंपोनेंट
 
-// --- Speech Recognition ---
+// --- Speech Synthesis (TTS) को तैयार करें ---
+const synth = window.speechSynthesis;
+let voices = [];
+
+// आवाज़ों को लोड करने के लिए एक हेल्पर (यह ज़रूरी है)
+function loadVoices() {
+    voices = synth.getVoices();
+}
+// अगर आवाज़ें तुरंत लोड नहीं होती हैं, तो उन्हें 'onvoiceschanged' पर लोड करें
+if (typeof synth.onvoiceschanged !== 'undefined') {
+    synth.onvoiceschanged = loadVoices;
+}
+loadVoices(); // पहली बार लोड करने की कोशिश करें
+
+
+// --- Speech Recognition (STT) ---
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recognition;
 let isSpeechApiAvailable = false;
@@ -29,13 +45,12 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [isListening, setIsListening] = useState(false);
-    const [aiMode, setAiMode] = useState('General');
-    const [isMenuOpen, setIsMenuOpen] = useState(false);
+    
+    // ✅ 1. TTS (आवाज़) के लिए नया स्टेट
+    const [isMuted, setIsMuted] = useState(true); // डिफ़ॉल्ट रूप से म्यूट
 
     const chatBodyRef = useRef(null);
     const recognitionRef = useRef(recognition);
-    const menuRef = useRef(null);
-    const menuButtonRef = useRef(null);
 
     // Auto-scroll
     useEffect(() => {
@@ -55,20 +70,60 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
         return () => { if (rec) rec.stop(); };
     }, []);
 
-    // Menu close on outside click
-    useEffect(() => {
-        function handleClickOutside(event) {
-            if (
-                menuRef.current && !menuRef.current.contains(event.target) &&
-                menuButtonRef.current && !menuButtonRef.current.contains(event.target)
-            ) {
-                setIsMenuOpen(false);
-            }
-        }
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, [menuRef, menuButtonRef]);
+    // ✅ 2. TTS (आवाज़) के लिए नया 'speak' फ़ंक्शन
+    const speak = (text) => {
+        // अगर म्यूट है, या टेक्स्ट नहीं है, या ब्राउज़र सपोर्ट नहीं करता, तो कुछ न करें
+        if (isMuted || !text || !synth) return;
 
+        // बोलने से पहले पुराना कुछ भी चल रहा हो तो रोकें
+        synth.cancel();
+
+        // AI का जवाब अक्सर Markdown (जैसे **) या URLs के साथ आता है, उन्हें साफ़ करें
+        const cleanText = text
+            .replace(/\*\*/g, '') // Bold (**) हटाएँ
+            .replace(/---/g, '')  // लाइन (---) हटाएँ
+            .replace(/\n/g, ' ')   // नई लाइन को स्पेस (space) से बदलें
+            .replace(/(https?:\/\/[^\s]+)/g, ' link '); // URLs को "link" पढ़ें
+
+        const utterance = new SpeechSynthesisUtterance(cleanText);
+
+        // हिंदी (hi-IN) आवाज़ ढूँढने की कोशिश करें
+        if (voices.length === 0) loadVoices(); // आवाज़ें दोबारा लोड करें
+        
+        const hindiVoice = voices.find(v => v.lang === 'hi-IN') || voices.find(v => v.lang.startsWith('hi-'));
+        
+        if (hindiVoice) {
+            utterance.voice = hindiVoice;
+        } else {
+            utterance.lang = 'hi-IN'; // अगर न मिले, तो ब्राउज़र को हिंदी ढूँढने दें
+        }
+        
+        utterance.rate = 0.95; // थोड़ा धीमा बोलें
+        utterance.pitch = 1.0;
+
+        synth.speak(utterance);
+    };
+
+    // ✅ 3. जब भी नया मैसेज आए, उसे बोलें (अगर BOT का है)
+    useEffect(() => {
+        const lastMessage = messages[messages.length - 1];
+
+        // अगर म्यूट नहीं है, और आखिरी मैसेज BOT का है, और वह 'text' है
+        if (!isMuted && lastMessage && lastMessage.sender === 'BOT' && lastMessage.type === 'text') {
+            speak(lastMessage.content);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [messages]); // isMuted को यहाँ न डालें, वरना म्यूट करने पर भी बोलता रहेगा
+
+    // ✅ 4. चैट बंद होने पर आवाज़ बंद करें
+    useEffect(() => {
+        // यह 'cleanup' (सफ़ाई) फ़ंक्शन है
+        return () => {
+            if (synth) {
+                synth.cancel();
+            }
+        };
+    }, []);
 
     // --- माइक बटन ---
     const handleMicClick = () => {
@@ -76,6 +131,7 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
         if (isListening) {
             recognitionRef.current.stop();
         } else { 
+            synth.cancel(); // बोलना बंद करें
             setInput(''); 
             recognitionRef.current.start(); 
         }
@@ -85,6 +141,8 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
     const handleSend = async () => {
         const messageToSend = input.trim();
         if (!messageToSend || isLoading) return;
+
+        synth.cancel(); // बोलना बंद करें
 
         const userMessage = { sender: 'USER', type: 'text', content: messageToSend };
         setMessages(prev => [...prev, userMessage]);
@@ -103,11 +161,10 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
         }
 
         try {
-            // यह AI चैट एंडपॉइंट है
             const response = await fetch(`${API_URL}/api/chat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ message: messageToSend, mode: aiMode }),
+                body: JSON.stringify({ message: messageToSend }), // 'mode' हटा दिया गया है
             });
             
             if (!response.ok) {
@@ -120,18 +177,12 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
             let botMessage;
             
             if (data.success) {
-                
-                // 1. AI का जवाब JSON है या टेक्स्ट, यह चेक करें
                 try {
-                    // पहले कोशिश करें कि AI का जवाब JSON है (e.g., {"type": "calculator"})
-                    // (अगर data.reply पहले से ऑब्जेक्ट है, तो यह वही रहेगा)
                     replyFromAI = (typeof data.reply === 'string') ? JSON.parse(data.reply) : data.reply;
                 } catch (e) {
-                    // अगर JSON नहीं है, तो यह सिंपल टेक्स्ट है
                     replyFromAI = { type: "text", content: data.reply.toString() };
                 }
 
-                // 2. ✅ एरर फिक्स: 'sender' को यहाँ जोड़ें
                 botMessage = {
                     sender: 'BOT',
                     type: replyFromAI.type || 'text',
@@ -170,7 +221,6 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
             type: 'text',
             content: `Calculating for: Self BV: ${data.selfBV || 0}, Legs: [${legBVs}]`
         };
-        // आख़िरी मैसेज (जो कैलकुलेटर था) को हटाएँ और नया यूज़र मैसेज दिखाएँ
         setMessages(prev => [
             ...prev.slice(0, -1), 
             userCalcMessage
@@ -189,10 +239,8 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
                 throw new Error(await response.text());
             }
 
-            const result = await response.json(); // { success: true, reply: { type: 'text', content: '...' } }
+            const result = await response.json(); 
             
-            // ✅ --- यह है एरर फिक्स ---
-            // जवाब में 'sender: "BOT"' जोड़ें
             const botReply = {
                 sender: 'BOT',
                 type: result.reply.type || 'text',
@@ -209,18 +257,6 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
         }
     };
 
-    // --- AI मोड बदलना ---
-    const handleChangeMode = (newMode) => {
-        if (newMode === aiMode) return setIsMenuOpen(false);
-        setAiMode(newMode);
-        setIsMenuOpen(false);
-        setMessages(prev => [...prev, {
-            sender: 'BOT',
-            type: 'text',
-            content: `AI Mode set to: ${newMode}. How can I help?`
-        }]);
-    };
-
     // --- वीडियो कार्ड पर क्लिक हैंडलर ---
     const handlePlayVideo = (videoContent) => {
         if (onNavigateToVideo) {
@@ -229,6 +265,14 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
         }
     };
 
+    // ✅ 5. आवाज़ को Mute (म्यूट) / Unmute (अनम्यूट) करें
+    const toggleMute = () => {
+        const nextMuteState = !isMuted;
+        setIsMuted(nextMuteState);
+        if (nextMuteState) {
+            synth.cancel(); // अगर म्यूट किया है, तो बोलना बंद करें
+        }
+    };
 
     return (
         <div className="chat-window">
@@ -243,14 +287,24 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
                 </div>
                 <div className="header-info">
                     <h3>RCM AI Assistant</h3>
-                    <p>{isLoading ? 'typing...' : (aiMode === 'General' ? 'online' : aiMode)}</p>
+                    <p>{isLoading ? 'typing...' : 'online'}</p>
                 </div>
+                
+                {/* ✅ नया Mute (म्यूट) बटन */}
                 <button 
-                    onClick={() => setIsMenuOpen(prev => !prev)} 
+                    onClick={toggleMute} 
                     className="menu-btn"
-                    ref={menuButtonRef}
+                    title={isMuted ? "Turn sound on" : "Turn sound off"}
                 >
-                    <MoreVertical size={24} />
+                    {isMuted ? <VolumeX size={22} /> : <Volume2 size={22} />}
+                </button>
+                
+                {/* Close (X) बटन */}
+                <button 
+                    onClick={onClose} 
+                    className="close-btn-header"
+                >
+                    <X size={24} />
                 </button>
             </div>
             
@@ -259,7 +313,6 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
                 <div className="chat-background-image"></div>
                 
                 {messages.map((msg, index) => (
-                    // ✅ 'msg.sender' अब हमेशा मौजूद रहेगा
                     <div key={index} className={`chat-message ${msg.sender.toLowerCase()}`}>
                         
                         <div className={`message-bubble ${msg.type || 'text'}`}>
@@ -355,34 +408,6 @@ function ChatWindow({ token, onClose, onNavigateToVideo }) {
                     </button>
                 )}
             </div>
-
-            {/* --- AI मोड मेनू --- */}
-            {isMenuOpen && (
-                <div className="mode-menu" ref={menuRef}>
-                    <div className="mode-menu-header">Select AI Mode</div>
-                    <button onClick={() => handleChangeMode('General')}>
-                        <BookOpen size={16} /> General Q&A
-                    </button>
-                    <button onClick={() => handleChangeMode('Leader Videos')}>
-                        <Award size={16} /> Leader Videos
-                    </button>
-                    <button onClick={() => handleChangeMode('Product Info')}>
-                        <ShoppingBag size={16} /> Product Info
-                    </button>
-                    <button onClick={() => handleChangeMode('Seminar Videos')}>
-                        <Video size={16} /> Seminar Videos
-                    </button>
-                    <button onClick={() => handleChangeMode('Dress Code')}>
-                        <UserCheck size={16} /> Dress Code
-                    </button>
-                    
-                    <div className="menu-divider"></div>
-                    
-                    <button onClick={onClose} className="menu-item-close">
-                        <X size={16} /> Close Chat
-                    </button>
-                </div>
-            )}
         </div>
     );
 }

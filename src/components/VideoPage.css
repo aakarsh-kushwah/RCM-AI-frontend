@@ -1,22 +1,20 @@
 /* src/components/VideoPage.css */
 
-/* --- कलर वेरिएबल्स (थीम) --- */
+/* --- Color Variables (Theme) --- */
 :root {
-  --primary-color: #0056b3; 
-  --primary-hover: #004494;
-  --bg-color: #f0f2f5;       
-  --card-bg-color: #ffffff;  
+  --primary-color: #008069; /* RCM Green */
+  --primary-hover: #005a4a;
+  --bg-color: #f0f2f5;
+  --card-bg-color: #ffffff;
   --text-color: #212529;
   --text-light: #6c757d;
   --border-color: #dee2e6;
-  --skeleton-bg: #e0e0e0;
+  --skeleton-bg: #e9ecef;
 }
 
-/* --- डार्क मोड --- */
+/* --- Dark Mode (Optional) --- */
 @media (prefers-color-scheme: dark) {
   :root {
-    --primary-color: #0d6efd;
-    --primary-hover: #3385fd;
     --bg-color: #121212;
     --card-bg-color: #1e1e1e;
     --text-color: #e0e0e0;
@@ -26,7 +24,7 @@
   }
 }
 
-/* --- ग्लोबल स्टाइल --- */
+/* --- Global Page Style --- */
 .leader-video-page {
   width: 100%;
   min-height: 100vh;
@@ -34,25 +32,50 @@
   color: var(--text-color);
   padding: 20px;
   box-sizing: border-box;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 }
 
-/* --- हेडर और सर्च --- */
+/* --- Header & Search --- */
 .page-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  flex-wrap: wrap; 
+  flex-wrap: wrap;
   gap: 15px;
   margin-bottom: 25px;
   padding-bottom: 15px;
   border-bottom: 1px solid var(--border-color);
 }
-.page-main-title {
-  font-size: 2.2rem;
-  font-weight: 700;
-  margin: 0;
+
+/* ✅ Naya Back Button */
+.back-to-dashboard {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-color);
+  padding: 8px 14px;
+  border-radius: 50px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
+.back-to-dashboard:hover {
+  background-color: var(--card-bg-color);
+  border-color: var(--text-light);
+}
+
+.page-main-title {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text-color);
+  margin: 0;
+  flex-grow: 1; /* Title ko beech mein rakhein */
+  text-align: center;
+}
+
 .search-bar-container {
   display: flex;
   align-items: center;
@@ -61,28 +84,24 @@
   border-radius: 50px;
   padding: 5px 15px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-  flex-grow: 1; 
   max-width: 400px;
+  width: 100%;
 }
 .search-icon { color: var(--text-light); margin-right: 10px; }
 .search-input {
-  border: none;
-  outline: none;
-  background: transparent;
-  color: var(--text-color);
-  font-size: 1rem;
-  padding: 8px 0;
-  width: 100%;
+  border: none; outline: none; background: transparent;
+  color: var(--text-color); font-size: 1rem;
+  padding: 8px 0; width: 100%;
 }
 
-/* --- मुख्य 2-कॉलम लेआउट --- */
+/* --- 2-Column Layout --- */
 .main-content-layout {
   display: grid;
   grid-template-columns: 2.5fr 1fr;
   gap: 25px;
 }
 
-/* --- 1. बायाँ कॉलम (वीडियो प्लेयर) --- */
+/* --- 1. Left Column (Video Player) --- */
 .video-player-column {
   background-color: var(--card-bg-color);
   border-radius: 12px;
@@ -91,11 +110,11 @@
   align-self: start; 
 }
 
-/* वीडियो प्लेयर रैपर (16:9 आस्पेक्ट रेशियो) */
+/* 16:9 Aspect Ratio Wrapper */
 .video-player-wrapper {
   position: relative;
   width: 100%;
-  padding-top: 56.25%; 
+  padding-top: 56.25%; /* 16:9 */
   background-color: #000;
 }
 .video-iframe {
@@ -109,26 +128,26 @@
   border-radius: 12px 12px 0 0;
 }
 
-/* --- ✅ नया: YouTube रीडायरेक्ट ब्लॉकर --- */
-.iframe-click-blocker {
+/* ✅ --- YEH HAI NAYA "SMART BLOCKER" --- ✅ */
+.iframe-top-blocker {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  bottom: 40px; /* कंट्रोल बार के लिए 40px जगह छोड़ें */
-  z-index: 5; 
-  /* डीबग करने के लिए: background: rgba(255, 0, 0, 0.2); */
+  height: 60px; /* YouTube title aur share buttons ko cover karein */
+  z-index: 5;
+  /* (Debug ke liye background: red;) */
 }
 
-/* --- वॉटरमार्क स्टाइल्स --- */
+/* Watermark (Blocker ke oopar) */
 .video-watermark-logo {
   position: absolute; top: 15px; right: 15px; opacity: 0.6;
-  pointer-events: none; transition: opacity 0.3s ease; z-index: 10;
+  pointer-events: none;
+  z-index: 10;
 }
-.video-player-wrapper:hover .video-watermark-logo { opacity: 0.8; }
 .video-watermark-logo img { width: 100px; height: auto; }
 
-/* --- वीडियो डिटेल्स (प्लेयर के नीचे) --- */
+/* Video Details (Player ke neeche) */
 .video-details-container { padding: 25px; }
 .video-title { font-size: 1.8rem; font-weight: 700; margin: 0 0 10px 0; }
 .video-motivation-quote {
@@ -137,25 +156,24 @@
 }
 .video-description { font-size: 1rem; line-height: 1.6; color: var(--text-color); margin-top: 20px; }
 
-/* --- लोडिंग और एरर स्टेट्स --- */
+/* Loading / Error States */
 .video-skeleton-loader {
-  width: 100%; padding-top: 56.25%; background: linear-gradient(90deg, var(--skeleton-bg) 25%, #f2f2f2 50%, var(--skeleton-bg) 75%);
-  background-size: 200% 100%; border-radius: 12px 12px 0 0; animation: loading 1.5s infinite;
+  width: 100%; padding-top: 56.25%; background: var(--skeleton-bg);
+  border-radius: 12px 12px 0 0; animation: pulse 1.5s infinite;
 }
-@keyframes loading { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+@keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
+
 .video-error-message,
 .sidebar-message {
-  padding: 20px;
-  text-align: center;
-  font-size: 1rem;
-  color: var(--text-light);
+  padding: 20px; text-align: center;
+  font-size: 1rem; color: var(--text-light);
 }
 .video-error-message {
   background-color: #fce2e2; color: #c0392b; border: 1px solid #d93025;
   border-radius: 12px; margin: 20px; font-weight: 500;
 }
 
-/* --- मुख्य सर्च रिजल्ट ग्रिड (बायाँ कॉलम) --- */
+/* --- Search Result Grid (Mini-player mode) --- */
 .search-results-main { padding: 20px; }
 .results-grid {
   display: grid;
@@ -182,8 +200,7 @@
 }
 .grid-item-subtitle { font-size: 0.9rem; color: var(--text-light); margin: 0; }
 
-
-/* --- 2. दायाँ कॉलम (साइडबार) --- */
+/* --- 2. Right Column (Sidebar) --- */
 .video-sidebar-column {
   background-color: var(--card-bg-color); border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); padding: 20px; align-self: start; 
@@ -198,13 +215,13 @@
   &::-webkit-scrollbar-thumb { background-color: var(--border-color); border-radius: 4px; }
   &::-webkit-scrollbar-track { background-color: transparent; }
 }
-/* साइडबार आइटम */
+/* Sidebar Item */
 .video-list-item {
   display: flex; gap: 15px; margin-bottom: 15px; cursor: pointer;
   padding: 10px; border-radius: 8px; transition: background-color 0.3s ease, transform 0.2s ease;
 }
 .video-list-item:hover { background-color: var(--bg-color); transform: translateY(-2px); }
-.video-list-item.active { background-color: var(--primary-color); box-shadow: 0 2px 8px rgba(0, 86, 179, 0.2); }
+.video-list-item.active { background-color: var(--primary-color); box-shadow: 0 2px 8px rgba(0, 128, 105, 0.3); }
 .video-list-item.active .item-title, .video-list-item.active .item-subtitle { color: white; }
 .item-thumbnail {
   flex-shrink: 0; width: 120px; height: 68px; background-color: var(--skeleton-bg);
@@ -220,34 +237,21 @@
 }
 .item-subtitle { font-size: 0.85rem; color: var(--text-light); margin: 0; }
 
-/* --- ✅ नया: "Load More" बटन स्टाइल --- */
+/* "Load More" Button */
 .load-more-btn {
-  display: block;
-  width: 100%;
-  padding: 12px;
-  margin-top: 20px;
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--primary-color);
-  background-color: transparent;
+  display: block; width: 100%; padding: 12px;
+  margin-top: 20px; font-size: 1rem; font-weight: 600;
+  color: var(--primary-color); background-color: transparent;
   border: 2px solid var(--primary-color);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.3s ease;
+  border-radius: 8px; cursor: pointer; transition: all 0.3s ease;
 }
-.load-more-btn:hover {
-  background-color: var(--primary-color);
-  color: white;
-}
+.load-more-btn:hover { background-color: var(--primary-color); color: white; }
 .load-more-btn:disabled {
-  background-color: var(--border-color);
-  color: var(--text-light);
-  border-color: var(--border-color);
-  cursor: not-allowed;
+  background-color: var(--border-color); color: var(--text-light);
+  border-color: var(--border-color); cursor: not-allowed;
 }
 
-
-/* --- मिनी-प्लेयर स्टाइल्स --- */
+/* --- 3. Mini-Player --- */
 .mini-player {
   position: fixed; bottom: 20px; right: 20px; width: 320px;
   background-color: var(--card-bg-color); border-radius: 10px;
@@ -278,23 +282,52 @@
 .mini-player-close:hover { background: rgba(0, 0, 0, 0.9); }
 
 
-/* --- रिस्पॉन्सिव डिज़ाइन --- */
+/* --- Responsive (Tablet/Mobile) --- */
 @media (max-width: 992px) {
-  .main-content-layout { grid-template-columns: 1fr; }
-  .video-sidebar-column { margin-top: 25px; }
-  .video-list-scroll { max-height: 400px; }
-  .results-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+  .main-content-layout {
+    grid-template-columns: 1fr; /* Stack columns */
+  }
+  .video-sidebar-column {
+    margin-top: 25px; 
+  }
+  .video-list-scroll {
+    max-height: 400px; 
+  }
+  .results-grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  }
+  .page-main-title {
+    text-align: left;
+  }
 }
+
 @media (max-width: 576px) {
   .leader-video-page { padding: 10px; }
-  .page-header { flex-direction: column; align-items: stretch; margin-bottom: 15px; }
-  .page-main-title { font-size: 1.8rem; text-align: center; }
-  .search-bar-container { max-width: 100%; }
+  .page-header {
+    flex-direction: column;
+    align-items: stretch;
+    margin-bottom: 15px;
+  }
+  .page-main-title {
+    font-size: 1.8rem;
+    text-align: center;
+  }
+  .search-bar-container {
+    max-width: 100%;
+  }
   .video-details-container { padding: 15px; }
   .video-title { font-size: 1.5rem; }
   .item-thumbnail { width: 100px; height: 56px; }
   .mini-player {
     width: calc(100% - 20px); bottom: 10px; right: 10px; left: 10px;
   }
-  .results-grid { grid-template-columns: 1fr; }
+  .results-grid {
+    grid-template-columns: 1fr;
+  }
+  .back-to-dashboard {
+    position: absolute; /* Header ke oopar */
+    top: 15px;
+    left: 10px;
+    z-index: 10;
+  }
 }

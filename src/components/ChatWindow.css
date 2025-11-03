@@ -278,3 +278,38 @@
   gap: 8px;
   color: var(--whatsapp-green); /* हरा टाइटल */
 }
+/* ... (आपका बाकी का CSS कोड) ... */
+
+/* --- हेडर बटन अपडेट --- */
+.chat-header {
+  /* gap: 15px; // यह गैप हटा दें ताकि बटन चिपके रहें */
+  padding: 10px 10px; /* थोड़ी पैडिंग कम करें */
+}
+
+.header-info {
+  margin-right: auto; /* जानकारी को बाईं ओर रखें */
+  margin-left: 15px;
+}
+
+.menu-btn, .close-btn-header {
+  background: none;
+  border: none;
+  color: white;
+  cursor: pointer;
+  padding: 8px; /* क्लिक करने की जगह बढ़ाएँ */
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+  opacity: 0.8;
+}
+.menu-btn:hover, .close-btn-header:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+  opacity: 1;
+}
+
+/* क्लोज़ बटन को थोड़ा अलग करें */
+.close-btn-header {
+  margin-left: 5px;
+}

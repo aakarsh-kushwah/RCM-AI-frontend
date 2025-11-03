@@ -5,7 +5,7 @@ import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { useLocation, useNavigate } from 'react-router-dom';
 import './VideoPage.css';
-import { Search, PlayCircle, X } from 'lucide-react';
+import { Search, PlayCircle, X, ArrowLeft } from 'lucide-react'; // Back icon
 
 // --- Debounce Hook (Performance ke liye) ---
 function useDebounce(value, delay) {
@@ -126,7 +126,6 @@ function VideoPage({ pageTitle, videoType }) {
                 if (chatVideo.videoType === videoType) {
                     setSelectedVideo(chatVideo);
                 }
-                // Chat se video aane par bhi, list hamesha fetch karein
                 fetchVideos(1, true);
                 
                 navigate(location.pathname, { replace: true, state: {} });
@@ -188,6 +187,10 @@ function VideoPage({ pageTitle, videoType }) {
     return (
         <div className="leader-video-page">
             <div className="page-header">
+                {/* ✅ Naya "Back" (वापस) Button */}
+                <button onClick={() => navigate('/dashboard')} className="back-to-dashboard">
+                    <ArrowLeft size={20} /> Back
+                </button>
                 <h1 className="page-main-title">{pageTitle}</h1>
                 <div className="search-bar-container">
                     <span className="search-icon"><Search size={20} /></span>
@@ -250,7 +253,11 @@ function VideoPage({ pageTitle, videoType }) {
                                             allowFullScreen
                                             key={selectedVideo.publicId} 
                                         ></iframe>
-                                        <div className="iframe-click-blocker"></div>
+                                        
+                                        {/* ✅ --- YEH HAI NAYA "SMART BLOCKER" --- ✅ */}
+                                        {/* Yeh Title aur Share buttons ko block karta hai, lekin play/pause ko chhod deta hai */}
+                                        <div className="iframe-top-blocker"></div> 
+                                        
                                         <div className="video-watermark-logo">
                                             <img src="/rcm-ai-logo.png" alt="RCM AI" />
                                         </div>
