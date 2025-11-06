@@ -1,103 +1,93 @@
 import React, { useState } from 'react';
-import { Plus, X, Calculator } from 'lucide-react';
-import './CommissionCalculator.css'; // हम यह CSS फ़ाइल नीचे बनाएंगे
+import { Send } from 'lucide-react';
 
+// Basic styles taaki component dikhe
+const inputStyle = {
+  width: '100%',
+  padding: '8px',
+  margin: '5px 0 10px 0',
+  borderRadius: '5px',
+  border: '1px solid #ccc',
+  boxSizing: 'border-box'
+};
+
+const buttonStyle = {
+  background: '#00796b',
+  color: 'white',
+  border: 'none',
+  borderRadius: '5px',
+  padding: '10px 15px',
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '5px',
+  width: '100%',
+  fontSize: '15px'
+};
+
+const addButtonStyle = {
+  ...buttonStyle,
+  background: '#607d8b',
+  marginTop: '10px'
+};
+
+// Yeh component ChatWindow se props leta hai
 function CommissionCalculator({ onSubmit, isLoading }) {
-    const [selfBV, setSelfBV] = useState('');
-    const [legs, setLegs] = useState([{ bv: '' }, { bv: '' }]); // 2 लेग से शुरू करें
+    const [selfBV, setSelfBV] = useState('');
+    const [legs, setLegs] = useState([{ id: 1, bv: '' }]);
 
-    // लेग के BV को बदलें
-    const handleLegChange = (index, value) => {
-        // केवल नंबर और खाली स्ट्रिंग को अलाऊ करें
-        if (/^[0-9]*$/.test(value)) {
-            const newLegs = [...legs];
-            newLegs[index].bv = value;
-            setLegs(newLegs);
-        }
-    };
-    
-    const handleSelfBVChange = (value) => {
-        if (/^[0-9]*$/.test(value)) {
-            setSelfBV(value);
-        }
-    };
+    const handleLegChange = (id, value) => {
+        setLegs(legs.map(leg => leg.id === id ? { ...leg, bv: value } : leg));
+    };
 
-    // एक और लेग जोड़ें
-    const handleAddLeg = () => {
-        setLegs([...legs, { bv: '' }]);
-    };
+    const addLeg = () => {
+        setLegs([...legs, { id: legs.length + 1, bv: '' }]);
+    };
 
-    // लेग हटाएँ
-    const handleRemoveLeg = (index) => {
-        const newLegs = legs.filter((_, i) => i !== index);
-        setLegs(newLegs);
-    };
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        const data = {
+            selfBV: parseInt(selfBV) || 0,
+            legs: legs.map(leg => ({ bv: parseInt(leg.bv) || 0 })),
+        };
+        onSubmit(data); // Data parent (ChatWindow) ko wapas bhejein
+    };
 
-    // सबमिट करें
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        // खाली लेग्स को 0 के रूप में भेजें
-        const finalData = {
-            selfBV: selfBV || '0',
-            legs: legs.map(leg => ({ bv: leg.bv || '0' }))
-        };
-        onSubmit(finalData);
-    };
+    return (
+        <form onSubmit={handleSubmit} style={{ marginTop: '15px' }}>
+            <label style={{ fontSize: '14px', fontWeight: '500' }}>Self BV</label>
+            <input
+                type="number"
+                value={selfBV}
+                onChange={(e) => setSelfBV(e.target.value)}
+                placeholder="Aapka apna BV"
+                style={inputStyle}
+            />
 
-    return (
-        <form className="commission-calculator" onSubmit={handleSubmit}>
-            <div className="calc-input-group">
-                <label>Your Self Purchase BV</label>
-                <input
-                    type="tel" // 'tel' मोबाइल पर नंबर पैड खोलता है
-                    inputMode="numeric" // नंबर पैड का संकेत
-                    pattern="[0-9]*"
-                    placeholder="e.g., 5000"
-                    value={selfBV}
-                    onChange={(e) => handleSelfBVChange(e.target.value)}
-                    disabled={isLoading}
-                    required
-                />
-            </div>
+            {legs.map((leg, index) => (
+                <div key={leg.id}>
+                    <label style={{ fontSize: '14px', fontWeight: '500' }}>Leg {index + 1} BV</label>
+                    <input
+                        type="number"
+                        value={leg.bv}
+                        onChange={(e) => handleLegChange(leg.id, e.target.value)}
+                        placeholder={`Leg ${index + 1} ka total BV`}
+                        style={inputStyle}
+                    />
+                </div>
+            ))}
+            
+            <button type="button" onClick={addLeg} style={addButtonStyle}>
+                Add Leg
+            </button>
 
-            <hr className="calc-divider" />
-            
-            <label className="legs-label">Your Legs' BV</label>
-            {legs.map((leg, index) => (
-                <div key={index} className="calc-input-group leg-input">
-                    <label>Leg {String.fromCharCode(65 + index)}</label>
-                    <input
-                        type="tel"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        placeholder="e.g., 115000"
-                        value={leg.bv}
-                        onChange={(e) => handleLegChange(index, e.target.value)}
-                        disabled={isLoading}
-                    />
-                    {legs.length > 2 && ( // 2 लेग से कम होने पर X न दिखाएँ
-                        <button 
-                            type="button" 
-                            className="btn-remove-leg" 
-                            onClick={() => handleRemoveLeg(index)}
-                            disabled={isLoading}
-                            title="Remove Leg"
-                        >
-                            <X size={16} />
-                        </button>
-                    )}
-                </div>
-            ))}
-
-            <button type="button" className="btn-add-leg" onClick={handleAddLeg} disabled={isLoading}>
-                <Plus size={16} /> Add Another Leg
-            </button>
-
-            <button type="submit" className="btn-calculate" disabled={isLoading}>
-                <Calculator size={18} /> {isLoading ? 'Calculating...' : 'Calculate Commission'}
-            </button>
-        </form>
-    );
+            <button type="submit" disabled={isLoading} style={{...buttonStyle, marginTop: '10px'}}>
+                {isLoading ? 'Calculating...' : 'Calculate'}
+                <Send size={16} />
+            </button>
+        </form>
+    );
 }
 
 export default CommissionCalculator;
