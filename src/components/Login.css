@@ -1,118 +1,150 @@
-/* * CSS for User Login (src/Login.css)
- * Theme: AI Platform / Modern Tech
- */
+/* ================================================= */
+/* GLOBAL STYLES & RESET (फ़ुल स्क्रीन कवरेज) */
+/* ================================================= */
 
-.auth-container {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 100vh;
-    /* AI-themed gradient background */
-    background: linear-gradient(135deg, #050F33 0%, #1A284A 100%);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    padding: 20px;
-    box-sizing: border-box;
+/* बॉडी को फ़ुल व्यूपोर्ट (viewport) हाइट दें */
+body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; /* साफ़ और मॉडर्न फ़ॉन्ट */
+    background-color: #f4f7f9; /* हल्का, सॉफ्ट बैकग्राउंड */
 }
 
+/* कंटेनर को पूरे पेज पर फैलाएँ */
+.auth-container {
+    display: flex;
+    justify-content: center; /* हॉरिजॉन्टली सेंटर */
+    align-items: center; /* वर्टिकली सेंटर */
+    min-height: 100vh; /* कम से कम 100% व्यूपोर्ट हाइट लें */
+    padding: 20px;
+    background: linear-gradient(135deg, #e0f7fa 0%, #ffffff 100%); /* हल्का ग्रेडिएंट बैकग्राउंड */
+}
+
+/* ================================================= */
+/* AUTH CARD STYLES (लॉगिन बॉक्स) */
+/* ================================================= */
 .auth-card {
     background: #ffffff;
-    padding: 2.5rem 2.5rem;
-    border-radius: 16px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    padding: 40px;
+    border-radius: 15px; /* गोल कोने */
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1); /* गहरा, प्रोफेशनल शैडो */
     width: 100%;
-    max-width: 420px;
-    box-sizing: border-box;
+    max-width: 400px; /* अधिकतम चौड़ाई सीमित करें */
     text-align: center;
+    transition: transform 0.3s ease-in-out; /* होवर इफेक्ट के लिए ट्रांज़िशन */
+}
+
+.auth-card:hover {
+    transform: translateY(-5px); /* माउस होवर पर हल्का ऊपर उठाएँ */
 }
 
 .auth-logo {
-    width: 70px;
-    height: 70px;
-    margin-bottom: 1rem;
-    /* Prevent image drag */
-    -webkit-user-drag: none;
-    user-select: none;
+    width: 100px;
+    height: auto;
+    margin-bottom: 20px;
 }
 
-.auth-card h2 {
-    color: #1a202c; /* Dark text */
-    font-size: 1.75rem;
-    font-weight: 700;
+h2 {
+    color: #007bff; /* प्राथमिक रंग */
     margin-top: 0;
-    margin-bottom: 1.5rem;
+    margin-bottom: 25px;
+    font-weight: 600;
 }
 
-form {
-    text-align: left;
-}
-
+/* ================================================= */
+/* INPUT & FORM STYLES */
+/* ================================================= */
 .input-group {
-    margin-bottom: 1.25rem;
+    margin-bottom: 20px;
+    text-align: left;
 }
 
 .input-group label {
     display: block;
-    margin-bottom: 0.5rem;
-    font-weight: 600;
-    color: #4a5568; /* Gray text */
+    margin-bottom: 8px;
+    color: #555;
+    font-weight: 500;
+    font-size: 0.9rem;
 }
 
 .input-group input {
     width: 100%;
-    padding: 12px 15px;
-    border: 1px solid #e2e8f0; /* Light gray border */
-    border-radius: 8px;
+    padding: 12px;
+    border: 1px solid #ccc;
+    border-radius: 8px; /* इनपुट के गोल कोने */
     box-sizing: border-box;
     font-size: 1rem;
-    transition: all 0.2s ease-in-out;
+    transition: border-color 0.3s, box-shadow 0.3s;
 }
 
 .input-group input:focus {
-    border-color: #4f46e5; /* Indigo focus */
+    border-color: #007bff; /* फोकस पर प्राथमिक रंग का बॉर्डर */
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.2); /* हल्का फोकस रिंग */
     outline: none;
-    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
 }
 
+/* ================================================= */
+/* BUTTON STYLES */
+/* ================================================= */
 .auth-button {
     width: 100%;
-    padding: 14px;
+    padding: 12px;
+    background-color: #007bff; /* प्राथमिक रंग */
+    color: white;
     border: none;
     border-radius: 8px;
-    /* Attractive gradient button */
-    background: linear-gradient(90deg, #4f46e5, #7c3aed);
-    color: white;
-    font-size: 1rem;
-    font-weight: 700;
     cursor: pointer;
-    transition: transform 0.2s, box-shadow 0.2s;
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-top: 15px;
+    transition: background-color 0.3s ease, transform 0.1s ease;
 }
 
 .auth-button:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 15px rgba(79, 70, 229, 0.3);
+    background-color: #0056b3; /* होवर पर गहरा रंग */
 }
 
+.auth-button:active {
+    transform: scale(0.99); /* क्लिक पर हल्का 'प्रेस' इफेक्ट */
+}
+
+/* ================================================= */
+/* MESSAGE STYLES */
+/* ================================================= */
 .error-message {
-    color: #e53e3e; /* Red */
-    background: #fff5f5;
-    border: 1px solid #fed7d7;
+    color: #dc3545; /* लाल रंग त्रुटि के लिए */
+    background-color: #f8d7da; /* बहुत हल्का लाल बैकग्राउंड */
+    border: 1px solid #f5c6cb;
     padding: 10px;
     border-radius: 8px;
-    margin-bottom: 1rem;
-    text-align: center;
+    margin-top: 15px;
     font-size: 0.9rem;
 }
 
-/* 🛑 Removed .auth-footer and .secondary-button styles 🛑 */
+/* ================================================= */
+/* RESPONSIVENESS (सभी डिवाइसों के लिए) */
+/* ================================================= */
 
-
-/* --- Responsive Media Query --- */
-@media (max-width: 600px) {
+/* छोटे फ़ोन (Small Phones) के लिए समायोजन */
+@media (max-width: 480px) {
     .auth-card {
-        padding: 2rem 1.5rem;
+        padding: 25px;
+        margin-top: 5vh; /* ऊपर से थोड़ा मार्जिन ताकि लोगो कट न जाए */
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
     }
-    .auth-card h2 {
+
+    h2 {
         font-size: 1.5rem;
+    }
+
+    .auth-button {
+        font-size: 1rem;
     }
 }
 
+/* टैबलेट (Tablets) के लिए समायोजन (अगर ज़रूरत हो तो) */
+@media (min-width: 481px) and (max-width: 768px) {
+    .auth-card {
+        max-width: 350px;
+    }
+}
