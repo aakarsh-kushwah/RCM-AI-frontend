@@ -268,7 +268,7 @@ function LeadersVideo({ pageTitle }) {
                                         ></iframe>
                                         <div className="iframe-top-blocker"></div> 
                                         <div className="video-watermark-logo">
-                                        <img src="/rcm-ai-logo.png" alt="RCM AI" />
+                                        <img src="https://i.ibb.co/GrMTmd0/Gemini-Generated-Image-q98hyq98hyq98hyq-removebg-preview-removebg-preview.png" alt="RCM AI" />
                                         </div>
                                     </div>
                                     <div className="video-details-container">

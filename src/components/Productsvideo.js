@@ -313,7 +313,7 @@ function Productsvideo({ pageTitle }) {
                                         {selectedVideo.category && (
                                             <span className='video-category-tag'>{selectedVideo.category}</span>
                                         )}
-                                       
+                                        
                                         <div className="video-description">
                                             <p>{selectedVideo.description || 'Video description will be displayed here.'}</p>
                                         </div>
