@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { useLocation, useNavigate } from 'react-router-dom';
-// ✅ CSS file ka naya naam import karein
 import './Productsvideo.css'; 
 import { Search, PlayCircle, X, ArrowLeft } from 'lucide-react';
 
@@ -25,7 +24,19 @@ function useDebounce(value, delay) {
     return debouncedValue;
 }
 
-// --- Memoized Components (Unchanged) ---
+// --- ⭐️ NAYA: Sidebar Skeleton Loader ---
+const SkeletonSidebarItem = () => (
+  <div className="video-list-item skeleton">
+    <div className="item-thumbnail skeleton-box"></div>
+    <div className="item-details">
+      <div className="item-title skeleton-box skeleton-title"></div>
+      <div className="item-subtitle skeleton-box skeleton-subtitle"></div>
+    </div>
+  </div>
+);
+
+
+// --- Memoized Components (⭐️ UPDATED) ---
 const VideoSidebarItem = React.memo(({ video, onVideoSelect, isActive }) => {
     const thumbnailUrl = video.thumbnailUrl; 
     return (
@@ -34,7 +45,17 @@ const VideoSidebarItem = React.memo(({ video, onVideoSelect, isActive }) => {
             onClick={() => onVideoSelect(video)}
         >
             <div className="item-thumbnail">
-                {thumbnailUrl ? <img src={thumbnailUrl} alt={video.title} onError={(e) => e.target.src = 'https://placehold.co/120x68/e0e0e0/777?text=RCM'} /> : <PlayCircle size={40} />}
+                {thumbnailUrl ? (
+                    // ⭐️ UPDATE: Added loading="lazy", width, height
+                    <img 
+                      src={thumbnailUrl} 
+                      alt={video.title} 
+                      onError={(e) => e.target.src = 'https://placehold.co/120x68/e0e0e0/777?text=RCM'} 
+                      loading="lazy"
+                      width="120"
+                      height="68"
+                    />
+                ) : <PlayCircle size={40} />}
             </div>
             <div className="item-details">
                 <h4 className="item-title">{video.title}</h4>
@@ -48,7 +69,15 @@ const VideoGridItem = React.memo(({ video, onVideoSelect }) => (
     <div className="video-grid-item" onClick={() => onVideoSelect(video)}>
         <div className="grid-item-thumbnail">
             {video.thumbnailUrl ? (
-                 <img src={video.thumbnailUrl} alt={video.title} onError={(e) => e.target.src = 'https://placehold.co/320x180/e0e0e0/777?text=RCM'} />
+                 // ⭐️ UPDATE: Added loading="lazy", width, height
+                 <img 
+                   src={video.thumbnailUrl} 
+                   alt={video.title} 
+                   onError={(e) => e.target.src = 'https://placehold.co/320x180/e0e0e0/777?text=RCM'} 
+                   loading="lazy"
+                   width="320"
+                   height="180"
+                 />
             ) : (
                  <div className="thumbnail-placeholder"><PlayCircle size={40} /></div>
             )}
@@ -61,8 +90,7 @@ const VideoGridItem = React.memo(({ video, onVideoSelect }) => (
 ));
 
 
-// --- ✅ Mukhya Component (Rename aur Refactor) ---
-// 'videoType' prop hata diya gaya hai
+// --- Mukhya Component (Main Logic Unchanged) ---
 function Productsvideo({ pageTitle }) {
     const [allVideos, setAllVideos] = useState([]);
     const [selectedVideo, setSelectedVideo] = useState(null); 
@@ -85,7 +113,7 @@ function Productsvideo({ pageTitle }) {
     const location = useLocation();
     const navigate = useNavigate();
 
-    // --- API Call (✅ Simplified) ---
+    // --- API Call (Unchanged) ---
     const fetchVideos = useCallback(async (pageNum, isInitialLoad = false, category = selectedCategory) => {
         if (!token || !API_URL) {
              setError("Authentication error. Please log in again.");
@@ -98,10 +126,8 @@ function Productsvideo({ pageTitle }) {
         
         const limit = 20;
         
-        // ✅ URL ab hamesha 'products' ke liye hai
         let url = `${API_URL}/api/videos/products?page=${pageNum}&limit=${limit}`;
         
-        // ✅ 'videoType' check ki zaroorat nahi
         if (category !== 'All') {
             url += `&category=${encodeURIComponent(category)}`;
         }
@@ -114,7 +140,6 @@ function Productsvideo({ pageTitle }) {
                 setAllVideos(prev => isInitialLoad ? newData : [...prev, ...newData]);
                 
                 if (isInitialLoad && newData.length > 0 && !selectedVideo) {
-                    // ✅ 'videoType' check ki zaroorat nahi
                     if (location.state && location.state.selectedVideo) {
                         setSelectedVideo(location.state.selectedVideo);
                     } else {
@@ -134,7 +159,7 @@ function Productsvideo({ pageTitle }) {
         }
     }, [token, API_URL, selectedVideo, selectedCategory, location.state]);
 
-    // --- Initial Data Load (✅ Simplified) ---
+    // --- Initial Data Load (Unchanged) ---
     useEffect(() => {
         if (token && API_URL) {
             setPage(1); 
@@ -143,7 +168,6 @@ function Productsvideo({ pageTitle }) {
             
             let initialVideo = null;
             if (location.state && location.state.selectedVideo) {
-                 // ✅ 'videoType' check ki zaroorat nahi
                  setSelectedVideo(location.state.selectedVideo);
                  initialVideo = location.state.selectedVideo;
                  navigate(location.pathname, { replace: true, state: {} });
@@ -156,7 +180,7 @@ function Productsvideo({ pageTitle }) {
             });
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [token, API_URL, selectedCategory]); // 'videoType' dependency se hata diya gaya hai
+    }, [token, API_URL, selectedCategory]); 
 
 
     // --- Filtered Videos (Unchanged) ---
@@ -216,8 +240,8 @@ function Productsvideo({ pageTitle }) {
         setSearchTerm('');
     }, []);
 
+    // --- JSX Return (⭐️ UPDATED) ---
     return (
-        // ✅ Component ka mukhya class naam bhi badal sakte hain, lekin CSS se match hona zaroori hai
         <div className="product-video-page"> 
             <div className="page-header">
                 <button onClick={() => navigate('/dashboard')} className="back-to-dashboard">
@@ -238,7 +262,6 @@ function Productsvideo({ pageTitle }) {
                 </div>
             </div>
 
-            {/* --- Category Cards (✅ Ab hamesha dikhenge) --- */}
             <div className="category-cards-container">
                 <div className="category-cards-scroll">
                     {productCategories.map(cat => (
@@ -284,6 +307,7 @@ function Productsvideo({ pageTitle }) {
                     ) : (
                         // --- 1B. Bada Player ---
                         <>
+                            {/* ⭐️ UPDATE: Skeleton loader CSS class pehle se hi yahaan tha, perfect! */}
                             {loading && <div className="video-skeleton-loader"></div>}
                             {error && <div className="video-error-message">{error}</div>}
                             {!selectedVideo && !loading && !error && allVideos.length === 0 && (
@@ -330,9 +354,19 @@ function Productsvideo({ pageTitle }) {
                         {selectedCategory !== 'All' ? `${selectedCategory} Videos` : 'All Videos'}
                     </h3>
                     <div className="video-list-scroll">
-                        {loading && !loadingMore && allVideos.length === 0 && <p className="sidebar-message">Loading list...</p>}
                         
-                        {filteredVideos.map((video) => (
+                        {/* ⭐️ UPDATE: Replaced "Loading list..." with Skeleton Loaders */}
+                        {loading && !loadingMore && allVideos.length === 0 && (
+                          <>
+                            <SkeletonSidebarItem />
+                            <SkeletonSidebarItem />
+                            <SkeletonSidebarItem />
+                            <SkeletonSidebarItem />
+                            <SkeletonSidebarItem />
+                          </>
+                        )}
+                        
+                        {!loading && filteredVideos.map((video) => (
                             <VideoSidebarItem
                                 key={video.id || video.publicId}
                                 video={video}
@@ -356,7 +390,7 @@ function Productsvideo({ pageTitle }) {
                 </div>
             </div>
 
-            {/* --- 3. Mini-Player --- */}
+            {/* --- 3. Mini-Player (Unchanged) --- */}
             {isMiniPlayer && selectedVideo && (
                 <div className="mini-player" onClick={maximizePlayer}>
                     <div className="mini-player-video-wrapper">
