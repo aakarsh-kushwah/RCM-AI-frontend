@@ -50,11 +50,11 @@ body {
     background-color: var(--color-gray-900);
 }
 
-/* --- 2. Keyframe Animations (Modal) --- */
-@keyframes modal-bg-fade-in { from { opacity: 0; } to { opacity: 1; } }
-@keyframes modal-scale-in {
-    from { opacity: 0; transform: scale(0.95) translateY(20px); }
-    to { opacity: 1; transform: scale(1) translateY(0); }
+/* --- 2. Keyframe Animations --- */
+@keyframes gemini-text-flow {
+    0%{background-position:0% 50%}
+    50%{background-position:100% 50%}
+    100%{background-position:0% 50%}
 }
 
 /* --- 3. Logged Out View --- */
@@ -72,39 +72,78 @@ body {
 .dashboard-container { display: flex; min-height: 100vh; }
 .main-content { flex-grow: 1; padding: 1rem; transition: all 0.3s ease; }
 
-/* --- ⭐️ UPDATE: Main Header --- */
+/* --- ⭐️ UPDATE: Metallic 3D Main Header --- */
 .main-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding-bottom: 1.5rem; 
-    margin-bottom: 1rem; 
+    display: flex; 
+    align-items: center; 
+    justify-content: space-between;
+    padding: 0.75rem 1rem; 
+    margin-bottom: 1.5rem; 
+    border-radius: 0.75rem; 
+    background: linear-gradient(180deg, var(--color-gray-100) 0%, var(--color-gray-200) 100%);
+    border: 1px solid var(--color-gray-300);
+    border-top-color: var(--color-white);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.05), 
+                inset 0 1px 1px var(--color-white);
 }
+.dark .main-header {
+    background: linear-gradient(180deg, var(--color-gray-800) 0%, var(--color-gray-900) 100%);
+    border: 1px solid var(--color-gray-950);
+    border-top-color: var(--color-gray-700);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2), 
+                inset 0 1px 1px var(--color-gray-700);
+}
+
 .main-header-left { display: flex; align-items: center; gap: 1rem; }
+
+/* ⭐️ Logo Bada Kiya Gaya */
 .header-logo {
-    width: 44px; 
-    height: 44px;
+    width: 56px;  /* 48px se 56px kiya gaya */
+    height: 56px; /* 48px se 56px kiya gaya */
     flex-shrink: 0;
 }
 .header-logo img {
-    width: 100%;
-    height: 100%;
-    border-radius: 0.375rem; 
+    width: 272%;
+    height: 272%;
+    border-radius: 0.375rem;
+    margin-left: -86%;
+    margin-top: -80%;
 }
 .header-title-wrapper { line-height: 1.3; }
+
+/* Gemini Text Gradient Title */
 .main-header-title { 
-    font-size: 1.875rem; font-weight: 800; 
-    color: var(--color-gray-900); 
+    font-size: 2rem; 
+    font-weight: 800; 
     margin: 0; 
+    background: linear-gradient(90deg, 
+        var(--rcm-blue), 
+        #9B59B6, 
+        var(--rcm-orange), 
+        #34A853, 
+        var(--rcm-blue));
+    background-size: 300% 300%;
+    animation: gemini-text-flow 10s ease infinite;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-fill-color: transparent;
 }
-.dark .main-header-title { color: var(--color-white); }
+.dark .main-header-title { 
+    color: unset; 
+    text-shadow: none; 
+}
+/* --- End Header Title Update --- */
+
 .main-header-tagline {
     margin: 0; font-size: 0.9rem;
-    font-weight: 500; color: var(--color-gray-500);
+    font-weight: 500; color: var(--color-gray-600);
 }
 .dark .main-header-tagline { color: var(--color-gray-400); }
 .main-header-right { width: 2rem; height: 2rem; }
 /* --- End Header Update --- */
 
-/* --- 5. ⭐️ UPDATE: Sidebar Styles --- */
+/* --- 5. Sidebar Styles (Bina Pic) --- */
 .sidebar-overlay { position: fixed; inset: 0; background-color: rgba(0, 0, 0, 0.4); z-index: 40; }
 .sidebar {
     position: fixed; top: 0; left: 0; height: 100vh; width: 16rem; 
@@ -112,8 +151,12 @@ body {
     display: flex; flex-direction: column; 
     box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.25);
     z-index: 50; transition: transform 0.3s ease-in-out; transform: translateX(-100%);
+    border-right: 1px solid var(--color-gray-950);
 }
-.dark .sidebar { background-color: var(--color-gray-900); }
+.dark .sidebar { 
+    background-color: var(--color-gray-900); 
+    border-right-color: var(--color-black);
+}
 .sidebar-open { transform: translateX(0); }
 .sidebar-content { 
     padding: 1.5rem; 
@@ -134,42 +177,11 @@ body {
     border: 1px solid rgba(59, 130, 246, 0.2);
     border-radius: 0.75rem;
     margin-bottom: 1.5rem; 
-    text-align: center;
+    text-align: left; 
 }
 .dark .user-profile {
     background: rgba(96, 165, 250, 0.1);
     border-color: rgba(96, 165, 250, 0.2);
-}
-
-.profile-pic-container {
-    position: relative;
-    width: 64px; 
-    height: 64px;
-    cursor: pointer;
-    border-radius: 50%;
-    margin: 0 auto 0.75rem auto; 
-}
-.user-profile-pic {
-    width: 100%;
-    height: 100%;
-    border-radius: 50%;
-    object-fit: cover;
-    border: 3px solid var(--color-blue-500);
-}
-.profile-pic-overlay {
-    position: absolute;
-    inset: 0;
-    background-color: rgba(0,0,0,0.6);
-    color: white;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-    opacity: 0;
-    transition: opacity 0.2s ease;
-}
-.profile-pic-container:hover .profile-pic-overlay {
-    opacity: 1;
 }
 
 .user-profile-details {
@@ -200,8 +212,10 @@ body {
     padding: 1rem;
     border-top: 1px solid rgba(55, 65, 81, 0.5); 
     flex-shrink: 0; 
+    background-color: var(--color-gray-800);
 }
 .dark .sidebar-footer {
+    background-color: var(--color-gray-900);
     border-color: var(--color-gray-700);
 }
 .logout-button {
@@ -218,7 +232,7 @@ body {
 /* --- End Sidebar Update --- */
 
 
-/* --- 6. ⭐️ UPDATE: 3D Metal Card --- */
+/* --- 6. 3D Metal Card --- */
 .dashboard-grid { 
     display: grid; 
     grid-template-columns: 1fr; 
@@ -241,10 +255,12 @@ body {
     box-shadow: 0 25px 40px -10px rgba(0,0,0,0.3); 
     transform: scale(1.03); 
 }
-.ai-assistant-card-content {background: linear-gradient(160deg, #727282, #000000);
+.ai-assistant-card-content {
+    background: linear-gradient(160deg, var(--color-gray-800), var(--color-gray-950));
     padding: 1.5rem; 
     border-radius: 1.5rem; 
-    height: 81%;
+    height: 100%; 
+    box-sizing: border-box; 
     display: flex; flex-direction: column; justify-content: space-between;
     position: relative; overflow: hidden; z-index: 1;
     box-shadow: inset 0 4px 6px rgba(0,0,0,0.4), 
@@ -270,7 +286,7 @@ body {
     left: calc(100% + 180px); 
     transition-duration: 0.7s; 
 }
-.ai-assistant-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; position: relative; z-index: 3; }
+.ai-assistant-card-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 1rem; position: relative; z-index: 3; }
 .ai-assistant-card-badge { font-size: 0.875rem; font-weight: 600; color: rgba(255, 255, 255, 0.7); letter-spacing: 0.1em; }
 .ai-assistant-card-title { font-size: 2.25rem; font-weight: 800; color: var(--color-white); margin-bottom: 0.5rem; margin-top: 0; position: relative; z-index: 3; }
 .ai-assistant-card-description { font-size: 0.875rem; font-weight: 300; color: rgba(209, 213, 219, 0.8); margin-bottom: 1.5rem; position: relative; z-index: 3; }
@@ -313,11 +329,7 @@ body {
 .dashboard-card-wrapper:hover .dashboard-card-cta { color: var(--color-blue-600); }
 
 
-/* --- 7. ❌ VIDEO STYLES (HATA DIYE GAYE) --- */
-/* (Saare video styles yahan se hata diye gaye hain) */
-
-
-/* --- 8. ⭐️ UPDATE: Icon Helpers & Mobile Toggle --- */
+/* --- 7. Icon Helpers & Mobile Toggle --- */
 .icon-blue { width: 1.75rem; height: 1.75rem; color: var(--color-blue-600); }
 .dark .icon-blue { color: var(--color-blue-400); }
 .icon-xs { width: 1.5rem; height: 1.5rem; }
@@ -330,146 +342,45 @@ body {
 .icon-small { width: 1.5rem; height: 1.5rem; }
 
 .mobile-menu-btn {
-    background: var(--color-white);
-    border: 1px solid var(--color-gray-200);
+    background: linear-gradient(180deg, var(--color-gray-200), var(--color-gray-100));
+    border: 1px solid var(--color-gray-300);
+    border-top-color: var(--color-white);
     border-radius: 0.5rem;
     padding: 0.5rem;
-    color: var(--color-gray-600);
+    color: var(--color-gray-700);
     cursor: pointer;
     transition: all 0.2s ease;
     display: flex; 
     align-items: center;
     justify-content: center;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1), inset 0 1px 0 var(--color-white);
 }
 .mobile-menu-btn:hover {
-    background: var(--color-gray-50);
+    background: linear-gradient(180deg, var(--color-gray-100), var(--color-gray-200));
     color: var(--rcm-blue);
-    box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+}
+.mobile-menu-btn:active {
+    background: var(--color-gray-200);
+    transform: translateY(1px);
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
 }
 .dark .mobile-menu-btn {
-    background: var(--color-gray-800);
-    border-color: var(--color-gray-700);
-    color: var(--color-gray-300);
+    background: linear-gradient(180deg, var(--color-gray-700), var(--color-gray-800));
+    border-color: var(--color-gray-900);
+    border-top-color: var(--color-gray-600);
+    color: var(--color-gray-200);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.3), inset 0 1px 0 var(--color-gray-600);
 }
 .dark .mobile-menu-btn:hover {
-    background: var(--color-gray-700);
+    background: linear-gradient(180deg, var(--color-gray-600), var(--color-gray-700));
     color: var(--rcm-orange);
 }
-/* --- End Icon/Toggle Update --- */
-
-/* --- ⭐️ NAYA: Profile Pic Modal --- */
-.profile-modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.7);
-    z-index: 2000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 1rem;
-    animation: modal-bg-fade-in 0.3s ease forwards;
-}
-.profile-modal-content {
-    background: var(--color-white);
-    border-radius: 0.75rem;
-    width: 100%;
-    max-width: 400px;
-    padding: 1.5rem;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-    animation: modal-scale-in 0.3s ease forwards;
-}
-.dark .profile-modal-content {
+.dark .mobile-menu-btn:active {
     background: var(--color-gray-800);
-}
-.profile-modal-title {
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: var(--color-gray-900);
-    margin-top: 0;
-    margin-bottom: 1.5rem;
-    text-align: center;
-}
-.dark .profile-modal-title {
-    color: var(--color-white);
-}
-.profile-modal-image-wrapper {
-    width: 200px;
-    height: 200px;
-    border-radius: 50%;
-    overflow: hidden;
-    margin: 0 auto 1.5rem auto;
-    border: 4px solid var(--color-gray-200);
-    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-}
-.dark .profile-modal-image-wrapper {
-    border-color: var(--color-gray-700);
-}
-.profile-modal-image {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-}
-.profile-modal-actions {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-}
-.profile-modal-btn {
-    width: 100%;
-    padding: 0.75rem;
-    border: none;
-    border-radius: 0.5rem;
-    font-size: 1rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-.profile-modal-btn.primary {
-    background: var(--rcm-blue);
-    color: var(--color-white);
-}
-.profile-modal-btn.primary:hover {
-    background: #0a367e;
-}
-.profile-modal-btn.secondary {
-    background: var(--color-gray-200);
-    color: var(--color-gray-800);
-}
-.profile-modal-btn.secondary:hover {
-    background: var(--color-gray-300);
-}
-.dark .profile-modal-btn.secondary {
-    background: var(--color-gray-700);
-    color: var(--color-white);
-}
-.dark .profile-modal-btn.secondary:hover {
-    background: var(--color-gray-600);
-}
-.profile-modal-btn.tertiary {
-    background: none;
-    color: var(--color-gray-600);
-}
-.dark .profile-modal-btn.tertiary {
-    color: var(--color-gray-400);
-}
-.profile-modal-btn.tertiary:hover {
-    background: var(--color-gray-100);
-}
-.dark .profile-modal-btn.tertiary:hover {
-    background: var(--color-gray-700);
-}
-.profile-modal-btn:disabled {
-    background: var(--color-gray-300);
-    color: var(--color-gray-500);
-    cursor: not-allowed;
-}
-.dark .profile-modal-btn:disabled {
-    background: var(--color-gray-600);
-    color: var(--color-gray-400);
+    box-shadow: inset 0 2px 3px rgba(0,0,0,0.5);
 }
 
-/* --- 9. Responsive Layout --- */
+/* --- 8. Responsive Layout --- */
 @media (min-width: 768px) {
     .main-content { padding: 2rem; }
     .mobile-menu-btn { display: none; }
@@ -491,9 +402,17 @@ body {
 
 @media (max-width: 767px) {
     .main-content { padding-left: 0.5rem; padding-right: 0.5rem; }
-    .main-header { margin-bottom: 0.5rem; padding-bottom: 1rem; border-bottom: 1px solid var(--color-gray-200); }
+    .main-header { 
+        margin-bottom: 0.5rem; 
+        padding: 0.75rem; 
+    } 
     .dark .main-header { border-color: var(--color-gray-700); }
-    .header-logo { width: 40px; height: 40px; } 
+    
+    /* ⭐️ Mobile Logo Bada Kiya Gaya */
+    .header-logo { 
+        width: 44px; 
+        height: 44px; 
+    } 
     .main-header-title { font-size: 1.5rem; }
     .main-header-tagline { display: none; }
 }

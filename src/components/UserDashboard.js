@@ -1,82 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-// ❌ 'axios' hata diya gaya hai (is file mein zaroorat nahin)
-// ✅ 'useAuth' hata diya gaya hai (kyonki token/API_URL ki zaroorat nahin)
 import { useNavigate } from 'react-router-dom';
-import { Menu, X, Bot, Zap, Video, Star, Camera } from 'lucide-react';
+import { Menu, X, Bot, Zap, Video, Star } from 'lucide-react';
 import './UserDashboard.css'; 
 
-// =================================================================================
-// ❌ VIDEO PLAYER COMPONENTS YAHAN SE HATA DIYE GAYE HAIN
-// (Yeh code 'Productsvideo.jsx' aur 'LeadersVideo.jsx' files mein rahega)
-// =================================================================================
-
-
-// =================================================================================
-// ⭐️ NAYA: Profile Pic Modal Component
-// (Is component mein koi badlaav nahin hai)
-// =================================================================================
-const ProfileModal = ({ 
-    isOpen, 
-    onClose, 
-    onSave, 
-    currentPic, 
-    newPicPreview,
-    onUploadClick,
-    isSaving // ✅ 'isSaving' ko props se le rahe hain
-}) => {
-    if (!isOpen) return null;
-
-    return (
-        <div className="profile-modal-backdrop" onClick={onClose}>
-            <div className="profile-modal-content" onClick={e => e.stopPropagation()}>
-                <h3 className="profile-modal-title">Profile Picture</h3>
-                
-                <div className="profile-modal-image-wrapper">
-                    <img 
-                        src={newPicPreview || currentPic} 
-                        alt="Profile Preview" 
-                        className="profile-modal-image"
-                    />
-                </div>
-
-                <div className="profile-modal-actions">
-                    <button 
-                        className="profile-modal-btn primary"
-                        onClick={onUploadClick}
-                        disabled={isSaving}
-                    >
-                        Upload New Photo
-                    </button>
-                    <button 
-                        className="profile-modal-btn secondary"
-                        onClick={onSave}
-                        disabled={!newPicPreview || isSaving}
-                    >
-                        {isSaving ? 'Saving...' : 'Save Changes'}
-                    </button>
-                    <button 
-                        className="profile-modal-btn tertiary"
-                        onClick={onClose}
-                        disabled={isSaving}
-                    >
-                        Cancel
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-
-// =================================================================================
-// ⭐️ MUKHYA DASHBOARD COMPONENT (Updated)
-// =================================================================================
+// ❌ Profile Pic Modal aur logic hata diya gaya hai
 
 const LoggedOutMessage = () => (
     <div className="logged-out-container">
         <h2 className="logged-out-title">Logged Out Successfully</h2>
         <p className="logged-out-subtitle">Thank you for using RCM AI. Please log in again to access your dashboard.</p>
-        <p className="logged-out-note">Note: Since this is a single-file demo, full page redirect is not possible.</p>
+        <p className="logged-out-note">Login page redirect is handled by routing.</p>
     </div>
 );
 
@@ -85,15 +18,7 @@ function UserDashboard() {
     const [isLoggedOut, setIsLoggedOut] = useState(false);
     
     const navigate = useNavigate(); 
-    const fileInputRef = useRef(null);
-    // ❌ 'token' aur 'API_URL' yahan se hata diye gaye hain
-
-    // Profile Pic States
-    const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
-    // ❌ 'isSavingPic' state hata diya gaya hai (ab zaroorat nahin)
-    const [newProfilePicPreview, setNewProfilePicPreview] = useState(null);
     const [userData, setUserData] = useState(() => JSON.parse(localStorage.getItem('userData')) || {});
-    const [profilePic, setProfilePic] = useState(''); 
     
     const userName = userData.fullName || 'RCM User';
     const userEmail = userData.email || 'No Email Provided';
@@ -102,12 +27,6 @@ function UserDashboard() {
     useEffect(() => {
         const savedUserData = JSON.parse(localStorage.getItem('userData')) || {};
         setUserData(savedUserData); 
-        
-        if (savedUserData?.profilePic && savedUserData.profilePic.startsWith('data:image')) {
-            setProfilePic(savedUserData.profilePic);
-        } else {
-            setProfilePic(`https://ui-avatars.com/api/?name=${savedUserData.fullName || 'RCM User'}&background=3b82f6&color=fff&size=100&rounded=true&bold=true`);
-        }
     }, []); 
 
     const handleLogout = () => {
@@ -116,51 +35,6 @@ function UserDashboard() {
         localStorage.removeItem('userData');
         setIsLoggedOut(true);
     };
-
-    // --- Profile Pic Handlers ---
-    const handleProfilePicClick = () => {
-        setIsProfileModalOpen(true);
-    };
-
-    const handleUploadClick = () => {
-        fileInputRef.current.click();
-    };
-
-    const handleProfilePicChange = (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                const base64String = reader.result;
-                setNewProfilePicPreview(base64String); 
-            };
-            reader.readAsDataURL(file);
-        }
-    };
-
-    // ✅ LOCALSTORAGE MEIN SAVE KARNE WALA FUNCTION
-    const handleSaveProfilePic = () => {
-        if (!newProfilePicPreview) return;
-
-        try {
-            setProfilePic(newProfilePicPreview);
-            const updatedUserData = { ...userData, profilePic: newProfilePicPreview };
-            setUserData(updatedUserData); 
-            localStorage.setItem('userData', JSON.stringify(updatedUserData)); 
-            handleCloseProfileModal();
-            
-        } catch (error) {
-            console.error("Error saving profile picture to localStorage:", error);
-            alert("Error saving picture. Storage may be full.");
-        }
-    };
-
-    const handleCloseProfileModal = () => {
-        setIsProfileModalOpen(false);
-        setNewProfilePicPreview(null); 
-    };
-    // --- End Profile Pic Handlers ---
-
 
     const DashboardCard = ({ title, description, icon, cta, onClick, cardId }) => {
         return (
@@ -182,29 +56,11 @@ function UserDashboard() {
     };
 
     if (isLoggedOut) {
-        return <LoggedOutMessage />;
+        return <LoggedOutMessage />; 
     }
 
     return (
         <>
-            <input 
-                type="file"
-                ref={fileInputRef}
-                onChange={handleProfilePicChange}
-                style={{ display: 'none' }}
-                accept="image/png, image/jpeg"
-            />
-            
-            <ProfileModal
-                isOpen={isProfileModalOpen}
-                onClose={handleCloseProfileModal}
-                onSave={handleSaveProfilePic}
-                currentPic={profilePic}
-                newPicPreview={newProfilePicPreview}
-                onUploadClick={handleUploadClick}
-                isSaving={false} // ✅ 'isSavingPic' state ki jagah false bhej rahe hain
-            />
-
             <div className="dashboard-container">
                 {isSidebarOpen && (
                     <div
@@ -227,16 +83,6 @@ function UserDashboard() {
                         </div>
                         
                         <div className="user-profile">
-                            <div className="profile-pic-container" onClick={handleProfilePicClick} title="Change profile picture">
-                                <img 
-                                    src={profilePic} 
-                                    alt="Profile" 
-                                    className="user-profile-pic"
-                                />
-                                <div className="profile-pic-overlay">
-                                    <Camera size={24} />
-                                </div>
-                            </div>
                             <div className="user-profile-details">
                                 <h4 className="user-profile-name">{userName}</h4>
                                 <p className="user-profile-email">{userEmail}</p>
@@ -268,7 +114,8 @@ function UserDashboard() {
                                 <img src="https://i.ibb.co/GrMTmd0/Gemini-Generated-Image-q98hyq98hyq98hyq-removebg-preview-removebg-preview.png" alt="RCM AI Logo" />
                             </div>
                             <div className="header-title-wrapper">
-                                <h1 className="main-header-title">
+                                {/* ✅ Naya 'gemini-text-gradient' class add kiya gaya hai */}
+                                <h1 className="main-header-title gemini-text-gradient">
                                     RCM AI Hub
                                 </h1>
                                 <p className="main-header-tagline">Your Business, Amplified</p>
