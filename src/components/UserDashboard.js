@@ -1,9 +1,22 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react'; // ❌ 'useRef' yahan se hata diya gaya hai
 import { useNavigate } from 'react-router-dom';
-import { Menu, X, Bot, Zap, Video, Star } from 'lucide-react';
+import { Menu, X, Bot, Zap, Video, Star } from 'lucide-react'; // ❌ 'Camera' hata diya gaya hai
 import './UserDashboard.css'; 
 
-// ❌ Profile Pic Modal aur logic hata diya gaya hai
+// =================================================================================
+// ❌ VIDEO PLAYER COMPONENTS YAHAN SE HATA DIYE GAYE HAIN
+// (Yeh code 'Productsvideo.jsx' aur 'LeadersVideo.jsx' files mein rahega)
+// =================================================================================
+
+
+// =================================================================================
+// ❌ Profile Pic Modal Component YAHAN SE HATA DIYA GAYA HAI
+// =================================================================================
+
+
+// =================================================================================
+// ⭐️ MUKHYA DASHBOARD COMPONENT (Updated)
+// =================================================================================
 
 const LoggedOutMessage = () => (
     <div className="logged-out-container">
@@ -18,6 +31,9 @@ function UserDashboard() {
     const [isLoggedOut, setIsLoggedOut] = useState(false);
     
     const navigate = useNavigate(); 
+    // ❌ fileInputRef (useRef) hata diya gaya hai
+
+    // ❌ Profile Pic States hata diye gaye hain
     const [userData, setUserData] = useState(() => JSON.parse(localStorage.getItem('userData')) || {});
     
     const userName = userData.fullName || 'RCM User';
@@ -35,6 +51,8 @@ function UserDashboard() {
         localStorage.removeItem('userData');
         setIsLoggedOut(true);
     };
+
+    // ❌ Sabhi Profile Pic Handlers hata diye gaye hain
 
     const DashboardCard = ({ title, description, icon, cta, onClick, cardId }) => {
         return (
@@ -56,11 +74,14 @@ function UserDashboard() {
     };
 
     if (isLoggedOut) {
+        // Asli redirect ab ProtectedRoute handle karega
         return <LoggedOutMessage />; 
     }
 
     return (
         <>
+            {/* ❌ Input aur Modal JSX hata diya gaya hai */}
+
             <div className="dashboard-container">
                 {isSidebarOpen && (
                     <div
@@ -83,6 +104,7 @@ function UserDashboard() {
                         </div>
                         
                         <div className="user-profile">
+                            {/* ❌ Pic Container Hata Diya Gaya Hai */}
                             <div className="user-profile-details">
                                 <h4 className="user-profile-name">{userName}</h4>
                                 <p className="user-profile-email">{userEmail}</p>
@@ -114,7 +136,6 @@ function UserDashboard() {
                                 <img src="https://i.ibb.co/GrMTmd0/Gemini-Generated-Image-q98hyq98hyq98hyq-removebg-preview-removebg-preview.png" alt="RCM AI Logo" />
                             </div>
                             <div className="header-title-wrapper">
-                                {/* ✅ Naya 'gemini-text-gradient' class add kiya gaya hai */}
                                 <h1 className="main-header-title gemini-text-gradient">
                                     RCM AI Hub
                                 </h1>
