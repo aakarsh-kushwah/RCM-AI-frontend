@@ -27,7 +27,7 @@ function PaymentPage() {
       }
 
       const res = await fetch(
-        `${process.env.REACT_APP_API_URL}/api/payments/create-subscription`,
+        `${process.env.REACT_APP_API_URL}/api/payment/create-subscription`,
         {
           method: "POST",
           headers: {
@@ -60,7 +60,7 @@ function PaymentPage() {
         handler: async function (response) {
           try {
             const verifyRes = await fetch(
-              `${process.env.REACT_APP_API_URL}/api/payments/verify-payment`,
+              `${process.env.REACT_APP_API_URL}/api/payment/verify-payment`,
               {
                 method: "POST",
                 headers: {
