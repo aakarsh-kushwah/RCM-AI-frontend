@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-
+import './RegisterPage.css'; 
 function RegisterPage() {
   const [fullName, setFullName] = useState('');
   const [rcmId, setRcmId] = useState('');

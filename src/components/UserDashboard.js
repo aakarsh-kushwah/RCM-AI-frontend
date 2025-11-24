@@ -1,23 +1,9 @@
-import React, { useState, useEffect } from 'react'; // ❌ 'useRef' yahan se hata diya gaya hai
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Menu, X, Bot, Zap, Video, Star } from 'lucide-react'; // ❌ 'Camera' hata diya gaya hai
+import { Menu, X, Bot, Zap, Video, Star, TrendingUp } from 'lucide-react'; // ✅ Added TrendingUp
 import './UserDashboard.css'; 
 
-// =================================================================================
-// ❌ VIDEO PLAYER COMPONENTS YAHAN SE HATA DIYE GAYE HAIN
-// (Yeh code 'Productsvideo.jsx' aur 'LeadersVideo.jsx' files mein rahega)
-// =================================================================================
-
-
-// =================================================================================
-// ❌ Profile Pic Modal Component YAHAN SE HATA DIYA GAYA HAI
-// =================================================================================
-
-
-// =================================================================================
-// ⭐️ MUKHYA DASHBOARD COMPONENT (Updated)
-// =================================================================================
-
+// ... (LoggedOutMessage component stays the same) ...
 const LoggedOutMessage = () => (
     <div className="logged-out-container">
         <h2 className="logged-out-title">Logged Out Successfully</h2>
@@ -31,9 +17,6 @@ function UserDashboard() {
     const [isLoggedOut, setIsLoggedOut] = useState(false);
     
     const navigate = useNavigate(); 
-    // ❌ fileInputRef (useRef) hata diya gaya hai
-
-    // ❌ Profile Pic States hata diye gaye hain
     const [userData, setUserData] = useState(() => JSON.parse(localStorage.getItem('userData')) || {});
     
     const userName = userData.fullName || 'RCM User';
@@ -51,8 +34,6 @@ function UserDashboard() {
         localStorage.removeItem('userData');
         setIsLoggedOut(true);
     };
-
-    // ❌ Sabhi Profile Pic Handlers hata diye gaye hain
 
     const DashboardCard = ({ title, description, icon, cta, onClick, cardId }) => {
         return (
@@ -74,14 +55,11 @@ function UserDashboard() {
     };
 
     if (isLoggedOut) {
-        // Asli redirect ab ProtectedRoute handle karega
         return <LoggedOutMessage />; 
     }
 
     return (
         <>
-            {/* ❌ Input aur Modal JSX hata diya gaya hai */}
-
             <div className="dashboard-container">
                 {isSidebarOpen && (
                     <div
@@ -104,14 +82,12 @@ function UserDashboard() {
                         </div>
                         
                         <div className="user-profile">
-                            {/* ❌ Pic Container Hata Diya Gaya Hai */}
                             <div className="user-profile-details">
                                 <h4 className="user-profile-name">{userName}</h4>
                                 <p className="user-profile-email">{userEmail}</p>
                                 <p className="user-profile-id">ID: {rcmId}</p>
                             </div>
                         </div>
-
                     </div>
 
                     <div className="sidebar-footer">
@@ -147,6 +123,8 @@ function UserDashboard() {
                     
                     <main className="dashboard-main">
                         <div className="dashboard-grid">
+                            
+                            {/* AI Chat Card */}
                             <div
                                 className="ai-assistant-card-wrapper"
                                 onClick={() => navigate('/chat')} 
@@ -168,6 +146,17 @@ function UserDashboard() {
                                 </div>
                             </div>
                             
+                            {/* ✅ NEW: Daily PV Report Card */}
+                            <DashboardCard
+                                cardId="daily-report-card"
+                                title="Daily PV Report"
+                                description="Track your daily Personal Volume, monitor growth, and analyze your business consistency."
+                                icon={<TrendingUp className="icon-medium-orange" />}
+                                cta="Track PV"
+                                onClick={() => navigate('/daily-report')}
+                            />
+
+                            {/* Leaders Video Card */}
                             <DashboardCard
                                 cardId="leaders-card"
                                 title="Leaders' Videos"
@@ -177,6 +166,7 @@ function UserDashboard() {
                                 onClick={() => navigate('/leaders-videos')}
                             />
 
+                            {/* Products Video Card */}
                             <DashboardCard
                                 cardId="products-card"
                                 title="Products' Videos"

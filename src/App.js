@@ -15,10 +15,12 @@ const PaymentPage = lazy(() => import('./components/PaymentPage'));
 
 // Protected
 const UserDashboard = lazy(() => import('./components/UserDashboard'));
-// ✅ Dono video components ko alag-alag import karein
 const Productsvideo = lazy(() => import('./components/Productsvideo')); 
-const LeadersVideo = lazy(() => import('./components/LeadersVideo')); // ✅ Naya component import
+const LeadersVideo = lazy(() => import('./components/LeadersVideo')); 
 const ChatWindow = lazy(() => import('./components/ChatWindow'));
+
+// ✅ NEW: DailyReport Component Import kiya
+const DailyReport = lazy(() => import('./components/DailyReport'));
 
 function App() {
     return (
@@ -41,8 +43,17 @@ function App() {
                         </UserProtectedRoute>
                     } 
                 />
+
+                {/* ✅ NEW: Daily Report Route Add kiya */}
+                <Route 
+                    path="/daily-report" 
+                    element={
+                        <UserProtectedRoute>
+                            <DailyReport />
+                        </UserProtectedRoute>
+                    } 
+                />
                 
-                {/* ✅ Leaders Video route wapas add kiya gaya hai */}
                 <Route 
                     path="/leaders-videos" 
                     element={

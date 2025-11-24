@@ -56,7 +56,7 @@ function ChatWindow({ onClose }) {
         return () => { if (rec) rec.stop(); };
     }, []);
 
-    // --- Awaaz (TTS) (Unchanged) ---
+    // --- Awaaz (TTS) (Updated for best quality voice) ---
     const [voices, setVoices] = useState([]);
     useEffect(() => {
         const loadVoices = () => setVoices(window.speechSynthesis.getVoices());
@@ -66,17 +66,31 @@ function ChatWindow({ onClose }) {
         }
     }, []);
 
+    // 🌟 TTS FIX FOR HIGH QUALITY VOICE 🌟
     const speak = useCallback((text) => {
         const synth = window.speechSynthesis;
         if (isMuted || !text || typeof text !== 'string' || !synth) return;
         synth.cancel(); 
         const cleanText = text.replace(/\*\*|---|(\(https?:\/\/[^\s]+\))/g, ' ').replace(/\n/g, ' ');
         const utterance = new SpeechSynthesisUtterance(cleanText);
-        let bestVoice = voices.find(v => v.name === 'Google हिन्दी' && v.lang === 'hi-IN') ||
-                        voices.find(v => v.name.includes('Microsoft') && v.lang === 'hi-IN') ||
-                        voices.find(v => v.lang === 'hi-IN');
-        if (bestVoice) utterance.voice = bestVoice; 
-        else utterance.lang = 'hi-IN'; 
+        
+        // FIX: Google voices (jo best quality ki hoti hain) ko top priority dein.
+        let bestVoice = voices.find(v => v.name.includes('Google') && v.lang.includes('hi')) || // 1. Google Hindi (Gemini-like)
+                         voices.find(v => v.name.includes('Microsoft') && v.lang.includes('hi')) || // 2. Microsoft Hindi
+                         voices.find(v => v.lang.includes('hi')) || // 3. Any Hindi Voice
+                         voices.find(v => v.default) || // 4. System default
+                         voices.find(v => v.lang.startsWith('en')); // 5. Any English fallback
+
+        if (bestVoice) {
+            utterance.voice = bestVoice; 
+            utterance.lang = bestVoice.lang; 
+        } else {
+            utterance.lang = 'hi-IN'; 
+        }
+        
+        // RATE: Aawaaz ki speed ko thoda kam karein (0.95), taaki zyada natural lage.
+        utterance.rate = 0.95; 
+
         synth.speak(utterance);
     }, [isMuted, voices]);
 
@@ -112,9 +126,6 @@ function ChatWindow({ onClose }) {
         }
     };
 
-    // --- ✅ UPDATED: API Call Function ---
-    // (Yeh ab reusable nahi hai, seedha handleSend mein hai)
-
     // --- ✅ UPDATED: Send Button (AI Chat) ---
     const handleSend = async () => {
         const messageToSend = input.trim();
@@ -138,7 +149,6 @@ function ChatWindow({ onClose }) {
         const userMessage = { role: 'user', type: 'text', content: messageToSend };
         
         // ✅ History ko API call ke liye taiyaar karein
-        // Hum 'role' (user/assistant) ka istemaal kar rahe hain
         const historyForAPI = messages.map(msg => ({
             role: msg.role, // 'user' ya 'assistant'
             content: msg.content
@@ -155,13 +165,10 @@ function ChatWindow({ onClose }) {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 
-                // ✅ --- YEH HAI MUKHYA FIX --- ✅
-                // 'message' (naya sawaal) aur 'chatHistory' (puraani chat) dono bhej rahe hain
                 body: JSON.stringify({ 
                     message: messageToSend,
-                    chatHistory: historyForAPI // <-- YEH HAI MEMORY FIX
+                    chatHistory: historyForAPI 
                 }), 
-                // --- FIX ENDS ---
             });
             
             if (response.status === 403) throw new Error('Token is invalid or expired. Please log in again.');
@@ -178,9 +185,6 @@ function ChatWindow({ onClose }) {
                         type: data.reply.type || 'text', // Type ko follow karein
                         content: data.reply.content
                     };
-                    
-                    // ❌ Calculator logic hata diya gaya
-                    
                 } else {
                     botMessage = { role: 'assistant', type: 'text', content: "Sorry, I received an unclear response." };
                 }
@@ -204,7 +208,6 @@ function ChatWindow({ onClose }) {
 
     return (
         <div className="chat-window">
-            {/* ❌ Calculator Modal JSX hata diya gaya */}
             
             {/* --- Header (Unchanged) --- */}
             <div className="chat-header">
@@ -234,16 +237,14 @@ function ChatWindow({ onClose }) {
                 </button>
             </div>
             
-            {/* --- Chat Body (Updated) --- */}
+            {/* --- Chat Body (Unchanged) --- */}
             <div className="chat-body" ref={chatBodyRef}>
                 <div className="chat-background-image"></div>
                 
                 {messages.map((msg, index) => (
-                    // ✅ Role ko 'bot' ya 'user' set karein
                     <div key={index} className={`chat-message ${msg.role === 'user' ? 'user' : 'bot'}`}>
                         <div className={`message-bubble ${msg.type || 'text'}`}>
                             
-                            {/* Sirf text render karein, calculator logic hata diya gaya */}
                             <div 
                                 className="text-content" 
                                 dangerouslySetInnerHTML={{ __html: String(msg.content).replace(/\n/g, '<br />') }} 

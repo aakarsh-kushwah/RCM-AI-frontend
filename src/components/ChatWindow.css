@@ -108,25 +108,19 @@
   position: relative;
 }
 
-/* ✅ --- YEH HAI MUKHYA FIX (Logo Centered) --- */
 .chat-background-image {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  
-  /* Bot ka logo (header wala) */
   background-image: url('https://i.ibb.co/GrMTmd0/Gemini-Generated-Image-q98hyq98hyq98hyq-removebg-preview-removebg-preview.png'); 
-  background-repeat: no-repeat; /* Repeat na karein */
-  background-position: center center; /* Bilkul center mein */
-  background-size: 350px; /* Logo ka size (adjust kar sakte hain) */
-  opacity: 0.7; /* Halka rakhein taaki chat dikhe */
-  
+  background-repeat: no-repeat;
+  background-position: center center;
+  background-size: 350px;
+  opacity: 0.7;
   z-index: 1;
 }
-/* --- FIX ENDS --- */
-
 
 .chat-message {
   display: flex;
@@ -292,4 +286,199 @@
     height: 40px;
     margin-left: 8px;
   }
+}
+
+/* --- 7. NAYA: Call Mode UI Styles --- */
+
+.chat-window.call-mode-active {
+  width: 100%;
+  height: 100%;
+  bottom: 0;
+  right: 0;
+  border-radius: 0;
+  background-color: #001f3f; /* Dark Navy Blue background */
+  z-index: 9999;
+  transition: all 0.3s ease-in-out;
+}
+
+.call-overlay {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 100%;
+  padding: 20px;
+  box-sizing: border-box;
+  color: #ffffff;
+}
+
+.call-close-btn {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: #fff;
+  padding: 8px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+}
+.call-close-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+
+/* --- Call Header --- */
+.call-header-info {
+  text-align: center;
+  margin-top: 20px;
+}
+.call-bot-logo-img {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  border: 3px solid var(--chat-primary);
+  background: #fff;
+  padding: 5px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+.call-header-info h3 {
+  margin: 10px 0 5px 0;
+  font-size: 1.5rem;
+  color: #fff;
+}
+.call-header-info p {
+  margin: 0;
+  font-size: 1rem;
+  color: #aaa;
+  min-height: 1.2em;
+}
+
+
+/* --- Call Transcripts --- */
+.call-transcript-ai {
+  font-size: 1.4rem;
+  font-weight: 500;
+  color: #fff;
+  text-align: center;
+  min-height: 2em;
+  padding: 0 20px;
+  opacity: 1;
+  transition: opacity 0.3s ease;
+}
+.call-transcript-user {
+  font-size: 1.2rem;
+  font-weight: 400;
+  color: #999;
+  text-align: center;
+  min-height: 3em;
+  padding: 0 20px;
+  margin-top: 20px;
+}
+
+
+/* --- Call Visualizer --- */
+.call-visualizer-container {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  flex-grow: 1;
+  width: 100%;
+}
+
+.call-visualizer {
+  position: relative;
+  width: 200px;
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 30px 0;
+}
+.visualizer-circle {
+  position: absolute;
+  border-radius: 50%;
+  border: 2px solid var(--chat-secondary); /* Orange */
+  opacity: 0;
+}
+
+/* Default state (AI waiting) */
+.call-visualizer .visualizer-circle:nth-child(1) {
+  width: 100px; height: 100px; border-width: 1px;
+  animation: pulse-wait 4s infinite 0s;
+}
+.call-visualizer .visualizer-circle:nth-child(2) {
+  width: 140px; height: 140px; border-width: 1px;
+  animation: pulse-wait 4s infinite 1s;
+}
+
+@keyframes pulse-wait {
+  0% { transform: scale(0.8); opacity: 0.5; }
+  50% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1.2); opacity: 0; }
+}
+
+/* Listening state (User bol raha hai) */
+.call-visualizer.listening .visualizer-circle {
+  border-color: #4CAF50; /* Green */
+  animation: pulse-listen 1.5s infinite;
+}
+.call-visualizer.listening .visualizer-circle:nth-child(1) { width: 120px; height: 120px; animation-delay: 0s; }
+.call-visualizer.listening .visualizer-circle:nth-child(2) { width: 160px; height: 160px; animation-delay: 0.5s; }
+.call-visualizer.listening .visualizer-circle:nth-child(3) { width: 200px; height: 200px; animation-delay: 1s; }
+
+@keyframes pulse-listen {
+  0% { transform: scale(0.8); opacity: 0; }
+  50% { opacity: 0.8; }
+  100% { transform: scale(1.1); opacity: 0; }
+}
+
+/* Speaking state (AI bol raha hai) */
+.call-visualizer.speaking .visualizer-circle {
+  border-color: #00BFFF; /* Deep Sky Blue */
+  animation: pulse-speak 1s infinite;
+}
+.call-visualizer.speaking .visualizer-circle:nth-child(1) { width: 100px; height: 100px; animation-delay: 0s; }
+.call-visualizer.speaking .visualizer-circle:nth-child(2) { width: 130px; height: 130px; animation-delay: 0.3s; }
+.call-visualizer.speaking .visualizer-circle:nth-child(3) { width: 160px; height: 160px; animation-delay: 0.6s; }
+
+@keyframes pulse-speak {
+  0% { transform: scale(0.9); opacity: 1; }
+  100% { transform: scale(1.1); opacity: 0; }
+}
+
+/* Thinking state (Loading) */
+.call-visualizer.thinking .visualizer-circle {
+  width: 100px; height: 100px;
+  border-color: #fff;
+  border-top-color: transparent;
+  animation: spin 1s linear infinite;
+  opacity: 1;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+
+/* --- Call Footer --- */
+.call-footer {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px 0;
+}
+
+.hang-up-btn {
+  background-color: #e63946; /* Red */
+  color: white;
+  width: 70px;
+  height: 70px;
+  box-shadow: 0 0 20px rgba(230, 57, 70, 0.5);
+}
+.hang-up-btn:hover {
+  background-color: #d01c2a;
 }
