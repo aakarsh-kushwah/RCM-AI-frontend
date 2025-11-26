@@ -26,6 +26,7 @@ function PaymentPage() {
         return;
       }
 
+      // 1. Create Subscription on Backend
       const res = await fetch(
         `${process.env.REACT_APP_API_URL}/api/payment/create-subscription`,
         {
@@ -50,6 +51,7 @@ function PaymentPage() {
         return;
       }
 
+      // 2. Razorpay Options (UPDATED FOR DIRECT UPI APPS)
       const options = {
         key: data.key,
         subscription_id: data.subscriptionId,
@@ -57,6 +59,41 @@ function PaymentPage() {
         description: "Monthly RCM Autopay Plan",
         image: "/logo.png",
         theme: { color: "#007bff" },
+
+        // --------------------------------------------------------
+        // 🔥 THIS IS THE MAGIC CONFIGURATION FOR DIRECT UPI APPS
+        // --------------------------------------------------------
+        config: {
+          display: {
+            blocks: {
+              // Block 1: Show UPI Apps (Intent) first
+              upi: {
+                name: "Pay using UPI",
+                instruments: [
+                  {
+                    method: "upi",
+                    flows: ["intent"], // This forces App icons (PhonePe/GPay) to show
+                  },
+                ],
+              },
+              // Block 2: Show Cards below it (like your screenshot)
+              cards: {
+                name: "Pay via Card",
+                instruments: [
+                  {
+                    method: "card",
+                  },
+                ],
+              },
+            },
+            sequence: ["block.upi", "block.cards"], // Order: UPI first, then Cards
+            preferences: {
+              show_default_blocks: false, // Hide the standard generic menu
+            },
+          },
+        },
+        // --------------------------------------------------------
+
         handler: async function (response) {
           try {
             const verifyRes = await fetch(
@@ -74,7 +111,7 @@ function PaymentPage() {
             const verifyData = await verifyRes.json();
             if (verifyData.success) {
               alert("✅ AutoPay Activated Successfully!");
-              setTimeout(() => navigate("/login"), 2000); // redirect after success
+              setTimeout(() => navigate("/login"), 2000);
             } else {
               alert("❌ Payment Verification Failed!");
             }
@@ -85,6 +122,7 @@ function PaymentPage() {
         },
         prefill: {
           email: user.email,
+          contact: user.phone || "", // Phone is important for UPI Intent to work perfectly
           name: user.full_name || user.fullName,
         },
       };

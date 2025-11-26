@@ -1,25 +1,23 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-// Icons import (lucide-react library honi chahiye)
 import { 
   SendHorizontal, Mic, X, Volume2, VolumeX, 
   MessageCircle, Sparkles, Minimize2, StopCircle 
 } from 'lucide-react';
-import './ChatWindow.css'; // ✅ CSS file import (Niche di gayi hai)
+import './ChatWindow.css'; // ✅ CSS Import
 
 // --- CONFIGURATION ---
-// 🟢 Apna WhatsApp number yahan dalein (Country code ke sath, bina '+')
-// Example: 919876543210
-const WHATSAPP_NUMBER = "919876543210"; 
+// ✅ Updated WhatsApp Number (Country code 91, no spaces/plus)
+const WHATSAPP_NUMBER = "917999440809"; 
 const START_MSG = "Namaste RCM Assistant, mujhe business plan janna he.";
 
-// --- SPEECH RECOGNITION SETUP (Browser Support check) ---
+// --- SPEECH RECOGNITION SETUP ---
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recognition = null;
 try {
   if (SpeechRecognition) {
     recognition = new SpeechRecognition();
     recognition.continuous = false;
-    recognition.lang = 'hi-IN'; // Hindi/English mix ke liye best
+    recognition.lang = 'hi-IN'; // Supports Hindi/English mix
     recognition.interimResults = true;
   }
 } catch (e) {
@@ -35,7 +33,7 @@ function ChatWindow({ onClose }) {
   const [isListening, setIsListening] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   
-  // Voice Mode State (Gemini Style Overlay)
+  // Voice Mode State
   const [isVoiceMode, setIsVoiceMode] = useState(false); 
   const [liveTranscript, setLiveTranscript] = useState('');
 
@@ -57,7 +55,7 @@ function ChatWindow({ onClose }) {
     rec.onstart = () => setIsListening(true);
     rec.onend = () => {
         setIsListening(false);
-        // Voice mode mein auto-send karein agar kuch bola gaya ho
+        // Voice mode mein auto-send karein
         if (isVoiceMode && liveTranscript.trim()) {
             handleSend(liveTranscript);
         }
@@ -78,11 +76,11 @@ function ChatWindow({ onClose }) {
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'hi-IN';
-    utterance.rate = 1.0; // Speed normal rakhein
+    utterance.rate = 1.0; 
     window.speechSynthesis.speak(utterance);
   }, [isMuted]);
 
-  // Naya message aane par AI bolega
+  // Auto-speak last AI message
   useEffect(() => {
     const lastMsg = messages[messages.length - 1];
     if (!isMuted && lastMsg?.role === 'assistant') {
@@ -90,7 +88,7 @@ function ChatWindow({ onClose }) {
     }
   }, [messages, isMuted, speak]);
 
-  // --- BUTTON HANDLERS ---
+  // --- HANDLERS ---
   const toggleListening = () => {
     if (!recognitionRef.current) return alert("Browser doesn't support speech.");
     if (isListening) recognitionRef.current.stop();
@@ -100,7 +98,7 @@ function ChatWindow({ onClose }) {
     }
   };
 
-  // ✅ WhatsApp Redirect Logic
+  // ✅ Open Updated WhatsApp
   const openWhatsApp = () => {
     const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(START_MSG)}`;
     window.open(url, '_blank');
@@ -111,7 +109,6 @@ function ChatWindow({ onClose }) {
     if (!msgText || isLoading) return;
 
     const token = localStorage.getItem('token');
-    // Backend API URL (Apni .env setting ke hisaab se change karein)
     const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
     setMessages(prev => [...prev, { role: 'user', content: msgText }]);
@@ -139,7 +136,7 @@ function ChatWindow({ onClose }) {
     }
   };
 
-  // --- RENDER: VOICE MODE OVERLAY ---
+  // --- RENDER: VOICE MODE (Gemini Style) ---
   if (isVoiceMode) {
     return (
       <div className="chat-window voice-mode">
@@ -178,7 +175,7 @@ function ChatWindow({ onClose }) {
             </div>
         </div>
         <div className="actions">
-            {/* 🟢 WhatsApp Button */}
+            {/* WhatsApp Button */}
             <button onClick={openWhatsApp} className="action-btn whatsapp" title="Chat on WhatsApp">
                 <MessageCircle size={20} />
             </button>
