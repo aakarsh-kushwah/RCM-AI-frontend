@@ -1,6 +1,6 @@
 import React, { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import LoadingSpinner from './components/LoadingSpinner';
+import LoadingSpinner from './components/LoadingSpinner/LoadingSpinner';
 
 // --- Component Imports ---
 import UserProtectedRoute from './components/UserProtectedRoute'; 
@@ -9,18 +9,18 @@ import UserProtectedRoute from './components/UserProtectedRoute';
 
 // Public
 const LandingPage = lazy(() => import('./components/LandingPage'));
-const LoginPage = lazy(() => import('./components/LoginPage'));
-const RegisterPage = lazy(() => import('./components/RegisterPage'));
-const PaymentPage = lazy(() => import('./components/PaymentPage'));
+const LoginPage = lazy(() => import('./components/login/LoginPage'));
+const RegisterPage = lazy(() => import('./components/RegisterPage/RegisterPage'));
+const PaymentPage = lazy(() => import('./components/PaymentPage/PaymentPage'));
 
 // Protected
-const UserDashboard = lazy(() => import('./components/UserDashboard'));
-const Productsvideo = lazy(() => import('./components/Productsvideo')); 
-const LeadersVideo = lazy(() => import('./components/LeadersVideo')); 
-const ChatWindow = lazy(() => import('./components/ChatWindow'));
+const UserDashboard = lazy(() => import('./components/UserDashboard/UserDashboard'));
+const Productsvideo = lazy(() => import('./components/Productsvideo/Productsvideo')); 
+const LeadersVideo = lazy(() => import('./components/LeadersVideo/LeadersVideo')); 
+const ChatWindow = lazy(() => import('./components/chatbot/ChatWindow'));
 
 // ✅ NEW: DailyReport Component Import kiya
-const DailyReport = lazy(() => import('./components/DailyReport'));
+const DailyReport = lazy(() => import('./components/DailyReport/DailyReport'));
 
 function App() {
     return (
