@@ -51,7 +51,7 @@ function PaymentPage() {
         return;
       }
 
-      // 2. Razorpay Options (UPDATED FOR DIRECT UPI APPS)
+      // 2. Razorpay Options (SIMPLIFIED & SAFE)
       const options = {
         key: data.key,
         subscription_id: data.subscriptionId,
@@ -59,43 +59,15 @@ function PaymentPage() {
         description: "Monthly RCM Autopay Plan",
         image: "/logo.png",
         theme: { color: "#007bff" },
-
-        // --------------------------------------------------------
-        // 🔥 THIS IS THE MAGIC CONFIGURATION FOR DIRECT UPI APPS
-        // --------------------------------------------------------
-        config: {
-          display: {
-            blocks: {
-              // Block 1: Show UPI Apps (Intent) first
-              upi: {
-                name: "Pay using UPI",
-                instruments: [
-                  {
-                    method: "upi",
-                    flows: ["intent"], // This forces App icons (PhonePe/GPay) to show
-                  },
-                ],
-              },
-              // Block 2: Show Cards below it (like your screenshot)
-              cards: {
-                name: "Pay via Card",
-                instruments: [
-                  {
-                    method: "card",
-                  },
-                ],
-              },
-            },
-            sequence: ["block.upi", "block.cards"], // Order: UPI first, then Cards
-            preferences: {
-              show_default_blocks: false, // Hide the standard generic menu
-            },
-          },
-        },
-        // --------------------------------------------------------
-
+        
+        // ⚠️ REMOVED THE COMPLEX 'config' BLOCK
+        // Let Razorpay automatically decide:
+        // - On Mobile: It will show UPI Apps (Intent)
+        // - On Desktop: It will show QR Code & Card options automatically
+        
         handler: async function (response) {
           try {
+            // alert("Payment Authorized! Verifying..."); // Optional feedback
             const verifyRes = await fetch(
               `${process.env.REACT_APP_API_URL}/api/payment/verify-payment`,
               {
@@ -111,7 +83,7 @@ function PaymentPage() {
             const verifyData = await verifyRes.json();
             if (verifyData.success) {
               alert("✅ AutoPay Activated Successfully!");
-              setTimeout(() => navigate("/login"), 2000);
+              navigate("/login"); // or /dashboard
             } else {
               alert("❌ Payment Verification Failed!");
             }
@@ -122,13 +94,20 @@ function PaymentPage() {
         },
         prefill: {
           email: user.email,
-          contact: user.phone || "", // Phone is important for UPI Intent to work perfectly
+          contact: user.phone || "",
           name: user.full_name || user.fullName,
         },
+        // 3. HANDLE POPUP CLOSE (User clicked 'X')
+        modal: {
+          ondismiss: function() {
+            alert("⚠️ You cancelled the subscription process. AutoPay is NOT active.");
+          }
+        }
       };
 
       const razorpay = new window.Razorpay(options);
       razorpay.open();
+      
     } catch (error) {
       console.error("Payment initiation failed:", error);
       setLoading(false);
