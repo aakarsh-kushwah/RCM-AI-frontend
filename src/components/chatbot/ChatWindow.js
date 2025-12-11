@@ -1,15 +1,16 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Send, Mic, X, Headphones, PhoneOff, 
   Volume2, VolumeX, Minimize2, Sparkles, 
-  MessageCircle, Wifi, WifiOff, Loader2
+  MessageCircle, Wifi, WifiOff
 } from 'lucide-react';
 import './ChatWindow.css'; 
 
 // --- CONFIGURATION ---
 const WHATSAPP_NUMBER = "917999440809"; 
 const START_MSG = "Namaste RCM Assistant, mujhe business plan janna he.";
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000';
+// Ensure this matches your backend URL (no trailing slash)
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000'; 
 
 // --- SPEECH RECOGNITION SETUP ---
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -36,7 +37,7 @@ const ChatWindow = ({ onClose }) => {
   // --- REFS & ABORT CONTROLLERS ---
   const chatBodyRef = useRef(null);
   const audioRef = useRef(null);
-  const abortControllerRef = useRef(null); // To cancel stale requests
+  const abortControllerRef = useRef(null); 
   const isVoiceModeRef = useRef(isVoiceMode);
   
   useEffect(() => { isVoiceModeRef.current = isVoiceMode; }, [isVoiceMode]);
@@ -66,7 +67,7 @@ const ChatWindow = ({ onClose }) => {
     if (navigator.vibrate) navigator.vibrate(10);
   };
 
-  // --- 🔊 HIGH-PERFORMANCE AUDIO ENGINE ---
+  // --- 🔊 HIGH-PERFORMANCE AUDIO ENGINE (UPDATED FOR CLOUDINARY) ---
   const playAudioStream = useCallback(async (text) => {
     if (isMuted || !text) return;
     
@@ -78,7 +79,7 @@ const ChatWindow = ({ onClose }) => {
 
     try {
       setStatus('speaking');
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('token') || '';
 
       const response = await fetch(`${API_BASE_URL}/api/chat/speak`, {
         method: 'POST',
@@ -89,20 +90,27 @@ const ChatWindow = ({ onClose }) => {
         body: JSON.stringify({ text })
       });
 
-      if (!response.ok) throw new Error("Audio stream failed");
+      if (!response.ok) throw new Error("Audio fetch failed");
 
-      const blob = await response.blob();
-      const audioUrl = URL.createObjectURL(blob);
-      const audio = new Audio(audioUrl);
+      // ✅ FIX: Parse JSON instead of Blob
+      const data = await response.json();
+
+      if (!data.success || !data.audioUrl) {
+        throw new Error("Invalid audio response from server");
+      }
+
+      console.log("🔊 Playing audio from:", data.source); // Debug: cache vs api
+
+      // Create Audio from Cloudinary URL
+      const audio = new Audio(data.audioUrl);
       audioRef.current = audio;
 
       audio.onended = () => {
         setStatus('idle');
-        URL.revokeObjectURL(audioUrl); // Memory Cleanup
       };
       
-      audio.onerror = () => {
-        console.error("Audio Playback Error");
+      audio.onerror = (e) => {
+        console.error("Audio Playback Error:", e);
         setStatus('idle');
       };
 
@@ -137,14 +145,17 @@ const ChatWindow = ({ onClose }) => {
     setStatus('loading');
 
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('token') || '';
       
       // Prepare History (Sanitized)
       const cleanHistory = messages.slice(-10).map(({ role, content }) => ({ role, content }));
 
       const response = await fetch(`${API_BASE_URL}/api/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers: { 
+          'Content-Type': 'application/json', 
+          'Authorization': `Bearer ${token}` 
+        },
         body: JSON.stringify({ message: msgText, chatHistory: cleanHistory }),
         signal: abortControllerRef.current.signal
       });
@@ -183,7 +194,7 @@ const ChatWindow = ({ onClose }) => {
       // Mute AI when user speaks
       if (audioRef.current) {
         audioRef.current.pause();
-        setStatus('idle');
+        setStatus('idle'); // Reset status immediately so new inputs can process
       }
       window.speechSynthesis.cancel();
     };
@@ -204,6 +215,7 @@ const ChatWindow = ({ onClose }) => {
     };
 
     recognition.onend = () => {
+      // Only reset to idle if we were listening, prevents overwriting 'loading' state
       if (status === 'listening') setStatus('idle');
     };
 
@@ -215,7 +227,7 @@ const ChatWindow = ({ onClose }) => {
 
   const toggleListening = () => {
     triggerHaptic();
-    if (!recognition) return alert("Browser not supported.");
+    if (!recognition) return alert("Browser not supported. Use Chrome.");
     if (status === 'listening') recognition.stop();
     else recognition.start();
   };
