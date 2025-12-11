@@ -18,11 +18,11 @@ function PaymentPage() {
       setLoading(true);
 
       const token = localStorage.getItem("token");
-      const user = JSON.parse(localStorage.getItem("user"));
+      const user = JSON.parse(localStorage.getItem("user")); // Still good for backup
 
-      if (!user || !user.id || !user.email) {
+      if (!token) {
         alert("Please log in again before making payment.");
-        setLoading(false);
+        navigate("/login");
         return;
       }
 
@@ -35,11 +35,7 @@ function PaymentPage() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({
-            userId: user.id,
-            email: user.email,
-            name: user.full_name || user.fullName,
-          }),
+          body: JSON.stringify({}), // Backend now gets user from Token, body can be empty or specific details
         }
       );
 
@@ -51,23 +47,47 @@ function PaymentPage() {
         return;
       }
 
-      // 2. Razorpay Options (SIMPLIFIED & SAFE)
+      // 2. Razorpay Options (Direct UPI Mode)
       const options = {
         key: data.key,
         subscription_id: data.subscriptionId,
         name: "RCM Network",
         description: "Monthly RCM Autopay Plan",
         image: "/logo.png",
-        theme: { color: "#007bff" },
         
-        // ⚠️ REMOVED THE COMPLEX 'config' BLOCK
-        // Let Razorpay automatically decide:
-        // - On Mobile: It will show UPI Apps (Intent)
-        // - On Desktop: It will show QR Code & Card options automatically
-        
+        // 🔥 CRITICAL: PREFILL DATA 
+        // We prioritize the data sent back from the backend (data.user_contact)
+        // because we know the backend validated it.
+        prefill: {
+          name: data.user_name || user.fullName,
+          email: data.user_email || user.email,
+          contact: data.user_contact || user.phone || "", // Must be a real 10-digit number
+        },
+
+        // 🔥 CRITICAL: HIDE CARDS, SHOW APPS
+        config: {
+          display: {
+            blocks: {
+              upi: {
+                name: "Pay via UPI",
+                instruments: [
+                  {
+                    method: "upi",
+                    flows: ["intent"], // Forces Mobile Apps (PhonePe/GPay) to open
+                    apps: ["google_pay", "phonepe", "paytm", "bhim"] 
+                  },
+                ],
+              },
+            },
+            sequence: ["block.upi"], // Only show UPI block
+            preferences: {
+              show_default_blocks: false, // Hides Cards/Netbanking
+            },
+          },
+        },
+
         handler: async function (response) {
           try {
-            // alert("Payment Authorized! Verifying..."); // Optional feedback
             const verifyRes = await fetch(
               `${process.env.REACT_APP_API_URL}/api/payment/verify-payment`,
               {
@@ -83,7 +103,7 @@ function PaymentPage() {
             const verifyData = await verifyRes.json();
             if (verifyData.success) {
               alert("✅ AutoPay Activated Successfully!");
-              navigate("/login"); // or /dashboard
+              navigate("/dashboard"); 
             } else {
               alert("❌ Payment Verification Failed!");
             }
@@ -92,15 +112,11 @@ function PaymentPage() {
             alert("Error verifying payment!");
           }
         },
-        prefill: {
-          email: user.email,
-          contact: user.phone || "",
-          name: user.full_name || user.fullName,
-        },
-        // 3. HANDLE POPUP CLOSE (User clicked 'X')
+
         modal: {
           ondismiss: function() {
-            alert("⚠️ You cancelled the subscription process. AutoPay is NOT active.");
+            alert("⚠️ Payment Cancelled");
+            setLoading(false);
           }
         }
       };
@@ -118,15 +134,9 @@ function PaymentPage() {
   return (
     <div className="payment-container">
       <div className="payment-card">
-        <img
-          src="/logo.png"
-          alt="RCM Network"
-          className="payment-logo"
-        />
+        <img src="/logo.png" alt="RCM Network" className="payment-logo" />
         <h2 className="payment-title">Start Your AutoPay Subscription</h2>
-        <p className="payment-subtitle">
-          First month just ₹1 (refundable), then ₹21/month
-        </p>
+        <p className="payment-subtitle">First month just ₹5 (refundable), then ₹29/month</p>
 
         <div className="payment-details">
           <ul>
