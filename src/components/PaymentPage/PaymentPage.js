@@ -26,7 +26,7 @@ function PaymentPage() {
         return;
       }
 
-      // 1. Create Subscription on Backend
+      // 1. Backend se Subscription ID maango
       const res = await fetch(
         `${process.env.REACT_APP_API_URL}/api/payment/create-subscription`,
         {
@@ -47,7 +47,7 @@ function PaymentPage() {
         return;
       }
 
-      // 2. Razorpay Options
+      // 2. Razorpay Options (Standard Mode)
       const options = {
         key: data.key,
         subscription_id: data.subscriptionId,
@@ -55,16 +55,25 @@ function PaymentPage() {
         description: "Monthly RCM Autopay Plan",
         image: "/logo.png",
         
-        // ✅ Prefill Data
+        // ✅ User Details Prefill (User ka time bachane ke liye)
         prefill: {
           name: data.user_name || user?.fullName,
           email: data.user_email || user?.email,
           contact: data.user_contact || user?.phone || "", 
         },
 
-        // ❌ REMOVED THE RESTRICTIVE 'config' BLOCK
-        // This allows Razorpay to show QR Code on Desktop and App Intent on Mobile automatically.
-        // It also prevents the "No instruments available" error.
+        // ⚠️ MAIN FIX: "config" block ko puri tarah hata diya hai.
+        // Ab Razorpay khud best options dikhayega (Cards, Netbanking, All UPI Apps).
+        
+        // ✅ Retry Option: Agar payment fail ho to retry ka option dega
+        retry: {
+          enabled: true,
+        },
+
+        // ✅ Theme Color (Optional: Apni branding ke hisab se change karein)
+        theme: {
+          color: "#3399cc",
+        },
 
         handler: async function (response) {
           try {
@@ -102,6 +111,13 @@ function PaymentPage() {
       };
 
       const razorpay = new window.Razorpay(options);
+      
+      // ✅ Payment Failure Handle karna
+      razorpay.on('payment.failed', function (response){
+        alert(`Payment Failed: ${response.error.description}`);
+        setLoading(false);
+      });
+
       razorpay.open();
       
     } catch (error) {
