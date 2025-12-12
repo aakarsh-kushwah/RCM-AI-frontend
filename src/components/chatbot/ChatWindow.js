@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Send, Mic, X, Headphones, PhoneOff, 
-  Volume2, VolumeX, Minimize2, Sparkles, 
+  Volume2, VolumeX, Minimize2, Sparkles, // ✅ FIX 1: Imported VolumeX
   MessageCircle, Wifi, WifiOff
 } from 'lucide-react';
 import './ChatWindow.css'; 
@@ -9,8 +9,37 @@ import './ChatWindow.css';
 // --- CONFIGURATION ---
 const WHATSAPP_NUMBER = "917999440809"; 
 const START_MSG = "Namaste RCM Assistant, mujhe business plan janna he.";
-// Ensure this matches your backend URL (no trailing slash)
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000'; 
+
+// --- TRANSLITERATION SETUP ---
+const hindiToEnglishMap = {
+  'अ': 'a', 'आ': 'aa', 'इ': 'i', 'ई': 'ee', 'उ': 'u', 'ऊ': 'oo', 'ऋ': 'ri',
+  'ए': 'e', 'ऐ': 'ai', 'ओ': 'o', 'औ': 'au', 'अं': 'an', 'अः': 'ah',
+  'क': 'k', 'ख': 'kh', 'ग': 'g', 'घ': 'gh', 'ङ': 'ng',
+  'च': 'ch', 'छ': 'chh', 'ज': 'j', 'झ': 'jh', 'ञ': 'ny',
+  'ट': 't', 'ठ': 'th', 'ड': 'd', 'ढ': 'dh', 'ण': 'n',
+  'त': 't', 'थ': 'th', 'द': 'd', 'ध': 'dh', 'न': 'n',
+  'प': 'p', 'फ': 'f', 'ब': 'b', 'भ': 'bh', 'म': 'm',
+  'य': 'y', 'र': 'r', 'ल': 'l', 'व': 'v', 'श': 'sh', 'ष': 'sh', 'स': 's', 'ह': 'h',
+  'क्ष': 'ksh', 'त्र': 'tr', 'ज्ञ': 'gy',
+  '़': '', 'ा': 'a', 'ि': 'i', 'ी': 'ee', 'ु': 'u', 'ू': 'oo', 'ृ': 'ri',
+  'े': 'e', 'ै': 'ai', 'ो': 'o', 'ौ': 'au', 'ं': 'n', 'ँ': 'n', 'ः': 'ah', '्': ''
+};
+
+const wordFixes = {
+  "आरसीएम": "rcm", "आर सी एम": "rcm", "बिजनेस": "business", 
+  "प्लान": "plan", "क्या": "kya", "है": "hai", "मैं": "main", "हूँ": "hoon"
+};
+
+const transliterateText = (text) => {
+  if (!text) return "";
+  let processedText = text;
+  Object.keys(wordFixes).forEach(hindiWord => {
+    const regex = new RegExp(hindiWord, "g");
+    processedText = processedText.replace(regex, wordFixes[hindiWord]);
+  });
+  return processedText.split('').map(char => hindiToEnglishMap[char] || char).join('');
+};
 
 // --- SPEECH RECOGNITION SETUP ---
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -18,31 +47,34 @@ let recognition = null;
 if (SpeechRecognition) {
   recognition = new SpeechRecognition();
   recognition.continuous = false;
-  recognition.lang = 'hi-IN'; // Hybrid Hindi/English
+  recognition.lang = 'en-IN'; 
   recognition.interimResults = true;
 }
 
 const ChatWindow = ({ onClose }) => {
-  // --- STATE MANAGEMENT ---
   const [messages, setMessages] = useState([
     { role: 'assistant', type: 'text', content: 'Jai RCM! I am your AI Business Guide. Ask me anything about products or plans.' }
   ]);
   const [input, setInput] = useState('');
-  const [status, setStatus] = useState('idle'); // idle | loading | speaking | listening
+  const [status, setStatus] = useState('idle'); 
   const [isVoiceMode, setIsVoiceMode] = useState(false);
   const [liveTranscript, setLiveTranscript] = useState('');
   const [isMuted, setIsMuted] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [lastAudioUrl, setLastAudioUrl] = useState(null); 
 
-  // --- REFS & ABORT CONTROLLERS ---
   const chatBodyRef = useRef(null);
   const audioRef = useRef(null);
   const abortControllerRef = useRef(null); 
   const isVoiceModeRef = useRef(isVoiceMode);
   
-  useEffect(() => { isVoiceModeRef.current = isVoiceMode; }, [isVoiceMode]);
+  useEffect(() => { 
+    isVoiceModeRef.current = isVoiceMode; 
+    if (!isVoiceMode) {
+      stopEverything();
+    }
+  }, [isVoiceMode]);
 
-  // --- NETWORK MONITORING ---
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
@@ -54,7 +86,6 @@ const ChatWindow = ({ onClose }) => {
     };
   }, []);
 
-  // --- AUTO SCROLL (Smart) ---
   useEffect(() => {
     if (chatBodyRef.current) {
       const { scrollHeight, clientHeight } = chatBodyRef.current;
@@ -62,16 +93,31 @@ const ChatWindow = ({ onClose }) => {
     }
   }, [messages, liveTranscript, status]);
 
-  // --- HAPTIC FEEDBACK HELPER ---
   const triggerHaptic = () => {
     if (navigator.vibrate) navigator.vibrate(10);
   };
 
-  // --- 🔊 HIGH-PERFORMANCE AUDIO ENGINE (UPDATED FOR CLOUDINARY) ---
+  const stopEverything = () => {
+    setStatus('idle');
+    setLiveTranscript('');
+    if (recognition) {
+      try { recognition.stop(); } catch(e) { }
+    }
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    window.speechSynthesis.cancel();
+  };
+
+  const handleHangUp = () => {
+    triggerHaptic();
+    setIsVoiceMode(false); 
+    stopEverything();      
+  };
+
   const playAudioStream = useCallback(async (text) => {
     if (isMuted || !text) return;
-    
-    // Stop any current audio
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
@@ -91,34 +137,18 @@ const ChatWindow = ({ onClose }) => {
       });
 
       if (!response.ok) throw new Error("Audio fetch failed");
-
-      // ✅ FIX: Parse JSON instead of Blob
       const data = await response.json();
 
-      if (!data.success || !data.audioUrl) {
-        throw new Error("Invalid audio response from server");
-      }
+      if (!data.success || !data.audioUrl) throw new Error("Invalid audio response");
 
-      console.log("🔊 Playing audio from:", data.source); // Debug: cache vs api
-
-      // Create Audio from Cloudinary URL
       const audio = new Audio(data.audioUrl);
       audioRef.current = audio;
-
-      audio.onended = () => {
-        setStatus('idle');
-      };
-      
-      audio.onerror = (e) => {
-        console.error("Audio Playback Error:", e);
-        setStatus('idle');
-      };
-
+      audio.onended = () => setStatus('idle');
+      audio.onerror = () => setStatus('idle');
       await audio.play();
 
     } catch (error) {
-      console.warn("Server TTS Failed, falling back to browser:", error);
-      // Fallback to Browser TTS for reliability
+      console.warn("TTS Fallback:", error);
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = 'hi-IN';
       utterance.onend = () => setStatus('idle');
@@ -126,19 +156,22 @@ const ChatWindow = ({ onClose }) => {
     }
   }, [isMuted]);
 
-  // --- 💬 CORE CHAT LOGIC (Optimistic UI) ---
-  const handleSend = async (textOverride = null) => {
-    const msgText = textOverride || input.trim();
+  // ✅ FIX 2: Wrapped handleSend in useCallback to stabilize it
+  const handleSend = useCallback(async (textOverride = null) => {
+    let msgText = textOverride || input.trim();
     if (!msgText || status === 'loading') return;
 
     triggerHaptic();
+
+    const displayMsg = msgText; 
+    const serverMsg = transliterateText(msgText); 
     
-    // Cancel previous pending request if any
+    console.log(`Original: ${displayMsg} | Transliterated: ${serverMsg}`);
+
     if (abortControllerRef.current) abortControllerRef.current.abort();
     abortControllerRef.current = new AbortController();
 
-    // 1. Optimistic UI Update (Immediate feedback)
-    const userMsg = { role: 'user', type: 'text', content: msgText };
+    const userMsg = { role: 'user', type: 'text', content: displayMsg };
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setLiveTranscript('');
@@ -146,8 +179,6 @@ const ChatWindow = ({ onClose }) => {
 
     try {
       const token = localStorage.getItem('token') || '';
-      
-      // Prepare History (Sanitized)
       const cleanHistory = messages.slice(-10).map(({ role, content }) => ({ role, content }));
 
       const response = await fetch(`${API_BASE_URL}/api/chat`, {
@@ -156,45 +187,56 @@ const ChatWindow = ({ onClose }) => {
           'Content-Type': 'application/json', 
           'Authorization': `Bearer ${token}` 
         },
-        body: JSON.stringify({ message: msgText, chatHistory: cleanHistory }),
+        body: JSON.stringify({ message: serverMsg, chatHistory: cleanHistory }),
         signal: abortControllerRef.current.signal
       });
 
       const data = await response.json();
       
-      let aiText = "Connectivity issue. Please check network.";
+      let aiText = "Connectivity issue.";
+      let audioUrlFromServer = null;
+
       if (data.success) {
         aiText = typeof data.reply === 'string' ? data.reply : data.reply?.content || aiText;
+        if (data.audioUrl) audioUrlFromServer = data.audioUrl;
       }
 
-      // 2. Add Bot Response
-      setMessages(prev => [...prev, { role: 'assistant', type: 'text', content: aiText }]);
+      setMessages(prev => [ ...prev, { role: 'assistant', type: 'text', content: aiText } ]);
+      setLastAudioUrl(audioUrlFromServer);
       setStatus('idle');
 
-      // 3. Auto-Speak only if in Voice Mode
       if (isVoiceModeRef.current) {
-        playAudioStream(aiText);
+        if (audioUrlFromServer) {
+          const audio = new Audio(audioUrlFromServer);
+          audioRef.current?.pause();
+          audioRef.current = audio;
+          setStatus('speaking');
+          audio.onended = () => setStatus('idle');
+          audio.onerror = () => setStatus('idle');
+          await audio.play();
+        } else {
+          playAudioStream(aiText);
+        }
       }
 
     } catch (error) {
-      if (error.name === 'AbortError') return; // Ignore cancelled requests
+      if (error.name === 'AbortError') return;
       console.error("Chat API Error:", error);
-      setMessages(prev => [...prev, { role: 'assistant', type: 'text', content: "Server unreachable." }]);
+      setMessages(prev => [ ...prev, { role: 'assistant', type: 'text', content: "Server unreachable." } ]);
       setStatus('idle');
     }
-  };
+  }, [input, status, messages, playAudioStream]); // Dependencies for useCallback
 
-  // --- 🎤 SPEECH RECOGNITION ENGINE ---
+  // --- SPEECH RECOGNITION ---
   useEffect(() => {
     if (!recognition) return;
 
     recognition.onstart = () => {
       setStatus('listening');
       setLiveTranscript('');
-      // Mute AI when user speaks
       if (audioRef.current) {
         audioRef.current.pause();
-        setStatus('idle'); // Reset status immediately so new inputs can process
+        setStatus('idle');
       }
       window.speechSynthesis.cancel();
     };
@@ -215,7 +257,6 @@ const ChatWindow = ({ onClose }) => {
     };
 
     recognition.onend = () => {
-      // Only reset to idle if we were listening, prevents overwriting 'loading' state
       if (status === 'listening') setStatus('idle');
     };
 
@@ -223,20 +264,29 @@ const ChatWindow = ({ onClose }) => {
       console.error("Speech Error:", event.error);
       setStatus('idle');
     };
-  }, [status]); // Re-bind if status changes
+  }, [status, handleSend]); // ✅ Added handleSend dependency safely
 
   const toggleListening = () => {
     triggerHaptic();
     if (!recognition) return alert("Browser not supported. Use Chrome.");
-    if (status === 'listening') recognition.stop();
-    else recognition.start();
+    
+    recognition.lang = 'en-IN'; 
+    
+    if (status === 'listening') {
+      recognition.stop();
+    } else {
+      try {
+        recognition.start();
+      } catch (err) {
+        console.warn("Recognition already started, ignoring...", err);
+      }
+    }
   };
 
   const openWhatsApp = () => {
     window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(START_MSG)}`, '_blank');
   };
 
-  // --- RENDER: VOICE OVERLAY (Gemini Live Style) ---
   const VoiceOverlay = () => (
     <div className="voice-overlay fade-in">
       <div className="voice-header">
@@ -253,7 +303,6 @@ const ChatWindow = ({ onClose }) => {
       </div>
 
       <div className="voice-visualizer">
-        {/* Dynamic Orb Animation */}
         <div className={`orb-container ${status}`}>
           <div className="orb-core"></div>
           <div className="orb-ring r1"></div>
@@ -284,62 +333,65 @@ const ChatWindow = ({ onClose }) => {
           {status === 'listening' ? <div className="waveform-icon">|||</div> : <Mic size={32} />}
         </button>
 
-        <button className="btn-circle glass-red" onClick={() => setIsVoiceMode(false)}>
+        <button className="btn-circle glass-red" onClick={handleHangUp}>
           <PhoneOff size={24} />
         </button>
       </div>
     </div>
   );
 
-  // --- RENDER: STANDARD CHAT ---
   return (
     <div className="chat-root">
       {isVoiceMode && <VoiceOverlay />}
 
       <header className="chat-navbar">
         <div className="nav-brand">
-          <div className="ai-avatar">
-            <Sparkles size={20} />
-          </div>
+          <div className="ai-avatar"> <Sparkles size={20} /> </div>
           <div className="nav-info">
             <h3>RCM AI</h3>
-            <span className="online-status">
-              <span className="dot"></span> Online
-            </span>
+            <span className="online-status"><span className="dot"></span> Online</span>
           </div>
         </div>
         <div className="nav-actions">
-          <button onClick={openWhatsApp} className="nav-btn whatsapp" title="WhatsApp">
-            <MessageCircle size={20} />
-          </button>
-          <button onClick={() => setIsVoiceMode(true)} className="nav-btn voice-trigger">
-            <Headphones size={20} />
-          </button>
-          <button onClick={onClose} className="nav-btn">
-            <X size={22} />
-          </button>
+          <button onClick={openWhatsApp} className="nav-btn whatsapp"><MessageCircle size={20} /></button>
+          <button onClick={() => setIsVoiceMode(true)} className="nav-btn voice-trigger"><Headphones size={20} /></button>
+          <button onClick={onClose} className="nav-btn"><X size={22} /></button>
         </div>
       </header>
 
       <div className="chat-messages" ref={chatBodyRef}>
-        {messages.map((msg, i) => (
-          <div key={i} className={`msg-group ${msg.role}`}>
-            {msg.role === 'assistant' && (
-              <div className="bot-thumb"><Sparkles size={14} /></div>
-            )}
-            <div className="msg-bubble">
-              <div dangerouslySetInnerHTML={{ __html: msg.content.replace(/\n/g, '<br/>') }} />
+        {messages.map((msg, i) => {
+          const isAssistant = msg.role === 'assistant';
+          const lastAssistantIndex = messages.reduce((last, m, idx) => (m.role === 'assistant' ? idx : last), -1);
+          const isLastAssistant = isAssistant && i === lastAssistantIndex;
+
+          return (
+            <div key={i} className={`msg-group ${msg.role}`}>
+              {isAssistant && <div className="bot-thumb"><Sparkles size={14} /></div>}
+              <div className="msg-bubble">
+                <div dangerouslySetInnerHTML={{ __html: msg.content.replace(/\n/g, '<br/>') }} />
+                {isAssistant && (
+                  <button className="mini-speaker-btn" disabled={!isLastAssistant || !lastAudioUrl} onClick={() => {
+                      if (!lastAudioUrl) return;
+                      audioRef.current?.pause();
+                      const audio = new Audio(lastAudioUrl);
+                      audioRef.current = audio;
+                      setStatus('speaking');
+                      audio.onended = () => setStatus('idle');
+                      audio.play();
+                    }}
+                  >
+                    <Volume2 size={16} />
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         {status === 'loading' && !isVoiceMode && (
           <div className="msg-group assistant">
              <div className="bot-thumb"><Sparkles size={14} /></div>
-             <div className="msg-bubble typing">
-               <span className="typing-dot"></span>
-               <span className="typing-dot"></span>
-               <span className="typing-dot"></span>
-             </div>
+             <div className="msg-bubble typing"><span className="typing-dot"></span><span className="typing-dot"></span><span className="typing-dot"></span></div>
           </div>
         )}
         <div style={{ height: 12 }} />
@@ -347,9 +399,7 @@ const ChatWindow = ({ onClose }) => {
 
       <div className="chat-input-area">
         <div className="input-capsule">
-          <button className="capsule-btn mic" onClick={toggleListening}>
-            <Mic size={20} />
-          </button>
+          <button className="capsule-btn mic" onClick={toggleListening}><Mic size={20} /></button>
           <input 
             type="text" 
             placeholder="Message..." 
@@ -359,12 +409,8 @@ const ChatWindow = ({ onClose }) => {
             disabled={status === 'loading'}
           />
           {input.trim() ? (
-            <button className="capsule-btn send" onClick={() => handleSend()}>
-              <Send size={20} />
-            </button>
-          ) : (
-            <div style={{width: 12}}></div>
-          )}
+            <button className="capsule-btn send" onClick={() => handleSend()}><Send size={20} /></button>
+          ) : ( <div style={{width: 12}}></div> )}
         </div>
       </div>
     </div>
