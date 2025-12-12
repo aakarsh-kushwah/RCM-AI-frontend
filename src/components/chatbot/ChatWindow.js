@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Send, Mic, X, Headphones, PhoneOff, 
-  Volume2, VolumeX, Minimize2, Sparkles, // ✅ FIX 1: Imported VolumeX
-  MessageCircle, Wifi, WifiOff
+  Volume2, VolumeX, Minimize2, Sparkles, 
+  MessageCircle, Wifi, WifiOff 
 } from 'lucide-react';
 import './ChatWindow.css'; 
 
@@ -156,7 +156,6 @@ const ChatWindow = ({ onClose }) => {
     }
   }, [isMuted]);
 
-  // ✅ FIX 2: Wrapped handleSend in useCallback to stabilize it
   const handleSend = useCallback(async (textOverride = null) => {
     let msgText = textOverride || input.trim();
     if (!msgText || status === 'loading') return;
@@ -225,7 +224,7 @@ const ChatWindow = ({ onClose }) => {
       setMessages(prev => [ ...prev, { role: 'assistant', type: 'text', content: "Server unreachable." } ]);
       setStatus('idle');
     }
-  }, [input, status, messages, playAudioStream]); // Dependencies for useCallback
+  }, [input, status, messages, playAudioStream]); 
 
   // --- SPEECH RECOGNITION ---
   useEffect(() => {
@@ -264,7 +263,7 @@ const ChatWindow = ({ onClose }) => {
       console.error("Speech Error:", event.error);
       setStatus('idle');
     };
-  }, [status, handleSend]); // ✅ Added handleSend dependency safely
+  }, [status, handleSend]); 
 
   const toggleListening = () => {
     triggerHaptic();

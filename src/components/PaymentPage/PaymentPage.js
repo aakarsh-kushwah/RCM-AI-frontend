@@ -18,7 +18,7 @@ function PaymentPage() {
       setLoading(true);
 
       const token = localStorage.getItem("token");
-      const user = JSON.parse(localStorage.getItem("user")); // Still good for backup
+      const user = JSON.parse(localStorage.getItem("user")); 
 
       if (!token) {
         alert("Please log in again before making payment.");
@@ -35,7 +35,7 @@ function PaymentPage() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({}), // Backend now gets user from Token, body can be empty or specific details
+          body: JSON.stringify({}), 
         }
       );
 
@@ -47,7 +47,7 @@ function PaymentPage() {
         return;
       }
 
-      // 2. Razorpay Options (Direct UPI Mode)
+      // 2. Razorpay Options
       const options = {
         key: data.key,
         subscription_id: data.subscriptionId,
@@ -55,36 +55,16 @@ function PaymentPage() {
         description: "Monthly RCM Autopay Plan",
         image: "/logo.png",
         
-        // 🔥 CRITICAL: PREFILL DATA 
-        // We prioritize the data sent back from the backend (data.user_contact)
-        // because we know the backend validated it.
+        // ✅ Prefill Data
         prefill: {
-          name: data.user_name || user.fullName,
-          email: data.user_email || user.email,
-          contact: data.user_contact || user.phone || "", // Must be a real 10-digit number
+          name: data.user_name || user?.fullName,
+          email: data.user_email || user?.email,
+          contact: data.user_contact || user?.phone || "", 
         },
 
-        // 🔥 CRITICAL: HIDE CARDS, SHOW APPS
-        config: {
-          display: {
-            blocks: {
-              upi: {
-                name: "Pay via UPI",
-                instruments: [
-                  {
-                    method: "upi",
-                    flows: ["intent"], // Forces Mobile Apps (PhonePe/GPay) to open
-                    apps: ["google_pay", "phonepe", "paytm", "bhim"] 
-                  },
-                ],
-              },
-            },
-            sequence: ["block.upi"], // Only show UPI block
-            preferences: {
-              show_default_blocks: false, // Hides Cards/Netbanking
-            },
-          },
-        },
+        // ❌ REMOVED THE RESTRICTIVE 'config' BLOCK
+        // This allows Razorpay to show QR Code on Desktop and App Intent on Mobile automatically.
+        // It also prevents the "No instruments available" error.
 
         handler: async function (response) {
           try {
