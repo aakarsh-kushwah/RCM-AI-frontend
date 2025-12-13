@@ -51,7 +51,7 @@ function PaymentPage() {
         subscription_id: data.subscriptionId,
         name: "RCM Network",
         description: "Monthly RCM Autopay Plan",
-        image: "/logo.png",
+        image: "/rcmai_logo.png",
         
         // ✅ CORRECT PREFILL: Use data from Backend Response
         prefill: {
@@ -129,7 +129,7 @@ function PaymentPage() {
   return (
     <div className="payment-container">
       <div className="payment-card">
-        <img src="/logo.png" alt="RCM Network" className="payment-logo" />
+        <img src="/rcmai_logo.png" alt="RCM Network" className="payment-logo" />
         <h2 className="payment-title">Start Your AutoPay Subscription</h2>
         <p className="payment-subtitle">First month just ₹5 (refundable), then ₹29/month</p>
         <button

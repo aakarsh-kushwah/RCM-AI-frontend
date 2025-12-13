@@ -1,81 +1,113 @@
 /* eslint-disable no-restricted-globals */
 
-const CACHE_NAME = 'rcm-ai-v1';
-const urlsToCache = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  
-  '/favicon.ico',
+/* =========================================================
+   RCM AI Assistant – Production Service Worker
+   ========================================================= */
+
+const CACHE_NAME = "rcm-ai-v2";
+
+// App shell (safe to cache)
+const APP_SHELL = [
+  "/",
+  "/index.html",
+  "/manifest.json",
+  "/favicon.ico",
+  "/rcmai_logo.png"
 ];
 
-// 1. Install Event: ऐप इंस्टॉल होते ही कैश खोलें और फ़ाइलें डालें
-self.addEventListener('install', (event) => {
+/* ================= INSTALL ================= */
+self.addEventListener("install", (event) => {
+  self.skipWaiting(); // 🔥 activate immediately
+
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => {
-        console.log('Opened cache');
-        return cache.addAll(urlsToCache);
-      })
-  );
-});
-
-// 2. Fetch Event: (यह सबसे ज़रूरी है)
-self.addEventListener('fetch', (event) => {
-  
-  // ✅ --- यही वह नया फिक्स है ---
-  // अगर यह एक API रिक्वेस्ट है, तो सर्विस वर्कर कुछ नहीं करेगा
-  // और ब्राउज़र को इसे नॉर्मल तरीके से हैंडल करने देगा।
-  if (event.request.url.includes('/api/')) {
-    return; // सर्विस वर्कर को रोकें
-  }
-  // --- फिक्स खत्म ---
-
-  // बाकी सभी रिक्वेस्ट (जैसे CSS, JS, Images) के लिए कैश का इस्तेमाल करें
-  event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        // 1. अगर कैश में है, तो कैश से जवाब दें
-        if (response) {
-          return response;
-        }
-
-        // 2. अगर कैश में नहीं है, तो नेटवर्क पर जाएँ
-        return fetch(event.request).then(
-          (networkResponse) => {
-            // 3. जवाब मिलने पर, उसे कैश में डालें और फिर जवाब दें
-            if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
-              return networkResponse;
-            }
-
-            const responseToCache = networkResponse.clone();
-            caches.open(CACHE_NAME)
-              .then((cache) => {
-                cache.put(event.request, responseToCache);
-              });
-
-            return networkResponse;
-          }
-        ).catch(() => {
-          // ऑफ़लाइन होने पर, यहाँ एक फ़ॉलबैक पेज दिखा सकते हैं
-        });
-      })
-  );
-});
-
-// 3. Activate Event: पुराने कैश को साफ़ करें
-self.addEventListener('activate', (event) => {
-  const cacheWhitelist = [CACHE_NAME];
-  event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheWhitelist.indexOf(cacheName) === -1) {
-            return caches.delete(cacheName);
-          }
-          return null;
-        })
-      );
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.addAll(APP_SHELL);
     })
   );
+});
+
+/* ================= ACTIVATE ================= */
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    Promise.all([
+      // 🧹 Clear old caches
+      caches.keys().then((cacheNames) =>
+        Promise.all(
+          cacheNames.map((cache) => {
+            if (cache !== CACHE_NAME) {
+              return caches.delete(cache);
+            }
+            return null;
+          })
+        )
+      ),
+
+      // 🔥 Take control immediately
+      self.clients.claim(),
+    ])
+  );
+});
+
+/* ================= FETCH ================= */
+self.addEventListener("fetch", (event) => {
+  const { request } = event;
+  const url = new URL(request.url);
+
+  /* 🚫 NEVER intercept these */
+  if (
+    url.pathname.startsWith("/api/") ||
+    url.hostname.includes("razorpay") ||
+    url.hostname.includes("checkout.razorpay.com") ||
+    request.method !== "GET"
+  ) {
+    return; // browser handles it
+  }
+
+  /* 🔄 React Router navigation fix */
+  if (request.mode === "navigate") {
+    event.respondWith(
+      fetch(request).catch(() => caches.match("/index.html"))
+    );
+    return;
+  }
+
+  /* 📦 Cache-first for static assets */
+  event.respondWith(
+    caches.match(request).then((cachedResponse) => {
+      if (cachedResponse) {
+        return cachedResponse;
+      }
+
+      return fetch(request)
+        .then((networkResponse) => {
+          if (
+            !networkResponse ||
+            networkResponse.status !== 200 ||
+            networkResponse.type !== "basic"
+          ) {
+            return networkResponse;
+          }
+
+          const responseClone = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(request, responseClone);
+          });
+
+          return networkResponse;
+        })
+        .catch(() => {
+          // 📴 Offline fallback
+          if (request.destination === "document") {
+            return caches.match("/index.html");
+          }
+        });
+    })
+  );
+});
+
+/* ================= MESSAGE ================= */
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });

@@ -1,19 +1,33 @@
 {
   "name": "RCM AI Assistant",
   "short_name": "RCM AI",
-  "description": "The official AI assistant for your RCM Business.",
-  
-  "start_url": ".",
+  "description": "AI Assistant APP for RCM Business Network",
+
+  "start_url": "/?source=pwa",
   "scope": "/",
-  "id": "/", 
-  
+  "id": "/",
+
   "display": "standalone",
-  
+  "display_override": ["standalone", "minimal-ui"],
+
   "background_color": "#050F33",
   "theme_color": "#004c99",
-  
-  "icons": [], 
-  
-  "categories": ["business", "education", "productivity"]
-}
 
+  "orientation": "portrait",
+
+  "icons": [
+    {
+      "src": "/rcmai_logo.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/rcmai_logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+
+  "categories": ["business", "productivity", "education"]
+}

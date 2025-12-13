@@ -2,40 +2,44 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    
-    <title>RCM AI Assistant</title>
-    
-    <!-- SEO & PWA Description -->
-    <meta name="description" content="The official AI assistant for your RCM Business." />
-    
-    <!-- PWA Theme Color -->
-    <meta name="theme-color" content="#004c99" />
 
-    <!-- Performance Boost: Preconnect to Render Backend -->
-    <link rel="preconnect" href="https://rcm-ai-backend.onrender.com" />
-    
-    <!-- PWA & Favicon Setup -->
-    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
+    <title>RCM AI Assistant</title>
+
+    <!-- SEO -->
+    <meta name="description" content="Official AI Assistant for RCM Business Network" />
+
+    <!-- PWA -->
+    <meta name="theme-color" content="#004c99" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="RCM AI" />
+
+    <!-- Icons -->
+    <link rel="icon" href="%PUBLIC_URL%/rcmai_logo.png" />
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/rcmai_logo.png" />
+
+    <!-- Manifest -->
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
-    
-    <!-- 🛑 Apple/iOS Support (180x180 icon reference REMOVED) -->
-    <!-- <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo180.png" /> -->
-    
+
+    <!-- Performance -->
+    <link rel="preconnect" href="https://rcm-ai-backend.onrender.com" />
   </head>
+
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
-    
-<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 
-    <!-- External Scripts (e.g., particles.js) -->
+    <!-- Razorpay -->
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+
+    <!-- Optional -->
     <script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script>
 
-    <!-- PWA Registration Script -->
-    <script src="%PUBLIC_URL%/sw-register.js"></script> 
-    
+    <!-- Service Worker -->
+    <script src="%PUBLIC_URL%/sw-register.js"></script>
   </body>
 </html>
-

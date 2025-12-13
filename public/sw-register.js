@@ -1,12 +1,38 @@
-// Register the Service Worker
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/service-worker.js')
-      .then(registration => {
-        console.log('SW registered: ', registration);
+/* =========================================================
+   RCM AI Assistant - Service Worker Registration
+   ========================================================= */
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+
+    navigator.serviceWorker
+      .register("/service-worker.js", { scope: "/" })
+      .then((registration) => {
+
+        // ✅ Successfully registered
+        console.log("RCM AI App is ready");
+
+        // 🔄 Handle updates automatically
+        if (registration.waiting) {
+          registration.waiting.postMessage({ type: "SKIP_WAITING" });
+        }
+
+        registration.onupdatefound = () => {
+          const installingWorker = registration.installing;
+
+          installingWorker.onstatechange = () => {
+            if (
+              installingWorker.state === "installed" &&
+              navigator.serviceWorker.controller
+            ) {
+              console.log("RCM AI App updated");
+              installingWorker.postMessage({ type: "SKIP_WAITING" });
+            }
+          };
+        };
       })
-      .catch(registrationError => {
-        console.log('SW registration failed: ', registrationError);
+      .catch((error) => {
+        console.error("RCM AI SW registration failed:", error);
       });
   });
 }
