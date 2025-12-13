@@ -16,17 +16,15 @@ function PaymentPage() {
   const handlePayment = async () => {
     try {
       setLoading(true);
-
       const token = localStorage.getItem("token");
-      const user = JSON.parse(localStorage.getItem("user")); 
 
       if (!token) {
-        alert("Please log in again before making payment.");
+        alert("Please log in again.");
         navigate("/login");
         return;
       }
 
-      // 1. Backend se Subscription ID maango
+      // 1. Get Subscription + User Data from Backend
       const res = await fetch(
         `${process.env.REACT_APP_API_URL}/api/payment/create-subscription`,
         {
@@ -47,7 +45,7 @@ function PaymentPage() {
         return;
       }
 
-      // 2. Razorpay Options (Standard Mode)
+      // 2. Razorpay Options
       const options = {
         key: data.key,
         subscription_id: data.subscriptionId,
@@ -55,27 +53,19 @@ function PaymentPage() {
         description: "Monthly RCM Autopay Plan",
         image: "/logo.png",
         
-        // ✅ User Details Prefill (User ka time bachane ke liye)
+        // ✅ CORRECT PREFILL: Use data from Backend Response (Fresh DB Data)
+        // Do NOT use localStorage here.
         prefill: {
-          name: data.user_name || user?.fullName,
-          email: data.user_email || user?.email,
-          contact: data.user_contact || user?.phone || "", 
+          name: data.user_name,    // From DB via Backend
+          email: data.user_email,  // From DB via Backend
+          contact: data.user_contact // From DB via Backend (Correct Phone)
         },
 
-        // ⚠️ MAIN FIX: "config" block ko puri tarah hata diya hai.
-        // Ab Razorpay khud best options dikhayega (Cards, Netbanking, All UPI Apps).
-        
-        // ✅ Retry Option: Agar payment fail ho to retry ka option dega
-        retry: {
-          enabled: true,
-        },
-
-        // ✅ Theme Color (Optional: Apni branding ke hisab se change karein)
-        theme: {
-          color: "#3399cc",
-        },
+        retry: { enabled: true },
+        theme: { color: "#3399cc" },
 
         handler: async function (response) {
+          // Verify Logic (Same as before)...
           try {
             const verifyRes = await fetch(
               `${process.env.REACT_APP_API_URL}/api/payment/verify-payment`,
@@ -88,42 +78,28 @@ function PaymentPage() {
                 body: JSON.stringify(response),
               }
             );
-
-            const verifyData = await verifyRes.json();
-            if (verifyData.success) {
-              alert("✅ AutoPay Activated Successfully!");
-              navigate("/dashboard"); 
+            const vData = await verifyRes.json();
+            if (vData.success) {
+              alert("✅ AutoPay Activated!");
+              navigate("/dashboard");
             } else {
-              alert("❌ Payment Verification Failed!");
+              alert("❌ Verification Failed");
             }
-          } catch (err) {
-            console.error("Verification error:", err);
-            alert("Error verifying payment!");
-          }
+          } catch (e) { console.error(e); }
         },
-
-        modal: {
-          ondismiss: function() {
-            alert("⚠️ Payment Cancelled");
-            setLoading(false);
-          }
-        }
       };
 
       const razorpay = new window.Razorpay(options);
-      
-      // ✅ Payment Failure Handle karna
       razorpay.on('payment.failed', function (response){
         alert(`Payment Failed: ${response.error.description}`);
         setLoading(false);
       });
-
       razorpay.open();
       
     } catch (error) {
-      console.error("Payment initiation failed:", error);
+      console.error("Payment error:", error);
       setLoading(false);
-      alert("❌ Something went wrong. Please try again later.");
+      alert("❌ Error starting payment.");
     }
   };
 
@@ -133,15 +109,6 @@ function PaymentPage() {
         <img src="/logo.png" alt="RCM Network" className="payment-logo" />
         <h2 className="payment-title">Start Your AutoPay Subscription</h2>
         <p className="payment-subtitle">First month just ₹5 (refundable), then ₹29/month</p>
-
-        <div className="payment-details">
-          <ul>
-            <li>✔ Secure Razorpay Gateway</li>
-            <li>✔ Cancel Anytime</li>
-            <li>✔ Instant Activation</li>
-          </ul>
-        </div>
-
         <button
           onClick={handlePayment}
           className={`payment-btn ${loading ? "disabled" : ""}`}
