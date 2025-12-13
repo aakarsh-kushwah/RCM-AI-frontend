@@ -54,7 +54,7 @@ const LoginPage = () => {
     return (
         <div className="auth-container">
             <div className="auth-card">
-                <img src="/logo.png" alt="RCM Logo" className="auth-logo" />
+                <img src="/rcmai_logo.png" alt="RCM Logo" className="auth-logo" />
                 <h2>User Login</h2>
                 <form onSubmit={handleLogin}>
                     <div className="input-group">
