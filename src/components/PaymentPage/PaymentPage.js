@@ -16,15 +16,15 @@ function PaymentPage() {
   const handlePayment = async () => {
     try {
       setLoading(true);
-
       const token = localStorage.getItem("token");
+
       if (!token) {
-        alert("Session expired. Please login again.");
+        alert("Please log in again.");
         navigate("/login");
         return;
       }
 
-      // 🔹 Create Subscription
+      // 1. Get Subscription + User Data from Backend (Fresh DB Data)
       const res = await fetch(
         `${process.env.REACT_APP_API_URL}/api/payment/create-subscription`,
         {
@@ -33,6 +33,7 @@ function PaymentPage() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
+          body: JSON.stringify({}), 
         }
       );
 
@@ -40,55 +41,33 @@ function PaymentPage() {
       setLoading(false);
 
       if (!data.success) {
-        alert(data.message || "Unable to initiate AutoPay");
+        alert(`⚠️ ${data.message}`);
         return;
       }
 
-      // 🔹 Razorpay Native UPI AutoPay
+      // 2. Razorpay Options
       const options = {
         key: data.key,
         subscription_id: data.subscriptionId,
-
         name: "RCM Network",
-        description: "UPI AutoPay Subscription",
-        image: "/rcmai_logo.png",
-
-        // 🔥 Force Native UPI / Redirect UI
-        redirect: true,
-
-        method: {
-          upi: true,
-          card: false,
-          netbanking: false,
-          wallet: false,
-          emi: false,
-        },
-
-        config: {
-          display: {
-            blocks: {
-              upi: {
-                name: "Pay using UPI",
-                instruments: [{ method: "upi" }],
-              },
-            },
-            sequence: ["block.upi"],
-            preferences: {
-              show_default_blocks: false,
-            },
-          },
-        },
-
+        description: "Monthly RCM Autopay Plan",
+        image: "/logo.png",
+        
+        // ✅ CORRECT PREFILL: Use data from Backend Response
         prefill: {
-          name: data.user_name,
-          email: data.user_email,
-          contact: data.user_contact,
+          name: data.user_name,    
+          email: data.user_email,  
+          contact: data.user_contact 
         },
 
-        theme: { color: "#2563eb" },
+        retry: { enabled: true },
+        theme: { color: "#3399cc" },
 
+        // ✅ HANDLER: This runs ONLY after successful payment
         handler: async function (response) {
           try {
+            console.log("Payment Success! Verifying...");
+            
             const verifyRes = await fetch(
               `${process.env.REACT_APP_API_URL}/api/payment/verify-payment`,
               {
@@ -102,52 +81,63 @@ function PaymentPage() {
             );
 
             const vData = await verifyRes.json();
+            console.log("Verification Response:", vData);
 
             if (vData.success) {
-              alert("✅ AutoPay Mandate Activated Successfully");
-              window.location.href = "/dashboard";
+              alert("✅ AutoPay Activated Successfully!");
+              // 🚀 FORCE REDIRECT
+              window.location.href = "/dashboard"; 
+              // Note: used window.location to ensure a full refresh update of the dashboard state
             } else {
-              alert("Mandate created but verification pending.");
+              alert("❌ Payment Successful, but Verification Failed.");
+              console.error("Verification failed:", vData);
             }
-          } catch (err) {
-            console.error(err);
-            alert("Verification error. Please check dashboard.");
+          } catch (e) { 
+            console.error("Verification API Error:", e);
+            alert("⚠️ Network Error during verification. Please check your Dashboard.");
           }
         },
+
+        // ✅ RESTORED: Modal Dismiss Logic
+        modal: {
+          ondismiss: function() {
+            console.log("Payment Cancelled by User");
+            alert("⚠️ Payment Cancelled");
+            setLoading(false);
+          }
+        }
       };
 
-      const rzp = new window.Razorpay(options);
-      rzp.open();
+      const razorpay = new window.Razorpay(options);
+      
+      // Handle Payment Failures
+      razorpay.on('payment.failed', function (response){
+        console.error("Payment Failed:", response.error);
+        alert(`Payment Failed: ${response.error.description}`);
+        setLoading(false);
+      });
+
+      razorpay.open();
+      
     } catch (error) {
-      console.error("Payment Error:", error);
+      console.error("Payment setup error:", error);
       setLoading(false);
-      alert("Failed to start AutoPay");
+      alert("❌ Error starting payment.");
     }
   };
 
   return (
     <div className="payment-container">
       <div className="payment-card">
-        <img src="/rcmai_logo.png" alt="RCM Network" className="payment-logo" />
-
-        <h2 className="payment-title">Activate UPI AutoPay</h2>
-        <p className="payment-subtitle">
-          ₹1 mandate now • First payment after 24 hours
-        </p>
-
-        <ul className="payment-details">
-          <li>UPI AutoPay (PhonePe / GPay)</li>
-          <li>No manual payments required</li>
-          <li>Cancel anytime from dashboard</li>
-          <li>Secure Razorpay Gateway</li>
-        </ul>
-
+        <img src="/logo.png" alt="RCM Network" className="payment-logo" />
+        <h2 className="payment-title">Start Your AutoPay Subscription</h2>
+        <p className="payment-subtitle">First month just ₹5 (refundable), then ₹29/month</p>
         <button
           onClick={handlePayment}
           className={`payment-btn ${loading ? "disabled" : ""}`}
           disabled={loading}
         >
-          {loading ? "Processing..." : "Activate AutoPay"}
+          {loading ? "Processing..." : "Start AutoPay"}
         </button>
       </div>
     </div>
