@@ -16,15 +16,15 @@ function PaymentPage() {
   const handlePayment = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem("token");
 
+      const token = localStorage.getItem("token");
       if (!token) {
-        alert("Please log in again.");
+        alert("Session expired. Please login again.");
         navigate("/login");
         return;
       }
 
-      // 1. Get Subscription + User Data from Backend (Fresh DB Data)
+      // 1) Create subscription on backend (mandate logic yahi se aata hai)
       const res = await fetch(
         `${process.env.REACT_APP_API_URL}/api/payment/create-subscription`,
         {
@@ -33,7 +33,6 @@ function PaymentPage() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({}), 
         }
       );
 
@@ -41,33 +40,63 @@ function PaymentPage() {
       setLoading(false);
 
       if (!data.success) {
-        alert(`⚠️ ${data.message}`);
+        alert(data.message || "Unable to initiate AutoPay");
         return;
       }
 
-      // 2. Razorpay Options
+      // 2) Razorpay Checkout + UPI Intent (native apps chooser)
       const options = {
         key: data.key,
-        subscription_id: data.subscriptionId,
+        subscription_id: data.subscriptionId, // 👈 subscription from backend
+
         name: "RCM Network",
-        description: "Monthly RCM Autopay Plan",
-        image: "/logo.png",
-        
-        // ✅ CORRECT PREFILL: Use data from Backend Response
-        prefill: {
-          name: data.user_name,    
-          email: data.user_email,  
-          contact: data.user_contact 
+        description: "UPI AutoPay Subscription",
+        image: "/rcmai_logo.png",
+
+        // UPI intent for mobile‑web
+        webview_intent: true,   // 👈 required for direct UPI app suggestion on mobile web
+        redirect: true,
+
+        method: {
+          upi: true,
+          card: false,
+          netbanking: false,
+          wallet: false,
+          emi: false,
         },
 
-        retry: { enabled: true },
-        theme: { color: "#3399cc" },
+        // Prefer UPI intent flow and hide other blocks
+        config: {
+          display: {
+            blocks: {
+              upi: {
+                name: "Pay using UPI",
+                instruments: [
+                  {
+                    method: "upi",
+                    flows: ["intent"], // 👈 tell Razorpay to use intent flow where possible
+                  },
+                ],
+              },
+            },
+            sequence: ["block.upi"],
+            preferences: {
+              show_default_blocks: false,
+            },
+          },
+        },
 
-        // ✅ HANDLER: This runs ONLY after successful payment
+        prefill: {
+          name: data.user_name,
+          email: data.user_email,
+          contact: data.user_contact,
+        },
+
+        theme: { color: "#2563eb" },
+
         handler: async function (response) {
           try {
-            console.log("Payment Success! Verifying...");
-            
+            // 3) Verify payment + subscription mandate on backend
             const verifyRes = await fetch(
               `${process.env.REACT_APP_API_URL}/api/payment/verify-payment`,
               {
@@ -81,63 +110,59 @@ function PaymentPage() {
             );
 
             const vData = await verifyRes.json();
-            console.log("Verification Response:", vData);
 
             if (vData.success) {
-              alert("✅ AutoPay Activated Successfully!");
-              // 🚀 FORCE REDIRECT
-              window.location.href = "/dashboard"; 
-              // Note: used window.location to ensure a full refresh update of the dashboard state
+              alert("✅ AutoPay Mandate Activated Successfully");
+              window.location.href = "/dashboard";
             } else {
-              alert("❌ Payment Successful, but Verification Failed.");
-              console.error("Verification failed:", vData);
+              alert("Mandate created but verification pending.");
             }
-          } catch (e) { 
-            console.error("Verification API Error:", e);
-            alert("⚠️ Network Error during verification. Please check your Dashboard.");
+          } catch (err) {
+            console.error(err);
+            alert("Verification error. Please check dashboard.");
           }
         },
 
-        // ✅ RESTORED: Modal Dismiss Logic
         modal: {
-          ondismiss: function() {
-            console.log("Payment Cancelled by User");
-            alert("⚠️ Payment Cancelled");
-            setLoading(false);
-          }
-        }
+          ondismiss: function () {
+            // user closed without completing; optional logging
+            console.log("Razorpay modal closed by user");
+          },
+        },
       };
 
-      const razorpay = new window.Razorpay(options);
-      
-      // Handle Payment Failures
-      razorpay.on('payment.failed', function (response){
-        console.error("Payment Failed:", response.error);
-        alert(`Payment Failed: ${response.error.description}`);
-        setLoading(false);
-      });
-
-      razorpay.open();
-      
+      const rzp = new window.Razorpay(options);
+      rzp.open();
     } catch (error) {
-      console.error("Payment setup error:", error);
+      console.error("Payment Error:", error);
       setLoading(false);
-      alert("❌ Error starting payment.");
+      alert("Failed to start AutoPay");
     }
   };
 
   return (
     <div className="payment-container">
       <div className="payment-card">
-        <img src="/logo.png" alt="RCM Network" className="payment-logo" />
-        <h2 className="payment-title">Start Your AutoPay Subscription</h2>
-        <p className="payment-subtitle">First month just ₹5 (refundable), then ₹29/month</p>
+        <img src="/rcmai_logo.png" alt="RCM Network" className="payment-logo" />
+
+        <h2 className="payment-title">Activate UPI AutoPay</h2>
+        <p className="payment-subtitle">
+          ₹1 mandate now • First payment after 24 hours
+        </p>
+
+        <ul className="payment-details">
+          <li>UPI AutoPay (PhonePe / GPay)</li>
+          <li>No manual payments required</li>
+          <li>Cancel anytime from dashboard</li>
+          <li>Secure Razorpay Gateway</li>
+        </ul>
+
         <button
           onClick={handlePayment}
           className={`payment-btn ${loading ? "disabled" : ""}`}
           disabled={loading}
         >
-          {loading ? "Processing..." : "Start AutoPay"}
+          {loading ? "Processing..." : "Activate AutoPay"}
         </button>
       </div>
     </div>
