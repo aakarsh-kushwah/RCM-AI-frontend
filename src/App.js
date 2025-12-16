@@ -5,6 +5,9 @@ import LoadingSpinner from './components/LoadingSpinner/LoadingSpinner';
 // --- Component Imports ---
 import UserProtectedRoute from './components/UserProtectedRoute'; 
 
+// ✅ NEW: Import the Notification Hook
+import usePushNotification from './hooks/usePushNotification';
+
 // --- Lazy Loading Pages ---
 
 // Public
@@ -18,11 +21,14 @@ const UserDashboard = lazy(() => import('./components/UserDashboard/UserDashboar
 const Productsvideo = lazy(() => import('./components/Productsvideo/Productsvideo')); 
 const LeadersVideo = lazy(() => import('./components/LeadersVideo/LeadersVideo')); 
 const ChatWindow = lazy(() => import('./components/chatbot/ChatWindow'));
-
-// ✅ NEW: DailyReport Component Import kiya
 const DailyReport = lazy(() => import('./components/DailyReport/DailyReport'));
 
 function App() {
+    // ✅ ACTIVATE NOTIFICATIONS
+    // This hook automatically handles permission requests, token generation, 
+    // and listening for incoming messages while the app is open.
+    usePushNotification();
+
     return (
         <Suspense fallback={<LoadingSpinner />}>
             <Routes>
@@ -44,7 +50,6 @@ function App() {
                     } 
                 />
 
-                {/* ✅ NEW: Daily Report Route Add kiya */}
                 <Route 
                     path="/daily-report" 
                     element={
