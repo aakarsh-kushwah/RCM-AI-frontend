@@ -2,6 +2,8 @@
   "name": "RCM AI Assistant",
   "short_name": "RCM AI",
   "description": "AI Assistant APP for RCM Business Network",
+  
+  "gcm_sender_id": "103953800507",  // 👈 ADD THIS LINE EXACTLY AS IS!
 
   "start_url": "/?source=pwa",
   "scope": "/",

@@ -17,12 +17,21 @@ const messaging = getMessaging(app);
 // Your VAPID Key
 const VAPID_KEY = "BNJKkgGbvN5ogX9VItoSWONpiH8rGh35N46hu-p8vi__iUVdlgaz8k4kgwUTsscsFCpWwV9QwqVQkGQhr88sNR8"; 
 
+// src/firebase.js
+// ... imports and config stay the same ...
+
 export const requestForToken = async () => {
   try {
-    // ✅ FIX: Explicitly register the correct Service Worker file
+    // 1. Register the Service Worker
     const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+    console.log("⚠️ SW Registered. Status:", registration.installing ? "Installing" : "Active");
 
-    // ✅ FIX: Pass that registration to getToken
+    // 2. CRITICAL FIX: Wait for it to be fully "Active"
+    // This line pauses code execution until the browser confirms the SW is ready to work.
+    const serviceWorker = await navigator.serviceWorker.ready;
+    console.log("✅ SW is now Active!", serviceWorker);
+
+    // 3. NOW it is safe to get the token
     const currentToken = await getToken(messaging, { 
       vapidKey: VAPID_KEY,
       serviceWorkerRegistration: registration 
@@ -31,7 +40,7 @@ export const requestForToken = async () => {
     if (currentToken) {
       return currentToken;
     } else {
-      console.log('No registration token available. Request permission to generate one.');
+      console.log('No registration token available.');
       return null;
     }
   } catch (err) {

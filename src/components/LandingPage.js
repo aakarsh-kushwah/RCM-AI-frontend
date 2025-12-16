@@ -1,19 +1,20 @@
 import React, { useState, useEffect } from 'react';
-// 🛑 Link import हटा दिया गया है
 import './LandingPage.css'; 
+
+// ✅ IMPORT FIREBASE HELPER
+import { requestForToken } from '../firebase'; 
 
 function LandingPage() {
     // --- State variables ---
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
     const [message, setMessage] = useState('');
-    const [language, setLanguage] = useState('en'); // ✅ Default language set to English
+    const [language, setLanguage] = useState('en'); 
     
     // --- PWA State ---
     const [deferredPrompt, setDeferredPrompt] = useState(null); 
     const [isInstallPopupVisible, setIsInstallPopupVisible] = useState(false); 
 
-    // ✅ FIX: Use a fallback API URL to ensure details are sent
     const API_BASE = process.env.REACT_APP_API_URL || 'https://rcm-ai-backend.onrender.com';
 
     // --- Translations ---
@@ -103,17 +104,53 @@ function LandingPage() {
         localStorage.setItem('pwa_installed_dismissed', 'maybe'); 
     };
 
+    // --- ✅ NOTIFICATION DEBUG HANDLER ---
+    const handleTestNotification = async () => {
+        console.log("👆 Requesting Notification Permission...");
+        try {
+          const token = await requestForToken();
+          
+          if (token) {
+            alert("✅ Token Generated:\n" + token.substring(0, 20) + "...");
+            console.log("FULL FCM TOKEN:", token);
+    
+            // Try saving to backend
+            const authToken = localStorage.getItem('token');
+            if (!authToken) {
+                alert("⚠️ Token generated, but cannot save to DB because you are not logged in. Please Login first.");
+                return;
+            }
+    
+            const res = await fetch(`${API_BASE}/api/notifications/save-token`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${authToken}`
+                },
+                body: JSON.stringify({ token })
+            });
+            
+            const data = await res.json();
+            alert("Backend Response: " + JSON.stringify(data));
+    
+          } else {
+            alert("❌ No Token. Please 'Allow' notifications in browser settings.");
+          }
+        } catch (error) {
+          console.error("Token Error:", error);
+          alert("❌ Error: " + error.message);
+        }
+    };
+
     // --- Form Submission Handler (Subscribers) ---
     const handleSubmit = async (event) => {
         event.preventDefault();
         setMessage('Submitting...');
 
-        // ✅ FIX: Use the API_BASE constant (which has the fallback)
         const apiUrl = API_BASE; 
 
         if (!apiUrl) {
             setMessage('Configuration error: API URL is not set.');
-            console.error("CRITICAL: API_BASE is missing.");
             return;
         }
 
@@ -143,21 +180,40 @@ function LandingPage() {
         }
     };
 
-    // =======================================================
-    // RENDER UI
-    // =======================================================
 
     return (
-        <div className="AppBody">
+        <div className="AppBody" style={{ position: 'relative' }}>
+            
+            {/* ✅ FIXED: DEBUG BUTTON MOVED TO TOP-RIGHT & OUTSIDE CONTAINER */}
+            <button 
+                onClick={handleTestNotification}
+                style={{ 
+                    position: 'fixed', 
+                    top: '20px',        // Moved to TOP to avoid being hidden at bottom
+                    right: '20px', 
+                    zIndex: 9999999,    // Max Z-Index to stay on top of everything
+                    padding: '12px 20px', 
+                    fontSize: '14px', 
+                    fontWeight: 'bold',
+                    backgroundColor: '#ff0000', // Bright Red
+                    color: 'white', 
+                    border: '2px solid white', 
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 15px rgba(0,0,0,0.5)'
+                }}
+            >
+                🔔 TEST NOTIFY
+            </button>
+
             <div id="particles-js"></div>
+            
             <div className="container">
                 <div className="hero-section">
                     
                     <div className="top-left-logo">
                          <img src="https://i.ibb.co/jZvQqHt6/rcm-world-logo-removebg-preview.png" alt="RCM World Logo" />
                     </div>
-
-                    {/* 🛑 LOGIN BUTTON REMOVED as requested */}
 
                     <div className="lang-switcher">
                         <span onClick={() => setLanguage('en')} className={language === 'en' ? 'active' : ''}>EN</span> |
@@ -182,6 +238,7 @@ function LandingPage() {
                         <button type="submit">{t.submitButton}</button>
                     </form>
                     {message && <p className="response-msg">{message}</p>}
+
                 </div>
 
                 {/* Features Grid */}
@@ -202,7 +259,7 @@ function LandingPage() {
                 </div>
             </div>
 
-            {/* PWA INSTALL POPUP (Conditional Rendering) */}
+            {/* PWA INSTALL POPUP */}
             {isInstallPopupVisible && deferredPrompt && (
                 <div id="install-popup">
                     <button id="close-popup-button" onClick={handleDismissPrompt}>&times;</button>
@@ -221,4 +278,3 @@ function LandingPage() {
 }
 
 export default LandingPage;
-

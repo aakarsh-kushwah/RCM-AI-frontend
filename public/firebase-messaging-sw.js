@@ -2,6 +2,7 @@
 importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js');
 
+// 1. YOUR CONFIG (Ensure these keys are correct)
 const firebaseConfig = {
   apiKey: "AIzaSyDLGr5muEwrOAn9je3fDqVQbRatWmnmJFo",
   authDomain: "rcm-ai-assistance-app.firebaseapp.com",
@@ -12,16 +13,22 @@ const firebaseConfig = {
   measurementId: "G-33RYFBM4V0"
 };
 
+// 2. INITIALIZE
 firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
+// 3. BACKGROUND LISTENER
 messaging.onBackgroundMessage(function(payload) {
-  console.log('Received background message ', payload);
-  const notificationTitle = payload.notification.title;
+  console.log('[firebase-messaging-sw.js] Received background message ', payload);
+
+  // ✅ SAFE HANDLING: Checks for both Notification and Data payloads
+  const title = payload.notification?.title || payload.data?.title || "New Message";
+  const body = payload.notification?.body || payload.data?.body || "You have a new notification.";
+
   const notificationOptions = {
-    body: payload.notification.body,
-    icon: '/rcmai_logo.png' // Make sure you have a logo.png in public folder
+    body: body,
+    icon: '/rcmai_logo.png' // Ensure this image exists!
   };
 
-  self.registration.showNotification(notificationTitle, notificationOptions);
+  return self.registration.showNotification(title, notificationOptions);
 });
