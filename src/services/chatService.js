@@ -1,8 +1,7 @@
 /**
  * @file src/services/chatService.js
- * @description API Communication Layer.
  */
-
+// ✅ Sahi Path (Agar folder structure sahi hai to ye chalega)
 import config from '../config/env';
 
 class ChatService {
