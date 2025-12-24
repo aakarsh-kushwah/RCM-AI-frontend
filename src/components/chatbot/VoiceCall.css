@@ -1,0 +1,239 @@
+/* ==========================================================================
+   RCM INTELLIGENCE - HINDI VOICE UI
+   Theme: High Contrast, Simple, Modern
+   ========================================================================== */
+
+:root {
+  --vc-bg: #000000;
+  --vc-primary-blue: #3b82f6;   /* User Listening */
+  --vc-primary-cyan: #06b6d4;   /* AI Speaking */
+  --vc-primary-purple: #a855f7; /* AI Thinking */
+  --vc-text-white: #ffffff;
+  --vc-text-gray: #9ca3af;
+  --vc-z-index: 9999;
+}
+
+/* --- MAIN OVERLAY --- */
+.voice-call-overlay {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--vc-bg);
+  z-index: var(--vc-z-index);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  animation: fadeIn 0.4s ease-out forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* --- HEADER --- */
+.vc-header {
+  width: 100%;
+  padding: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.vc-brand-badge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 8px 16px;
+  border-radius: 50px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--vc-text-white);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.vc-live-dot {
+  width: 8px;
+  height: 8px;
+  background: #22c55e;
+  border-radius: 50%;
+  box-shadow: 0 0 10px #22c55e;
+  animation: pulseGreen 1.5s infinite;
+}
+
+/* --- VISUALIZER AREA (Simple & Clear) --- */
+.vc-visualizer-container {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+}
+
+/* The Orb - Visual Feedback */
+.vc-orb {
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  transition: all 0.4s ease-in-out;
+  position: relative;
+  z-index: 5;
+  filter: blur(10px);
+}
+
+/* STATUS: User Turn (Listening) */
+.voice-call-overlay[data-status="listening"] .vc-orb {
+  background: var(--vc-primary-blue);
+  box-shadow: 0 0 80px var(--vc-primary-blue);
+  transform: scale(1);
+  animation: breathe 3s infinite ease-in-out;
+}
+
+/* STATUS: Processing */
+.voice-call-overlay[data-status="processing"] .vc-orb {
+  background: var(--vc-primary-purple);
+  box-shadow: 0 0 80px var(--vc-primary-purple);
+  transform: scale(0.9);
+  animation: spin 1s linear infinite;
+}
+
+/* STATUS: Speaking */
+.voice-call-overlay[data-status="speaking"] .vc-orb {
+  background: var(--vc-primary-cyan);
+  box-shadow: 0 0 100px var(--vc-primary-cyan);
+  transform: scale(1.2);
+  animation: pulseSpeak 0.5s infinite alternate;
+}
+
+/* The Canvas Waveform */
+.vc-waveform {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 100%;
+  max-width: 800px;
+  height: 300px;
+  z-index: 4;
+  opacity: 0.6;
+}
+
+/* --- TEXT INSTRUCTIONS (HINDI) --- */
+.vc-text-area {
+  text-align: center;
+  padding: 0 20px;
+  margin-bottom: 20px;
+  z-index: 10;
+  min-height: 120px;
+}
+
+.vc-main-status {
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: 10px;
+  color: var(--vc-text-white);
+}
+
+.vc-sub-text {
+  font-size: 1.1rem;
+  color: var(--vc-text-gray);
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+/* Highlighting "Ab Bolein" */
+.vc-hint {
+  color: var(--vc-primary-blue);
+  font-weight: 600;
+  display: block;
+  margin-top: 5px;
+}
+
+/* --- CONTROLS --- */
+.vc-controls {
+  width: 100%;
+  padding-bottom: 40px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 30px;
+}
+
+.vc-btn {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: none;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.vc-btn:active { transform: scale(0.95); }
+
+.vc-btn-main {
+  width: 80px;
+  height: 80px;
+  background: white;
+  color: black;
+  box-shadow: 0 0 30px rgba(255,255,255,0.2);
+}
+
+.voice-call-overlay[data-status="listening"] .vc-btn-main {
+  background: var(--vc-primary-blue);
+  color: white;
+  box-shadow: 0 0 40px var(--vc-primary-blue);
+}
+
+.voice-call-overlay[data-status="speaking"] .vc-btn-main {
+  background: var(--vc-primary-cyan);
+  color: white;
+  box-shadow: 0 0 40px var(--vc-primary-cyan);
+}
+
+.vc-btn-red {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+}
+.vc-btn-red:hover {
+  background: #ef4444;
+  color: white;
+}
+
+/* --- ANIMATIONS --- */
+@keyframes breathe {
+  0%, 100% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.05); opacity: 1; }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulseGreen {
+  0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
+  70% { box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+
+@keyframes pulseSpeak {
+  from { transform: scale(1.1); opacity: 0.9; }
+  to { transform: scale(1.25); opacity: 1; }
+}
+
+/* Mobile Adjustments */
+@media (max-width: 768px) {
+  .vc-orb { width: 140px; height: 140px; }
+  .vc-main-status { font-size: 1.6rem; }
+  .vc-sub-text { font-size: 1rem; }
+}
