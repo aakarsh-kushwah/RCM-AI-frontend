@@ -1,112 +1,282 @@
-.payment-container {
+:root {
+  --apple-black: #1d1d1f;
+  --accent-blue: #0071e3;
+  --apple-gray: #f5f5f7;
+  --success-green: #2ecc71;
+}
+
+.apple-premium-bg {
   min-height: 100vh;
+  background: var(--apple-gray);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: var(--apple-black);
+}
+
+.top-nav {
+  padding: 15px;
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(20px);
+  border-bottom: 0.5px solid #d2d2d7;
   display: flex;
   justify-content: center;
-  align-items: center;
-  background: linear-gradient(135deg, #0f172a, #1e3a8a);
-  padding: 20px;
-  font-family: "Poppins", sans-serif;
 }
 
-.payment-card {
-  background: #ffffff;
-  width: 100%;
-  max-width: 420px;
-  border-radius: 20px;
-  padding: 35px 30px;
-  text-align: center;
-  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.25);
-  animation: slideUp 0.5s ease;
-}
-
-.payment-logo {
-  width: 90px;
-  margin-bottom: 15px;
-}
-
-.payment-title {
-  font-size: 1.7rem;
-  font-weight: 600;
-  color: #0f172a;
-  margin-bottom: 8px;
-}
-
-.payment-subtitle {
-  font-size: 0.95rem;
-  color: #475569;
-  margin-bottom: 25px;
-}
-
-.payment-details {
-  list-style: none;
-  padding: 0;
-  margin-bottom: 30px;
-  text-align: left;
-}
-
-.payment-details li {
-  font-size: 0.95rem;
-  color: #334155;
-  margin: 10px 0;
+.nav-content {
   display: flex;
   align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #86868b;
 }
 
-.payment-details li::before {
-  content: "✔";
-  color: #2563eb;
-  font-weight: bold;
-  margin-right: 10px;
+.main-content {
+  max-width: 440px;
+  margin: 0 auto;
+  padding: 40px 20px;
+  text-align: center;
 }
 
-.payment-btn {
-  width: 100%;
-  padding: 14px;
+.premium-tag {
+  color: var(--accent-blue);
+  font-weight: 700;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.hero-header h1 {
+  font-size: 2.2rem;
+  font-weight: 800;
+  line-height: 1.1;
+  margin: 15px 0 30px;
+  letter-spacing: -1px;
+}
+
+/* MASTER CARD */
+.master-card {
+  background: #fff;
   border-radius: 30px;
+  padding: 30px;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.06);
+  position: relative;
+  border: 1px solid rgba(0,0,0,0.05);
+}
+
+/* HIGH-LIGHTED ₹599 */
+.value-anchor {
+  background: #fff5f5;
+  border-radius: 15px;
+  padding: 15px;
+  margin-bottom: 25px;
+  position: relative;
+  border: 1px solid #feb2b2;
+}
+
+.anchor-label { font-size: 0.7rem; color: #c53030; font-weight: 700; }
+.anchor-price s { font-size: 1.8rem; font-weight: 800; color: #86868b; text-decoration-thickness: 3px; text-decoration-color: #e53e3e; }
+
+.price-tag-floating {
+  position: absolute;
+  top: -10px;
+  right: -5px;
+  background: #e53e3e;
+  color: white;
+  padding: 4px 10px;
+  font-size: 0.7rem;
+  font-weight: 900;
+  border-radius: 50px;
+  box-shadow: 0 5px 10px rgba(229, 62, 62, 0.3);
+}
+
+/* TRIAL HERO ₹5 */
+.trial-hero-section {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+.hero-amt { font-size: 5rem; font-weight: 900; line-height: 1; letter-spacing: -3px; color: var(--apple-black); }
+.hero-curr { font-size: 1.8rem; font-weight: 700; align-self: flex-start; margin-top: 10px; }
+
+.refundable-badge {
+  background: #e6fffa;
+  color: #234e52;
+  font-size: 0.75rem;
+  font-weight: 800;
+  padding: 5px 10px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid #b2f5ea;
+}
+
+.hero-desc { font-size: 0.8rem; color: #86868b; margin-top: 5px; text-align: left; }
+
+/* FEATURES */
+.feature-grid { margin-bottom: 30px; text-align: left; }
+.f-item { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; font-size: 0.95rem; color: #424245; }
+.f-icon { color: var(--accent-blue); }
+
+/* SHINY BUTTON */
+.shiny-btn {
+  width: 100%;
+  background: var(--apple-black);
+  color: white;
   border: none;
-  font-size: 1.05rem;
-  font-weight: 500;
-  background: linear-gradient(135deg, #2563eb, #3b82f6);
-  color: #fff;
+  padding: 22px;
+  border-radius: 18px;
+  font-size: 1.2rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
   cursor: pointer;
-  transition: all 0.3s ease;
+  box-shadow: 0 15px 30px rgba(0,0,0,0.2);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
 }
 
-.payment-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 20px rgba(37, 99, 235, 0.35);
+.shiny-btn:active { transform: scale(0.96); }
+
+/* Shiny Effect */
+.shiny-btn::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(45deg, transparent, rgba(255,255,255,0.1), transparent);
+  transform: rotate(45deg);
+  animation: shine-anim 3s infinite;
 }
 
-.payment-btn.disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
+@keyframes shine-anim {
+  0% { left: -100%; }
+  20% { left: 100%; }
+  100% { left: 100%; }
 }
 
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.sub-detail-faint {
+  font-size: 0.7rem;
+  color: #0000ff; /* Very faint */
+  margin-top: 15px;
+  font-weight: 500;
 }
 
-/* 📱 Mobile Optimization */
+.trust-badges {
+  margin-top: 30px;
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  color: #86868b;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+/* RESPONSIVE */
 @media (max-width: 480px) {
-  .payment-card {
-    padding: 28px 22px;
-    border-radius: 16px;
-  }
+  .main-content { padding: 20px 10px; }
+  .master-card { border-radius: 0; box-shadow: none; border: none; padding: 20px; }
+  .apple-premium-bg { background: #fff; }
+  .hero-amt { font-size: 4.2rem; }
+}
 
-  .payment-title {
-    font-size: 1.45rem;
-  }
 
-  .payment-subtitle {
-    font-size: 0.85rem;
-  }
+/* --- GEMINI AI TEXT EFFECT --- */
+.gemini-ai {
+  font-weight: 900;
+  position: relative;
+  display: inline-block;
+  /* Multi-color Gradient like Gemini */
+  background: linear-gradient(
+    110deg, 
+    #4285f4 10%, 
+    #9b51e0 30%, 
+    #e84393 50%, 
+    #4285f4 70%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  
+  /* Smooth Wave Animation */
+  animation: shine-gradient 3s linear infinite;
+  
+  /* Glass Reflection Effect */
+  filter: drop-shadow(0 0 5px rgba(155, 81, 224, 0.3));
+}
+
+/* Glassy Shine Overlay */
+.gemini-ai::after {
+  content: 'AI';
+  position: absolute;
+  left: 0;
+  top: 0;
+  -webkit-text-fill-color: transparent;
+  background: linear-gradient(
+    120deg,
+    transparent 40%,
+    rgba(255, 255, 255, 0.8) 50%,
+    transparent 60%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  animation: glass-flash 4s infinite;
+  pointer-events: none;
+}
+
+@keyframes shine-gradient {
+  to { background-position: 200% center; }
+}
+
+@keyframes glass-flash {
+  0% { background-position: -200% center; }
+  30% { background-position: 200% center; }
+  100% { background-position: 200% center; }
+}
+
+/* --- UPDATED HERO HEADER STYLES --- */
+.hero-header {
+  margin-bottom: 40px;
+}
+
+.ultra-heading {
+  font-size: 2.8rem;
+  font-weight: 800;
+  letter-spacing: -1.5px;
+  line-height: 1.1;
+  color: #1d1d1f;
+  margin-top: 10px;
+}
+
+.hero-sub {
+  font-size: 1rem;
+  color: #86868b;
+  margin-top: 15px;
+  font-weight: 500;
+}
+
+/* Baki pricing card and strikethrough styles wahi rahenge jo pehle diye the */
+.anchor-price s {
+  font-size: 2.2rem;
+  font-weight: 800;
+  color: #5e5e9e;
+  text-decoration-color: #ff3b30; /* Apple Red */
+  text-decoration-thickness: 4px;
+}
+
+.value-anchor {
+  background: #fff;
+  border: 1.5px solid #f2f2f7;
+  padding: 20px;
+  border-radius: 24px;
+  margin-bottom: 30px;
+  box-shadow: inset 0 2px 10px rgba(0,0,0,0.02);
 }
