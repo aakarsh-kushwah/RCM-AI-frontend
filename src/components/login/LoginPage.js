@@ -27,90 +27,79 @@ const LoginPage = () => {
 
     const handleLogin = async (e) => {
         e.preventDefault();
-
-        // 1. Basic Validation
+        
+        // Basic Validation
         if (!credentials.loginId || !credentials.password) {
             setStatus({ loading: false, error: 'Please enter both User ID and Password.' });
             return;
         }
 
-        // 2. Set Loading State
         setStatus({ loading: true, error: '' });
-        
-        // 3. Setup AbortController for cleanup
         const controller = new AbortController();
         const signal = controller.signal;
 
         try {
-            // robust URL construction
             const baseUrl = (process.env.REACT_APP_API_URL || '').replace(/\/$/, ''); 
-            const apiUrl = `${baseUrl}/api/auth/login`;
-
-            const response = await fetch(apiUrl, {
+            const response = await fetch(`${baseUrl}/api/auth/login`, {
                 method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     loginId: credentials.loginId.trim(),
                     password: credentials.password
                 }),
-                signal // Attach signal
+                signal
             });
 
             const data = await response.json();
 
             if (!response.ok) {
-                throw new Error(data.message || 'Authentication failed. Please check your credentials.');
+                throw new Error(data.message || 'Authentication failed.');
             }
 
-            // 4. Successful Login & Data Integrity Check
             if (data && data.token) {
-                // Clear existing artifacts first
-                localStorage.removeItem('token');
-                localStorage.removeItem('user');
-                localStorage.removeItem('userRole');
+                // 1. Clear old session
+                localStorage.clear();
 
-                // Persist new session
+                // 2. Set new session
                 localStorage.setItem('token', data.token);
+                
+                // 3. ✅ SAVE STATUS (Crucial)
+                const userObj = {
+                    id: data.user.id,
+                    email: data.user.email,
+                    fullName: data.user.fullName || data.user.full_name,
+                    phone: data.user.phone || "",
+                    status: data.user.status || 'pending' // 👈 Default to pending if missing
+                };
 
-                if (data.user) {
-                    const userObj = {
-                        id: data.user.id,
-                        email: data.user.email,
-                        // Nullish coalescing for safety
-                        fullName: data.user.fullName || data.user.full_name || 'User',
-                        phone: data.user.phone || "", 
-                    };
+                localStorage.setItem('user', JSON.stringify(userObj));
+                localStorage.setItem('userRole', data.user.role || 'USER');
 
-                    localStorage.setItem('user', JSON.stringify(userObj));
-                    localStorage.setItem('userRole', data.user.role || 'USER');
+                // 4. ✅ SMART REDIRECT
+                // If they are an ADMIN, go to Admin Dashboard
+                if (data.user.role === 'ADMIN') {
+                     navigate('/admin/dashboard', { replace: true });
+                } 
+                // If they are a USER but NOT ACTIVE, go to Payment
+                else if (userObj.status !== 'active') {
+                     navigate('/payment-setup', { replace: true });
+                } 
+                // If Active User, go to Dashboard
+                else {
+                     navigate('/dashboard', { replace: true });
                 }
 
-                // 5. Navigation
-                navigate('/dashboard', { replace: true });
             } else {
-                throw new Error('Server response missing authentication token.');
+                throw new Error('Server response missing token.');
             }
 
         } catch (err) {
             if (err.name !== 'AbortError') {
-                console.error("Login Failure:", err);
-                setStatus({ 
-                    loading: false, 
-                    error: err.message || "Network error. Please try again later." 
-                });
+                setStatus({ loading: false, error: err.message });
             }
         } finally {
-            // Only turn off loading if we haven't navigated away (handled implicitly by unmount)
-            if (!signal.aborted) {
-                // We don't set loading false here because if successful, we navigate away.
-                // If failed, we set loading false in the catch block or here.
-                 if (status.error) setStatus(prev => ({ ...prev, loading: false }));
-            }
+            if (!signal.aborted && status.error) setStatus(prev => ({ ...prev, loading: false }));
         }
-        
         return () => controller.abort();
     };
 

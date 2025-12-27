@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, memo, useRef } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -46,13 +46,11 @@ const Toast = ({ message, type, onClose }) => {
 
 // --- REPORT ROW (Memoized) ---
 const ReportRow = memo(({ day, currentPv, prevPv, onChange }) => {
-  // Parse values safely
   const current = currentPv === '' ? '' : parseInt(currentPv, 10);
   const previous = prevPv !== null ? parseInt(prevPv, 10) : null;
   
   let comparison = { type: 'neutral', icon: <Minus size={14} />, text: '-' };
   
-  // Logic: Calculate difference from previous month's same day
   if (previous !== null && current !== '') {
     const diff = current - previous;
     if (diff > 0) comparison = { type: 'positive', icon: <TrendingUp size={14} />, text: `+${diff}` };
@@ -100,6 +98,9 @@ const DailyReport = () => {
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
   const [viewState, setViewState] = useState('LOADING'); 
   const [toast, setToast] = useState({ message: '', type: '' });
+  
+  // ✅ FIX: Ref to track ongoing requests to prevent duplicates
+  const abortControllerRef = useRef(null);
 
   // Derived Values
   const monthKey = useMemo(() => 
@@ -114,11 +115,11 @@ const DailyReport = () => {
     reportData[monthKey] || {}, 
   [reportData, monthKey]);
 
-  // CUMULATIVE TOTAL LOGIC (Last entered value is total)
+  // CUMULATIVE TOTAL LOGIC
   const totalPV = useMemo(() => {
     const days = Object.keys(currentMonthData).map(d => parseInt(d));
     if (days.length === 0) return 0;
-    days.sort((a, b) => b - a); // Descending
+    days.sort((a, b) => b - a);
     
     for (const day of days) {
       const val = parseInt(currentMonthData[day]?.pv || '0', 10);
@@ -140,16 +141,23 @@ const DailyReport = () => {
     return opts;
   }, []);
 
-  // API Actions
-  const fetchData = useCallback(async () => {
-    setViewState('LOADING');
+  // ✅ FIX: Optimized Fetch with AbortSignal and 403 Handling
+  const fetchData = useCallback(async (signal) => {
+    // 1. Cache Check: If we already have data for this month, don't fetch!
+    setViewState(prev => reportData[monthKey] ? 'IDLE' : 'LOADING');
+    if (reportData[monthKey]) return;
+
     try {
       const getMonthData = async (m, y) => {
         const token = localStorage.getItem('token');
         const response = await axios.post(
           `${API_BASE_URL}/api/reports/get-dailyReport`,
           { month: m, year: y },
-          { headers: { Authorization: `Bearer ${token}` }, timeout: API_TIMEOUT }
+          { 
+            headers: { Authorization: `Bearer ${token}` }, 
+            timeout: API_TIMEOUT,
+            signal: signal // Attach signal to cancel if needed
+          }
         );
         return response.data?.status && Array.isArray(response.data.data) ? response.data.data : [];
       };
@@ -188,15 +196,44 @@ const DailyReport = () => {
       setViewState('IDLE');
 
     } catch (err) {
+      if (axios.isCancel(err)) return; // Ignore cancelled requests
+
       console.error('Sync Error:', err);
+      
+      // ✅ CRITICAL FIX: Handle Expired Subscription (403)
+      if (err.response?.status === 403 && err.response?.data?.code === 'SUBSCRIPTION_REQUIRED') {
+          // Update LocalStorage to match reality
+          const user = JSON.parse(localStorage.getItem('user') || '{}');
+          user.status = 'pending';
+          localStorage.setItem('user', JSON.stringify(user));
+          
+          // Force Redirect
+          showToast('Subscription expired. Redirecting...', 'error');
+          setTimeout(() => navigate('/payment-setup', { replace: true }), 1000);
+          return;
+      }
+
       setViewState('ERROR');
       showToast('Unable to sync data. Working offline.', 'error');
     }
-  }, [currentMonthIndex, currentYear, daysInMonth, monthKey]);
+  }, [currentMonthIndex, currentYear, daysInMonth, monthKey, navigate, reportData]);
 
+  // ✅ FIX: Use Effect with Abort Cleanup
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    // Create new controller
+    if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+    
+    fetchData(abortControllerRef.current.signal);
+
+    return () => {
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+    };
+  }, [fetchData]); // Dependency is now stable
 
   const handleSave = async () => {
     setViewState('SAVING');
@@ -218,6 +255,16 @@ const DailyReport = () => {
       }
     } catch (error) {
       console.error('Save Error:', error);
+      
+      // ✅ FIX: Handle 403 on Save as well
+      if (error.response?.status === 403 && error.response?.data?.code === 'SUBSCRIPTION_REQUIRED') {
+         const user = JSON.parse(localStorage.getItem('user') || '{}');
+         user.status = 'pending';
+         localStorage.setItem('user', JSON.stringify(user));
+         navigate('/payment-setup', { replace: true });
+         return;
+      }
+
       if (error.response?.status === 401) {
          showToast('Session expired. Please login again.', 'error');
          setTimeout(() => { localStorage.clear(); navigate('/login'); }, 2000);
@@ -267,7 +314,7 @@ const DailyReport = () => {
       <div className="error-screen">
         <AlertCircle size={48} strokeWidth={1.5} />
         <h3>Connection Failed</h3>
-        <button className="retry-btn" onClick={fetchData}>Tap to Retry</button>
+        <button className="retry-btn" onClick={() => fetchData(null)}>Tap to Retry</button>
       </div>
     );
   }
@@ -276,7 +323,6 @@ const DailyReport = () => {
     <div className="app-layout">
       <Toast message={toast.message} type={toast.type} onClose={closeToast} />
 
-      {/* Sticky Header */}
       <header className="app-header">
         <div className="header-content">
           <button className="icon-btn" onClick={() => navigate('/dashboard')}>
@@ -288,7 +334,6 @@ const DailyReport = () => {
       </header>
 
       <div className="main-content-wrapper">
-        {/* Stats Card */}
         <div className="stats-card">
           <div className="stats-icon-bg">
             <BarChart2 size={24} />
@@ -299,7 +344,6 @@ const DailyReport = () => {
           </div>
         </div>
 
-        {/* Filter Bar */}
         <div className="filter-bar">
           <div className="custom-select-wrapper">
             <Calendar className="select-icon" size={16} />
@@ -315,7 +359,6 @@ const DailyReport = () => {
           </div>
         </div>
 
-        {/* Data Table Card */}
         <div className="data-card">
           <div className="table-responsive">
             <table className="modern-table">
@@ -341,7 +384,6 @@ const DailyReport = () => {
         </div>
       </div>
 
-      {/* Sticky Footer Action */}
       <div className="sticky-footer">
         <button 
           className={`primary-action-btn ${viewState === 'SAVING' ? 'loading' : ''}`}
