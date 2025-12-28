@@ -1,15 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Login.css';
 
 /**
  * Enterprise-Grade Login Component
- * * Features:
- * - Request Cancellation (AbortController)
- * - Loading State Management
- * - Comprehensive Error Handling
- * - Accessibility (ARIA)
- * - Secure Storage Handling
+ * Updated to save rcmId and handle Subscription Status redirection.
  */
 const LoginPage = () => {
     // State Management
@@ -63,19 +58,21 @@ const LoginPage = () => {
                 // 2. Set new session
                 localStorage.setItem('token', data.token);
                 
-                // 3. ✅ SAVE STATUS (Crucial)
+                // 3. ✅ SAVE USER DATA (Fixed to include RCM ID)
+                // We map all fields that UserDashboard expects.
                 const userObj = {
                     id: data.user.id,
                     email: data.user.email,
                     fullName: data.user.fullName || data.user.full_name,
                     phone: data.user.phone || "",
-                    status: data.user.status || 'pending' // 👈 Default to pending if missing
+                    rcmId: data.user.rcmId || data.user.rcm_id || "Not Set", // 👈 ADDED THIS
+                    status: data.user.status || 'pending' 
                 };
 
                 localStorage.setItem('user', JSON.stringify(userObj));
                 localStorage.setItem('userRole', data.user.role || 'USER');
 
-                // 4. ✅ SMART REDIRECT
+                // 4. ✅ SMART REDIRECT LOGIC
                 // If they are an ADMIN, go to Admin Dashboard
                 if (data.user.role === 'ADMIN') {
                      navigate('/admin/dashboard', { replace: true });
@@ -111,7 +108,7 @@ const LoginPage = () => {
                         src="/rcmai_logo.png" 
                         alt="RCM AI Logo" 
                         className="auth-logo" 
-                        onError={(e) => e.target.style.display = 'none'} // Graceful fallback
+                        onError={(e) => e.target.style.display = 'none'} 
                     />
                     <h2>Welcome Back</h2>
                     <p className="auth-subtitle">Sign in to your dashboard</p>
@@ -148,7 +145,6 @@ const LoginPage = () => {
                         />
                     </div>
 
-                    {/* Accessibility-friendly error message */}
                     {status.error && (
                         <div className="error-message" role="alert" aria-live="polite">
                             <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>

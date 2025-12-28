@@ -51,6 +51,7 @@ function RegisterPage() {
             email: email,
             fullName: fullName,
             phone: phone,       // Important for Razorpay
+            rcmId: rcmId,
             status: 'pending'   // Important for UserProtectedRoute
         };
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Menu, X, Bot, Zap, Video, Star, TrendingUp } from 'lucide-react'; // ✅ Added TrendingUp
+import { Menu, X, Bot, Zap, Video, Star, TrendingUp } from 'lucide-react'; 
 import './UserDashboard.css'; 
 
 // ... (LoggedOutMessage component stays the same) ...
@@ -17,22 +17,39 @@ function UserDashboard() {
     const [isLoggedOut, setIsLoggedOut] = useState(false);
     
     const navigate = useNavigate(); 
-    const [userData, setUserData] = useState(() => JSON.parse(localStorage.getItem('userData')) || {});
+
+    // ✅ FIX 1: Read from 'user' key (not 'userData')
+    const [userData, setUserData] = useState(() => {
+        try {
+            return JSON.parse(localStorage.getItem('user')) || {};
+        } catch (e) {
+            return {};
+        }
+    });
     
+    // ✅ FIX 2: Safely access fields matching RegisterPage structure
     const userName = userData.fullName || 'RCM User';
     const userEmail = userData.email || 'No Email Provided';
-    const rcmId = userData.rcmId || 'Not Set';
+    const rcmId = userData.rcmId || 'Not Set'; // Now this will work
 
     useEffect(() => {
-        const savedUserData = JSON.parse(localStorage.getItem('userData')) || {};
-        setUserData(savedUserData); 
+        const handleStorageChange = () => {
+             const savedUserData = JSON.parse(localStorage.getItem('user')) || {};
+             setUserData(savedUserData);
+        };
+
+        window.addEventListener('storage', handleStorageChange);
+        return () => window.removeEventListener('storage', handleStorageChange);
     }, []); 
 
     const handleLogout = () => {
+        // ✅ FIX 3: Clear the correct keys
         localStorage.removeItem('token');
         localStorage.removeItem('userRole');
-        localStorage.removeItem('userData');
+        localStorage.removeItem('user'); // Matches RegisterPage
         setIsLoggedOut(true);
+        // Optional: Navigate to login immediately
+        setTimeout(() => navigate('/login'), 1500);
     };
 
     const DashboardCard = ({ title, description, icon, cta, onClick, cardId }) => {
@@ -146,7 +163,7 @@ function UserDashboard() {
                                 </div>
                             </div>
                             
-                            {/* ✅ NEW: Daily PV Report Card */}
+                            {/* Daily PV Report Card */}
                             <DashboardCard
                                 cardId="daily-report-card"
                                 title="Daily PV Report"
