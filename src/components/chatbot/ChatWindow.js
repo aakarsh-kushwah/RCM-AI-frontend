@@ -1,209 +1,210 @@
-/**
- * @file src/components/chatbot/ChatWindow.js
- * @description Next-Gen Enterprise Chat Interface.
- * FIXED: Import order, removal of missing dependencies, highly optimized.
- */
+import React, { useState, useRef, useEffect, memo } from 'react';
+import { 
+  Send, Menu, Plus, MessageSquare, Settings, 
+  Sparkles, Mic, MicOff, X, Volume2, Loader, AudioLines 
+} from 'lucide-react';
+import imageCompression from 'browser-image-compression';
+import { useChatEngine } from '../../hooks/useChatEngine';
+import VoiceCall from './VoiceCall'; // ✅ Import Added
+import './ChatWindow.css';
 
-import React, { useState, useRef, useEffect, memo, Suspense, useCallback } from 'react';
-import { Send, X, Phone, Volume2, Sparkles, MessageCircle, ArrowDown, ShieldCheck } from 'lucide-react';
-import { useChatEngine } from '../../hooks/useChatEngine'; 
-import config from '../../config/env';
-import { generateWhatsAppLink } from '../../utils/textUtils';
-import './ChatWindow.css'; 
-
-// --- LAZY LOAD (Must be after imports) ---
-const VoiceCall = React.lazy(() => import('./VoiceCall'));
-
-// --- NATIVE SECURITY (No npm install needed) ---
-// This beats standard security without needing extra libraries
+// --- TEXT FORMATTER ---
 const safeSanitize = (html) => {
   if (!html) return "";
-  return html
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;")
-    .replace(/\n/g, '<br/>');
+  return html.replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, '<br/>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
 };
 
-// --- MEMOIZED MESSAGE BUBBLE ---
-const MessageBubble = memo(({ msg, isLast, onReplay }) => {
+// --- MESSAGE ROW ---
+const ChatRow = memo(({ msg, onReplay }) => {
   const isAssistant = msg.role === 'assistant';
-  const contentHtml = safeSanitize(msg.content);
-
   return (
-    <div className={`msg-group ${msg.role} ${isLast ? 'slide-in-up' : ''}`}>
-      {isAssistant && (
-        <div className="bot-thumb" aria-hidden="true">
-          <Sparkles size={16} className="text-gradient" />
-        </div>
-      )}
-      
-      <div className="msg-bubble-container">
-        <div className="msg-bubble glass-effect">
-          <div dangerouslySetInnerHTML={{ __html: contentHtml }} />
-        </div>
-
-        {isAssistant && (
-          <div className="msg-actions">
-            <button 
-              className="action-icon-btn" 
-              onClick={() => onReplay(msg.content)}
-              title="Replay Audio"
-            >
-              <Volume2 size={12} />
-            </button>
-            <div className="secure-badge" title="Verified Secure Response">
-              <ShieldCheck size={10} />
-            </div>
-          </div>
-        )}
+    <div className={`gemini-msg-row ${msg.role}`}>
+      <div className="msg-avatar">
+        {isAssistant ? <div className="ai-star-icon"><Sparkles size={18} className="star-anim" /></div> : <div className="user-char-icon">U</div>}
+      </div>
+      <div className="msg-content">
+        <div className="msg-sender-name">{isAssistant ? 'RCM Intelligence' : 'You'}</div>
+        {msg.image && <div className="msg-attachment"><img src={msg.image} alt="Uploaded" /></div>}
+        <div className="msg-bubble-text" dangerouslySetInnerHTML={{ __html: safeSanitize(msg.content) }} />
+        {isAssistant && <button className="replay-tiny" onClick={() => onReplay(msg.content)}><Volume2 size={14} /> Listen</button>}
       </div>
     </div>
   );
 });
 
-// --- MAIN COMPONENT ---
-const ChatWindow = ({ onClose }) => {
-  const { messages, status, sendMessage, addMessage, replayLastAudio } = useChatEngine();
+// --- MAIN LAYOUT ---
+const ChatWindow = () => {
+  const { messages, status, sendMessage, replayLastAudio } = useChatEngine();
   const [input, setInput] = useState('');
-  const [isCallActive, setIsCallActive] = useState(false);
-  const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const [selectedImage, setSelectedImage] = useState(null); 
   
-  const chatBodyRef = useRef(null);
+  // 🎤 States
+  const [isListening, setIsListening] = useState(false); // Simple Mic
+  const [isVoiceMode, setIsVoiceMode] = useState(false); // ✅ Gemini Live Mode
+  
+  // 🖼️ Compression
+  const [isCompressing, setIsCompressing] = useState(false);
+  
+  const [isSidebarOpen, setSidebarOpen] = useState(true);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  
+  const scrollRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const recognitionRef = useRef(null);
 
-  const scrollToBottom = useCallback((smooth = true) => {
-    if (chatBodyRef.current) {
-      chatBodyRef.current.scrollTo({
-        top: chatBodyRef.current.scrollHeight,
-        behavior: smooth ? 'smooth' : 'auto'
-      });
+  // Responsive Check
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if (mobile) setSidebarOpen(false);
+      else setSidebarOpen(true);
+    };
+    window.addEventListener('resize', handleResize);
+    handleResize(); 
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Auto Scroll
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+    }
+  }, [messages, status]);
+
+  // --- SIMPLE SPEECH TO TEXT (Small Mic) ---
+  useEffect(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'hi-IN';
+
+      recognition.onstart = () => setIsListening(true);
+      recognition.onend = () => setIsListening(false);
+
+      recognition.onresult = (event) => {
+        let finalTranscript = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) finalTranscript += event.results[i][0].transcript;
+        }
+        if (finalTranscript) {
+          setInput(prev => prev + (prev.length > 0 ? ' ' : '') + finalTranscript);
+        }
+      };
+      recognitionRef.current = recognition;
     }
   }, []);
 
-  const handleScroll = () => {
-    if (!chatBodyRef.current) return;
-    const { scrollTop, scrollHeight, clientHeight } = chatBodyRef.current;
-    // Show button if user is more than 100px away from bottom
-    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
-    setShowScrollBtn(!isNearBottom);
+  const toggleListening = () => {
+    if (!recognitionRef.current) return alert("Browser not supported");
+    if (isListening) recognitionRef.current.stop();
+    else recognitionRef.current.start();
   };
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages.length, status, scrollToBottom]);
+  // --- IMAGE HANDLING ---
+  const handleImageProcessing = async (file) => {
+    if (!file || !file.type.startsWith('image/')) return;
+    setIsCompressing(true);
+    try {
+        const compressedFile = await imageCompression(file, { maxSizeMB: 1, useWebWorker: true });
+        setSelectedImage(compressedFile);
+    } catch (e) { setSelectedImage(file); } 
+    finally { setIsCompressing(false); }
+  };
 
-  const onSendClick = () => {
-    if (!input.trim()) return;
-    sendMessage(input);
+  const handleSend = () => {
+    if (!input.trim() && !selectedImage) return;
+    sendMessage(input, selectedImage);
     setInput('');
-    if (navigator.vibrate) navigator.vibrate(10);
-  };
-
-  const openWhatsApp = () => {
-    const link = generateWhatsAppLink(config.CONTACT.WHATSAPP_NUMBER, config.CONTACT.START_MSG);
-    window.open(link, '_blank', 'noopener,noreferrer');
+    setSelectedImage(null);
+    if (isListening) recognitionRef.current.stop();
   };
 
   return (
-    <div className="chat-interface glass-panel" role="dialog" aria-modal="true">
+    <div className="gemini-app-container">
       
-      <Suspense fallback={<div className="loader-overlay">Connecting...</div>}>
-        {isCallActive && (
-          <VoiceCall 
-            onClose={() => setIsCallActive(false)} 
-            onMessageAdd={addMessage} 
-          />
-        )}
-      </Suspense>
-
-      <header className="chat-header">
-        <div className="header-branding">
-          <div className="avatar-ring">
-            <Sparkles size={20} className="glow-icon" />
-          </div>
-          <div className="header-info">
-            <h3>RCM Intelligence</h3>
-            <span className="status-badge success">
-              <span className="pulse-dot"></span> Online
-            </span>
-          </div>
-        </div>
-        
-        <div className="header-controls">
-          <button onClick={() => setIsCallActive(true)} className="ctrl-btn accent" title="Voice Call">
-            <Phone size={18} />
-          </button>
-          <button onClick={openWhatsApp} className="ctrl-btn whatsapp" title="WhatsApp">
-            <MessageCircle size={18} />
-          </button>
-          <button onClick={onClose} className="ctrl-btn close" title="Close">
-            <X size={20} />
-          </button>
-        </div>
-      </header>
-
-      <div 
-        className="chat-viewport custom-scrollbar" 
-        ref={chatBodyRef}
-        onScroll={handleScroll}
-      >
-        {messages.length === 0 && status !== 'loading' && (
-          <div className="empty-state fade-in">
-            <div className="welcome-graphic">👋</div>
-            <p>Namaste! I am your RCM Expert.</p>
-            <span className="sub-text">Ask about business, products, or support.</span>
-          </div>
-        )}
-
-        {messages.map((msg, i) => (
-          <MessageBubble 
-            key={i} 
-            msg={msg} 
-            isLast={i === messages.length - 1}
-            onReplay={replayLastAudio}
-          />
-        ))}
-
-        {status === 'loading' && (
-          <div className="msg-group assistant fade-in">
-             <div className="bot-thumb"><Sparkles size={14} /></div>
-             <div className="typing-indicator glass-effect">
-                <span></span><span></span><span></span>
-             </div>
-          </div>
-        )}
-      </div>
-
-      {showScrollBtn && (
-        <button className="scroll-fab fade-in" onClick={() => scrollToBottom(true)}>
-          <ArrowDown size={18} />
-        </button>
+      {/* ✅ GEMINI LIVE OVERLAY */}
+      {isVoiceMode && (
+         <VoiceCall 
+            onClose={() => setIsVoiceMode(false)}
+            onMessageAdd={(role, content) => console.log(role, content)} 
+         />
       )}
 
-      <footer className="chat-footer">
-        <div className="input-wrapper glass-inset">
-          <input 
-            type="text" 
-            placeholder="Type your query..." 
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && onSendClick()}
-            disabled={status === 'loading'}
-          />
-          <button 
-            className={`send-btn ${input.trim() ? 'active' : ''}`} 
-            onClick={onSendClick} 
-            disabled={!input.trim() || status === 'loading'}
-          >
-            <Send size={18} />
-          </button>
+      {/* Sidebar (Existing Code) */}
+      <aside className={`app-sidebar ${isSidebarOpen ? 'open' : 'closed'}`}>
+         {/* Sidebar content same as before... */}
+         <div className="sidebar-header">
+           <button className="menu-burger" onClick={() => setSidebarOpen(!isSidebarOpen)}><Menu size={20}/></button>
+         </div>
+         {isSidebarOpen && <div className="sidebar-content"><button className="new-chat-pill" onClick={()=>window.location.reload()}><Plus size={16}/>New Chat</button></div>}
+      </aside>
+
+      {/* MAIN CHAT */}
+      <main className="app-main">
+        <header className="main-header">
+          <div className="header-left">
+            {!isSidebarOpen && <button className="menu-burger-mobile" onClick={() => setSidebarOpen(true)}><Menu size={20}/></button>}
+            <span className="model-select">RCM Intelligence <span className="beta-badge">PRO</span></span>
+          </div>
+        </header>
+
+        <div className="chat-scroll-wrapper" ref={scrollRef}>
+          {messages.length === 0 && (
+            <div className="welcome-hero">
+               <div className="hero-logo-box"><Sparkles size={40} className="hero-icon" /></div>
+               <h1 className="hero-title"><span className="gradient-text">Hello, Leader.</span></h1>
+               <h2 className="hero-subtitle">How can I help you grow today?</h2>
+            </div>
+          )}
+
+          <div className="message-list">
+             {messages.map((msg, i) => <ChatRow key={i} msg={msg} onReplay={replayLastAudio} />)}
+             {status === 'loading' && <div className="gemini-msg-row assistant"><Loader size={20} className="spin"/> Thinking...</div>}
+          </div>
         </div>
-        <div className="footer-note">
-           Powered by RCM Secure AI
+
+        {/* INPUT AREA */}
+        <div className="input-container">
+           <div className="input-max-width">
+              {selectedImage && <div className="preview-badge"><img src={URL.createObjectURL(selectedImage)} alt="p" /><button onClick={()=>setSelectedImage(null)}><X size={14}/></button></div>}
+              
+              <div className={`input-box ${isListening ? 'recording-mode' : ''}`}>
+                 <button className="add-file-btn" onClick={() => fileInputRef.current.click()}><Plus size={20}/></button>
+                 <input 
+                    type="text" 
+                    placeholder={isListening ? "Listening..." : "Type a message..."}
+                    value={input}
+                    onChange={e => setInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleSend()}
+                 />
+                 
+                 <div className="input-actions">
+                    {/* ✅ LIVE BUTTON (Only shows when empty) */}
+                    {!input.trim() && !selectedImage ? (
+                        <button className="voice-live-btn" onClick={() => setIsVoiceMode(true)} title="Start Live Voice Chat">
+                            <AudioLines size={20} /><span className="live-wave"></span>
+                        </button>
+                    ) : (
+                        <button className="send-btn active" onClick={handleSend}><Send size={18}/></button>
+                    )}
+
+                    {/* Simple Mic Toggle */}
+                    {(!input.trim() && !selectedImage) && (
+                        <button className={`mic-btn ${isListening ? 'active-red' : ''}`} onClick={toggleListening}>
+                            {isListening ? <MicOff size={20} /> : <Mic size={20}/>}
+                        </button>
+                    )}
+                 </div>
+              </div>
+           </div>
         </div>
-      </footer>
+      </main>
+
+      <input type="file" ref={fileInputRef} style={{display:'none'}} onChange={(e) => handleImageProcessing(e.target.files[0])} />
+      {isMobile && isSidebarOpen && <div className="backdrop" onClick={() => setSidebarOpen(false)}></div>}
     </div>
   );
 };
