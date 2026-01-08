@@ -1,17 +1,17 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { 
-  Bot, Zap, Video, Star, TrendingUp, LogOut, 
-  LayoutDashboard, ChevronRight, UserCircle, Bell, Settings 
+  Zap, Video, Star, TrendingUp, LogOut, 
+  LayoutDashboard, ChevronRight, UserCircle, Bell, Settings, Bot // Bot import kiya gaya hai
 } from 'lucide-react'; 
 import './UserDashboard.css'; 
 
 const UserDashboard = () => {
-    const [scrolled, setScrolled] = useState(false);
     const navigate = useNavigate(); 
     const location = useLocation();
+    const [scrolled, setScrolled] = useState(false);
 
-    // --- Optimization: Memoize User Data ---
+    // --- User Data ---
     const userData = useMemo(() => {
         try {
             return JSON.parse(localStorage.getItem('user')) || {};
@@ -19,185 +19,182 @@ const UserDashboard = () => {
     }, []);
 
     const userName = userData.fullName || 'User';
-    const rcmId = userData.rcmId || 'Not Linked';
+    const rcmId = userData.rcmId || 'ID-Pending';
 
-    // --- Performance: Scroll Listener (Throttled effect via CSS transition) ---
+    // --- Strict Dark Mode ---
     useEffect(() => {
-        const handleScroll = () => setScrolled(window.scrollY > 20);
+        document.documentElement.style.setProperty('background-color', '#000000', 'important');
+        document.body.style.setProperty('background-color', '#000000', 'important');
+        document.body.style.setProperty('color', '#ffffff', 'important');
+
+        const handleScroll = () => setScrolled(window.scrollY > 10);
         window.addEventListener('scroll', handleScroll);
         return () => window.removeEventListener('scroll', handleScroll);
     }, []);
 
     const handleLogout = () => {
-        // Clear critical auth tokens
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
+        localStorage.clear();
         navigate('/login', { replace: true });
     };
 
-    // --- Components ---
-    
-    // 1. Desktop Sidebar Item
-    const SidebarItem = ({ icon, label, path }) => {
-        const isActive = location.pathname === path || (path === '/dashboard' && location.pathname === '/');
-        return (
-            <div 
-                className={`sidebar-item ${isActive ? 'active' : ''}`} 
-                onClick={() => navigate(path)}
-                role="button"
-                tabIndex={0}
-            >
-                <div className="icon-box">{icon}</div>
-                <span className="label">{label}</span>
-                {isActive && <div className="active-glow" />}
-            </div>
-        );
+    const getGreeting = () => {
+        const hour = new Date().getHours();
+        if (hour < 12) return 'Good Morning';
+        if (hour < 18) return 'Good Afternoon';
+        return 'Good Evening';
     };
-
-    // 2. Mobile Bottom Nav Item
-    const BottomNavItem = ({ icon, label, path }) => {
-        const isActive = location.pathname === path;
-        return (
-            <div 
-                className={`bottom-nav-item ${isActive ? 'active' : ''}`}
-                onClick={() => navigate(path)}
-            >
-                <div className="nav-icon">{icon}</div>
-                <span className="nav-label">{label}</span>
-            </div>
-        );
-    };
-
-    // 3. Feature Card (Optimized)
-    const FeatureCard = ({ title, subtitle, icon, color, onClick }) => (
-        <div 
-            className="feature-card" 
-            style={{ '--accent-color': color }}
-            onClick={onClick}
-        >
-            <div className="card-bg-glow" />
-            <div className="card-content-wrapper">
-                <div className="card-header">
-                    <div className="card-icon-wrapper">{icon}</div>
-                    <div className="arrow-icon"><ChevronRight size={18} /></div>
-                </div>
-                <div className="card-text">
-                    <h3>{title}</h3>
-                    <p>{subtitle}</p>
-                </div>
-            </div>
-        </div>
-    );
 
     return (
-        <div className="app-container">
+        <div className="ud-wrapper">
             
-            {/* --- DESKTOP SIDEBAR (Hidden on Mobile) --- */}
-            <aside className="sidebar-desktop">
-                <div className="sidebar-header">
-                    <div className="brand-logo">
-                        <Bot className="brand-icon" size={28} />
-                        <span className="brand-name">RCM<span className="highlight">.AI</span></span>
+            {/* --- DESKTOP SIDEBAR --- */}
+            <aside className="ud-sidebar">
+                <div className="ud-sidebar-header">
+                    <div className="ud-logo-container">
+                        <img 
+                            src="https://i.ibb.co/GrMTmd0/Gemini-Generated-Image-q98hyq98hyq98hyq-removebg-preview-removebg-preview.png" 
+                            alt="RCM Logo" 
+                            className="ud-logo-img"
+                        />
+                        <span className="ud-gemini-text">RCM AI</span>
                     </div>
                 </div>
 
-                <div className="user-profile-widget">
-                    <div className="avatar-ring">
-                        <div className="avatar">{userName.charAt(0).toUpperCase()}</div>
-                    </div>
-                    <div className="user-info">
-                        <p className="welcome-text">Welcome back,</p>
-                        <h4 className="name-text">{userName.split(' ')[0]}</h4>
+                <div className="ud-profile">
+                    <div className="ud-avatar">{userName.charAt(0).toUpperCase()}</div>
+                    <div className="ud-profile-info">
+                        <p>Welcome,</p>
+                        <h4>{userName.split(' ')[0]}</h4>
                     </div>
                 </div>
 
-                <nav className="sidebar-menu">
-                    <SidebarItem icon={<LayoutDashboard size={20} />} label="Overview" path="/dashboard" />
-                    <SidebarItem icon={<Zap size={20} />} label="AI Assistant" path="/chat" />
-                    <SidebarItem icon={<TrendingUp size={20} />} label="Analytics" path="/daily-report" />
-                    <SidebarItem icon={<Video size={20} />} label="Training" path="/leaders-videos" />
+                <nav className="ud-nav">
+                    <div className="ud-nav-item active">
+                        <LayoutDashboard size={20} /> <span>Dashboard</span>
+                    </div>
+                    <div className="ud-nav-item" onClick={() => navigate('/chat')}>
+                        <Zap size={20} /> <span>AI Assistant</span>
+                    </div>
+                    <div className="ud-nav-item" onClick={() => navigate('/daily-report')}>
+                        <TrendingUp size={20} /> <span>Analytics</span>
+                    </div>
+                    <div className="ud-nav-item" onClick={() => navigate('/leaders-videos')}>
+                        <Video size={20} /> <span>Training</span>
+                    </div>
                 </nav>
 
-                <div className="sidebar-footer">
-                    <button className="logout-btn" onClick={handleLogout}>
+                <div className="ud-footer">
+                    <button className="ud-logout-btn" onClick={handleLogout}>
                         <LogOut size={18} /> <span>Logout</span>
                     </button>
                 </div>
             </aside>
 
-            {/* --- MAIN CONTENT AREA --- */}
-            <main className="main-viewport">
+            {/* --- MAIN CONTENT --- */}
+            <main className="ud-main">
                 
-                {/* Header (Adaptive) */}
-                <header className={`app-header ${scrolled ? 'glass-mode' : ''}`}>
-                    <div className="header-mobile-brand">
-                        <Bot className="brand-icon" size={24} />
-                        <span>RCM.AI</span>
+                <header className={`ud-header ${scrolled ? 'glass' : ''}`}>
+                    <div className="ud-header-left">
+                        <div className="ud-mobile-brand">
+                            <img 
+                                src="https://i.ibb.co/GrMTmd0/Gemini-Generated-Image-q98hyq98hyq98hyq-removebg-preview-removebg-preview.png" 
+                                alt="Logo" 
+                                className="ud-mobile-logo-img"
+                            />
+                            <span className="ud-gemini-text-small">RCM AI</span>
+                        </div>
+                        
+                        <div className="ud-desktop-greet">
+                            <h1>{getGreeting()}, {userName.split(' ')[0]}</h1>
+                        </div>
                     </div>
-                    
-                    <div className="header-actions">
-                        <div className="rcm-id-badge">
+
+                    <div className="ud-header-right">
+                        <div className="ud-id-badge">
                             <UserCircle size={16} />
                             <span>{rcmId}</span>
                         </div>
-                        <button className="icon-btn"><Bell size={20} /></button>
+                        <button className="ud-icon-btn">
+                            <Bell size={20} />
+                            <div className="ud-dot"></div>
+                        </button>
                     </div>
                 </header>
 
-                <div className="scrollable-content">
-                    {/* Hero Banner */}
-                    <div className="hero-banner" onClick={() => navigate('/chat')}>
-                        <div className="hero-content">
-                            <div className="hero-badge">
-                                <Zap size={12} fill="currentColor" /> <span>AI 2.0 Live</span>
-                            </div>
-                            <h1>RCM Intelligence</h1>
-                            <p>Instant answers for business growth.</p>
-                            <button className="hero-btn">Launch AI <ChevronRight size={16} /></button>
+                <div className="ud-content">
+                    {/* 🔥 Updated Hero Section */}
+                    <div className="ud-hero" onClick={() => navigate('/chat')}>
+                        <div className="ud-hero-text">
+                            {/* Badge removed from here */}
+                            <h2>Ask RCM Intelligence</h2>
+                            <p>Instant strategies for business growth.</p>
+                            <button className="ud-hero-cta">
+                                Start Chat <ChevronRight size={16} />
+                            </button>
                         </div>
-                        <div className="hero-visual">
-                            <Bot className="floating-bot" size={120} />
-                            <div className="glow-effect"></div>
-                        </div>
+                        
+                        {/* 🔥 New Dark Corner Logo (Watermark) */}
+                        <Bot className="ud-hero-dark-logo" size={180} />
                     </div>
 
-                    {/* Stats & Tools Grid */}
-                    <h2 className="section-title">Quick Actions</h2>
-                    <div className="dashboard-grid">
-                        <FeatureCard 
-                            title="Daily Report"
-                            subtitle="Track PV & Consistency"
-                            icon={<TrendingUp size={24} />}
-                            color="#00f2fe"
-                            onClick={() => navigate('/daily-report')}
-                        />
-                        <FeatureCard 
-                            title="Leaders' Zone"
-                            subtitle="Premium Video Training"
-                            icon={<Video size={24} />}
-                            color="#fe8c00"
-                            onClick={() => navigate('/leaders-videos')}
-                        />
-                        <FeatureCard 
-                            title="Product Hub"
-                            subtitle="Catalog & Guides"
-                            icon={<Star size={24} />}
-                            color="#4facfe"
-                            onClick={() => navigate('/products-videos')}
-                        />
+                    {/* Features Grid */}
+                    <h3 className="ud-section-title">Quick Access</h3>
+                    <div className="ud-grid">
+                        <div className="ud-card cyan" onClick={() => navigate('/daily-report')}>
+                            <div className="ud-card-top">
+                                <div className="ud-icon-box"><TrendingUp size={22} /></div>
+                                <ChevronRight className="ud-arrow" size={18} />
+                            </div>
+                            <div className="ud-card-btm">
+                                <h4>Daily Report</h4>
+                                <p>Track consistency</p>
+                            </div>
+                        </div>
+
+                        <div className="ud-card orange" onClick={() => navigate('/leaders-videos')}>
+                            <div className="ud-card-top">
+                                <div className="ud-icon-box"><Video size={22} /></div>
+                                <ChevronRight className="ud-arrow" size={18} />
+                            </div>
+                            <div className="ud-card-btm">
+                                <h4>Leaders' Zone</h4>
+                                <p>Premium Training</p>
+                            </div>
+                        </div>
+
+                        <div className="ud-card blue" onClick={() => navigate('/products-videos')}>
+                            <div className="ud-card-top">
+                                <div className="ud-icon-box"><Star size={22} /></div>
+                                <ChevronRight className="ud-arrow" size={18} />
+                            </div>
+                            <div className="ud-card-btm">
+                                <h4>Product Hub</h4>
+                                <p>Catalog & Guides</p>
+                            </div>
+                        </div>
                     </div>
-                    
-                    {/* Padding for Bottom Nav */}
-                    <div className="bottom-spacer"></div>
+                    <div className="ud-spacer"></div>
                 </div>
             </main>
 
-            {/* --- MOBILE BOTTOM NAVIGATION (Hidden on Desktop) --- */}
-            <nav className="bottom-nav-mobile">
-                <BottomNavItem icon={<LayoutDashboard size={22} />} label="Home" path="/dashboard" />
-                <BottomNavItem icon={<Zap size={22} />} label="AI Chat" path="/chat" />
-                <BottomNavItem icon={<TrendingUp size={22} />} label="Stats" path="/daily-report" />
-                <BottomNavItem icon={<Settings size={22} />} label="Menu" path="/menu" />
+            {/* --- MOBILE NAV --- */}
+            <nav className="ud-mobile-nav">
+                <div className="ud-mn-item active" onClick={() => navigate('/dashboard')}>
+                    <LayoutDashboard size={22} />
+                    <span>Home</span>
+                </div>
+                <div className="ud-mn-item" onClick={() => navigate('/chat')}>
+                    <div className="ud-fab"><Zap size={22} fill="currentColor" /></div>
+                    <span className="ud-fab-text">AI Chat</span>
+                </div>
+                <div className="ud-mn-item" onClick={() => navigate('/daily-report')}>
+                    <TrendingUp size={22} />
+                    <span>Stats</span>
+                </div>
+                <div className="ud-mn-item" onClick={() => navigate('/menu')}>
+                    <Settings size={22} />
+                    <span>Menu</span>
+                </div>
             </nav>
 
         </div>
