@@ -1,19 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Loader2, Mail, Lock, ArrowRight, ShieldCheck } from 'lucide-react';
 import './Login.css';
 
-/**
- * Enterprise-Grade Login Component
- * Updated to save rcmId and handle Subscription Status redirection.
- */
+// 🔥 CLOUDINARY DIRECT VIDEO URL (Optimized)
+const VIDEO_URL = "https://res.cloudinary.com/dhxlwuyjt/video/upload/q_auto/R_C_M_WORLd_BHILWARA_1080P_online-video-cutter.com_1_fay1i8.mp4";
+
 const LoginPage = () => {
-    // State Management
     const [credentials, setCredentials] = useState({ loginId: '', password: '' });
     const [status, setStatus] = useState({ loading: false, error: '' });
+    const [mounted, setMounted] = useState(false);
     
     const navigate = useNavigate();
 
-    // Reset error on input change for better UX
+    useEffect(() => {
+        setMounted(true);
+    }, []);
+
     const handleInputChange = (e) => {
         const { name, value } = e.target;
         setCredentials(prev => ({ ...prev, [name]: value }));
@@ -23,15 +26,13 @@ const LoginPage = () => {
     const handleLogin = async (e) => {
         e.preventDefault();
         
-        // Basic Validation
         if (!credentials.loginId || !credentials.password) {
-            setStatus({ loading: false, error: 'Please enter both User ID and Password.' });
+            setStatus({ loading: false, error: 'Please enter details.' });
             return;
         }
 
         setStatus({ loading: true, error: '' });
         const controller = new AbortController();
-        const signal = controller.signal;
 
         try {
             const baseUrl = (process.env.REACT_APP_API_URL || '').replace(/\/$/, ''); 
@@ -42,128 +43,137 @@ const LoginPage = () => {
                     loginId: credentials.loginId.trim(),
                     password: credentials.password
                 }),
-                signal
+                signal: controller.signal
             });
 
             const data = await response.json();
 
-            if (!response.ok) {
-                throw new Error(data.message || 'Authentication failed.');
-            }
+            if (!response.ok) throw new Error(data.message || 'Access Denied');
 
             if (data && data.token) {
-                // 1. Clear old session
                 localStorage.clear();
-
-                // 2. Set new session
                 localStorage.setItem('token', data.token);
                 
-                // 3. ✅ SAVE USER DATA (Fixed to include RCM ID)
-                // We map all fields that UserDashboard expects.
                 const userObj = {
                     id: data.user.id,
                     email: data.user.email,
-                    fullName: data.user.fullName || data.user.full_name,
-                    phone: data.user.phone || "",
-                    rcmId: data.user.rcmId || data.user.rcm_id || "Not Set", // 👈 ADDED THIS
+                    fullName: data.user.fullName,
+                    rcmId: data.user.rcmId || "Not Set",
                     status: data.user.status || 'pending' 
                 };
 
                 localStorage.setItem('user', JSON.stringify(userObj));
                 localStorage.setItem('userRole', data.user.role || 'USER');
 
-                // 4. ✅ SMART REDIRECT LOGIC
-                // If they are an ADMIN, go to Admin Dashboard
-                if (data.user.role === 'ADMIN') {
-                     navigate('/admin/dashboard', { replace: true });
-                } 
-                // If they are a USER but NOT ACTIVE, go to Payment
-                else if (userObj.status !== 'active') {
-                     navigate('/payment-setup', { replace: true });
-                } 
-                // If Active User, go to Dashboard
-                else {
-                     navigate('/dashboard', { replace: true });
-                }
-
+                const target = data.user.role === 'ADMIN' ? '/admin/dashboard' : 
+                               userObj.status !== 'active' ? '/payment-setup' : 
+                               '/dashboard';
+                
+                navigate(target, { replace: true });
             } else {
-                throw new Error('Server response missing token.');
+                throw new Error('Invalid Token.');
             }
 
         } catch (err) {
             if (err.name !== 'AbortError') {
                 setStatus({ loading: false, error: err.message });
             }
-        } finally {
-            if (!signal.aborted && status.error) setStatus(prev => ({ ...prev, loading: false }));
         }
-        return () => controller.abort();
     };
 
     return (
-        <div className="auth-container">
-            <div className="auth-card">
-                <div className="auth-header">
+        <div className="full-screen-layout">
+            
+            {/* 🎥 BACKGROUND VIDEO (Cloudinary) */}
+            <div className="video-wrapper">
+                <video 
+                    autoPlay 
+                    loop 
+                    muted 
+                    playsInline 
+                    className="fullscreen-video"
+                >
+                    {/* ✅ Cloudinary URL */}
+                    <source src={VIDEO_URL} type="video/mp4" />
+                    Your browser does not support video.
+                </video>
+                {/* Dark Overlay for text readability */}
+                <div className="dark-overlay"></div>
+            </div>
+
+            {/* 💎 INVISIBLE FORM CARD */}
+            <div className={`invisible-card ${mounted ? 'card-active' : ''}`}>
+                
+                <div className="inv-header">
                     <img 
-                        src="/rcmai_logo.png" 
-                        alt="RCM AI Logo" 
-                        className="auth-logo" 
-                        onError={(e) => e.target.style.display = 'none'} 
+                        src="https://i.ibb.co/GrMTmd0/Gemini-Generated-Image-q98hyq98hyq98hyq-removebg-preview-removebg-preview.png" 
+                        alt="Logo" 
+                        className="inv-logo"
                     />
                     <h2>Welcome Back</h2>
-                    <p className="auth-subtitle">Sign in to your dashboard</p>
+                    <p>Enter your credentials to continue</p>
                 </div>
 
-                <form onSubmit={handleLogin} className="auth-form">
-                    <div className="input-group">
-                        <label htmlFor="loginId">RCM ID / Email</label>
+                <form onSubmit={handleLogin} className="inv-form">
+                    
+                    <div className="inv-input-group">
+                        <Mail size={20} className="inv-icon" />
                         <input 
-                            id="loginId"
                             name="loginId"
                             type="text" 
                             value={credentials.loginId} 
                             onChange={handleInputChange} 
-                            placeholder="Enter your ID or Email"
+                            placeholder="Email or RCM ID"
                             disabled={status.loading}
-                            autoComplete="username"
-                            required 
+                            autoComplete="off"
                         />
                     </div>
-                    
-                    <div className="input-group">
-                        <label htmlFor="password">Password</label>
+
+                    <div className="inv-input-group">
+                        <Lock size={20} className="inv-icon" />
                         <input 
-                            id="password"
                             name="password"
                             type="password" 
                             value={credentials.password} 
                             onChange={handleInputChange} 
-                            placeholder="Enter your password"
+                            placeholder="Password"
                             disabled={status.loading}
-                            autoComplete="current-password"
-                            required 
                         />
                     </div>
 
+                    <div className="inv-options">
+                        <label className="checkbox-style">
+                            <input type="checkbox" /> <span>Remember me</span>
+                        </label>
+                        <span className="link-hover">Forgot Password?</span>
+                    </div>
+
                     {status.error && (
-                        <div className="error-message" role="alert" aria-live="polite">
-                            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+                        <div className="inv-error">
                             {status.error}
                         </div>
                     )}
 
                     <button 
                         type="submit" 
-                        className={`auth-button ${status.loading ? 'loading' : ''}`}
+                        className={`inv-btn ${status.loading ? 'loading-state' : ''}`}
                         disabled={status.loading}
                     >
-                        {status.loading ? (
-                            <span className="spinner"></span>
-                        ) : (
-                            'Log In'
+                        {status.loading ? <Loader2 className="spinner" size={22} /> : (
+                            <>Login <ArrowRight size={20} /></>
                         )}
                     </button>
+
                 </form>
+
+                <div className="inv-footer">
+                    New here? <span onClick={() => navigate('/register')}>Create Account</span>
+                </div>
+
+                <div className="inv-badge">
+                    <ShieldCheck size={12} /> Secure Connection
+                </div>
+
             </div>
         </div>
     );

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   Zap, Video, Star, TrendingUp, LogOut, 
-  LayoutDashboard, ChevronRight, UserCircle, Bell, Settings, Bot // Bot import kiya gaya hai
+  LayoutDashboard, ChevronRight, Bell, Settings, Sparkles, Search 
 } from 'lucide-react'; 
 import './UserDashboard.css'; 
 
@@ -11,22 +11,19 @@ const UserDashboard = () => {
     const location = useLocation();
     const [scrolled, setScrolled] = useState(false);
 
-    // --- User Data ---
     const userData = useMemo(() => {
         try {
             return JSON.parse(localStorage.getItem('user')) || {};
         } catch (e) { return {}; }
     }, []);
 
-    const userName = userData.fullName || 'User';
-    const rcmId = userData.rcmId || 'ID-Pending';
+    const userName = userData.fullName || 'Creator';
+    const userRole = userData.role || 'Partner';
 
-    // --- Strict Dark Mode ---
     useEffect(() => {
-        document.documentElement.style.setProperty('background-color', '#000000', 'important');
-        document.body.style.setProperty('background-color', '#000000', 'important');
-        document.body.style.setProperty('color', '#ffffff', 'important');
-
+        document.documentElement.style.setProperty('background-color', '#0e121e', 'important');
+        document.body.style.setProperty('background-color', '#0e121e', 'important');
+        
         const handleScroll = () => setScrolled(window.scrollY > 10);
         window.addEventListener('scroll', handleScroll);
         return () => window.removeEventListener('scroll', handleScroll);
@@ -45,155 +42,153 @@ const UserDashboard = () => {
     };
 
     return (
-        <div className="ud-wrapper">
+        <div className="g-layout">
             
             {/* --- DESKTOP SIDEBAR --- */}
-            <aside className="ud-sidebar">
-                <div className="ud-sidebar-header">
-                    <div className="ud-logo-container">
-                        <img 
-                            src="https://i.ibb.co/GrMTmd0/Gemini-Generated-Image-q98hyq98hyq98hyq-removebg-preview-removebg-preview.png" 
-                            alt="RCM Logo" 
-                            className="ud-logo-img"
-                        />
-                        <span className="ud-gemini-text">RCM AI</span>
+            <aside className="g-sidebar">
+                <div className="g-logo-box">
+                    <img 
+                        src="https://i.ibb.co/GrMTmd0/Gemini-Generated-Image-q98hyq98hyq98hyq-removebg-preview-removebg-preview.png" 
+                        alt="Logo" 
+                        className="g-logo-img"
+                    />
+                    <span className="g-brand-text">RCM <span className="g-gradient-text">AI</span></span>
+                </div>
+
+                <div className="g-user-card">
+                    <div className="g-avatar">{userName.charAt(0).toUpperCase()}</div>
+                    <div className="g-user-meta">
+                        <span className="g-user-role">{userRole}</span>
+                        <span className="g-user-name">{userName.split(' ')[0]}</span>
                     </div>
                 </div>
 
-                <div className="ud-profile">
-                    <div className="ud-avatar">{userName.charAt(0).toUpperCase()}</div>
-                    <div className="ud-profile-info">
-                        <p>Welcome,</p>
-                        <h4>{userName.split(' ')[0]}</h4>
+                <nav className="g-nav">
+                    <div className={`g-nav-item ${location.pathname === '/dashboard' ? 'active' : ''}`} onClick={() => navigate('/dashboard')}>
+                        <LayoutDashboard size={20} /> <span>Overview</span>
                     </div>
-                </div>
-
-                <nav className="ud-nav">
-                    <div className="ud-nav-item active">
-                        <LayoutDashboard size={20} /> <span>Dashboard</span>
+                    <div className={`g-nav-item ${location.pathname === '/chat' ? 'active' : ''}`} onClick={() => navigate('/chat')}>
+                        <Zap size={20} /> <span>Gemini Chat</span>
                     </div>
-                    <div className="ud-nav-item" onClick={() => navigate('/chat')}>
-                        <Zap size={20} /> <span>AI Assistant</span>
-                    </div>
-                    <div className="ud-nav-item" onClick={() => navigate('/daily-report')}>
+                    <div className={`g-nav-item ${location.pathname === '/daily-report' ? 'active' : ''}`} onClick={() => navigate('/daily-report')}>
                         <TrendingUp size={20} /> <span>Analytics</span>
                     </div>
-                    <div className="ud-nav-item" onClick={() => navigate('/leaders-videos')}>
-                        <Video size={20} /> <span>Training</span>
+                    <div className={`g-nav-item ${location.pathname === '/leaders-videos' ? 'active' : ''}`} onClick={() => navigate('/leaders-videos')}>
+                        <Video size={20} /> <span>Academy</span>
                     </div>
                 </nav>
 
-                <div className="ud-footer">
-                    <button className="ud-logout-btn" onClick={handleLogout}>
-                        <LogOut size={18} /> <span>Logout</span>
+                <div className="g-footer">
+                    <button className="g-logout" onClick={handleLogout}>
+                        <LogOut size={18} /> <span>Sign Out</span>
                     </button>
                 </div>
             </aside>
 
             {/* --- MAIN CONTENT --- */}
-            <main className="ud-main">
+            <main className="g-main">
                 
-                <header className={`ud-header ${scrolled ? 'glass' : ''}`}>
-                    <div className="ud-header-left">
-                        <div className="ud-mobile-brand">
-                            <img 
-                                src="https://i.ibb.co/GrMTmd0/Gemini-Generated-Image-q98hyq98hyq98hyq-removebg-preview-removebg-preview.png" 
-                                alt="Logo" 
-                                className="ud-mobile-logo-img"
-                            />
-                            <span className="ud-gemini-text-small">RCM AI</span>
+                {/* Header */}
+                <header className={`g-header ${scrolled ? 'glass' : ''}`}>
+                    <div className="g-header-left">
+                        {/* Mobile Logo (Bada kar diya gaya hai CSS me) */}
+                        <div className="g-mobile-brand">
+                            <img src="https://i.ibb.co/GrMTmd0/Gemini-Generated-Image-q98hyq98hyq98hyq-removebg-preview-removebg-preview.png" alt="Logo" />
+                            <span className="g-gradient-text">RCM.AI</span>
                         </div>
-                        
-                        <div className="ud-desktop-greet">
-                            <h1>{getGreeting()}, {userName.split(' ')[0]}</h1>
+                        <div className="g-desktop-search">
+                            <Search size={16} className="search-icon" />
+                            <input type="text" placeholder="Search training, reports..." />
                         </div>
                     </div>
 
-                    <div className="ud-header-right">
-                        <div className="ud-id-badge">
-                            <UserCircle size={16} />
-                            <span>{rcmId}</span>
+                    <div className="g-header-right">
+                        <div className="g-status">
+                            <span className="g-dot"></span> Online
                         </div>
-                        <button className="ud-icon-btn">
+                        <button className="g-icon-btn">
                             <Bell size={20} />
-                            <div className="ud-dot"></div>
+                            <span className="g-badge"></span>
                         </button>
                     </div>
                 </header>
 
-                <div className="ud-content">
-                    {/* 🔥 Updated Hero Section */}
-                    <div className="ud-hero" onClick={() => navigate('/chat')}>
-                        <div className="ud-hero-text">
-                            {/* Badge removed from here */}
-                            <h2>Ask RCM Intelligence</h2>
-                            <p>Instant strategies for business growth.</p>
-                            <button className="ud-hero-cta">
-                                Start Chat <ChevronRight size={16} />
-                            </button>
-                        </div>
-                        
-                        {/* 🔥 New Dark Corner Logo (Watermark) */}
-                        <Bot className="ud-hero-dark-logo" size={180} />
-                    </div>
-
-                    {/* Features Grid */}
-                    <h3 className="ud-section-title">Quick Access</h3>
-                    <div className="ud-grid">
-                        <div className="ud-card cyan" onClick={() => navigate('/daily-report')}>
-                            <div className="ud-card-top">
-                                <div className="ud-icon-box"><TrendingUp size={22} /></div>
-                                <ChevronRight className="ud-arrow" size={18} />
+                <div className="g-content">
+                    
+                    {/* Hero Section */}
+                    <section className="g-hero" onClick={() => navigate('/chat')}>
+                        <div className="g-hero-glow"></div>
+                        <div className="g-hero-inner">
+                            <div className="g-pill">
+                                <Sparkles size={14} className="spin" /> 
+                                <span>Gemini Engine Active</span>
                             </div>
-                            <div className="ud-card-btm">
-                                <h4>Daily Report</h4>
-                                <p>Track consistency</p>
+                            <h1>{getGreeting()}, <br /><span className="g-gradient-text">{userName.split(' ')[0]}</span></h1>
+                            <p>Unlock insights about your business growth.</p>
+                            
+                            <div className="g-fake-input">
+                                <span>Ask about RCM plans or products...</span>
+                                <div className="g-send-btn"><Sparkles size={16} /></div>
                             </div>
                         </div>
+                    </section>
 
-                        <div className="ud-card orange" onClick={() => navigate('/leaders-videos')}>
-                            <div className="ud-card-top">
-                                <div className="ud-icon-box"><Video size={22} /></div>
-                                <ChevronRight className="ud-arrow" size={18} />
+                    {/* Cards */}
+                    <h3 className="g-section-title">Your Dashboard</h3>
+                    <div className="g-grid">
+                        <div className="g-card" onClick={() => navigate('/daily-report')}>
+                            <div className="g-card-icon cyan"><TrendingUp size={24} /></div>
+                            <div className="g-card-text">
+                                <h4>Analytics</h4>
+                                <p>Track PV & Growth</p>
                             </div>
-                            <div className="ud-card-btm">
-                                <h4>Leaders' Zone</h4>
-                                <p>Premium Training</p>
-                            </div>
+                            <ChevronRight className="g-arrow" />
                         </div>
 
-                        <div className="ud-card blue" onClick={() => navigate('/products-videos')}>
-                            <div className="ud-card-top">
-                                <div className="ud-icon-box"><Star size={22} /></div>
-                                <ChevronRight className="ud-arrow" size={18} />
+                        <div className="g-card" onClick={() => navigate('/leaders-videos')}>
+                            <div className="g-card-icon orange"><Video size={24} /></div>
+                            <div className="g-card-text">
+                                <h4>Academy</h4>
+                                <p>Leader Training</p>
                             </div>
-                            <div className="ud-card-btm">
-                                <h4>Product Hub</h4>
-                                <p>Catalog & Guides</p>
+                            <ChevronRight className="g-arrow" />
+                        </div>
+
+                        <div className="g-card" onClick={() => navigate('/products-videos')}>
+                            <div className="g-card-icon purple"><Star size={24} /></div>
+                            <div className="g-card-text">
+                                <h4>Products</h4>
+                                <p>Visual Catalog</p>
                             </div>
+                            <ChevronRight className="g-arrow" />
                         </div>
                     </div>
-                    <div className="ud-spacer"></div>
+                    
+                    <div className="g-spacer"></div>
                 </div>
             </main>
 
-            {/* --- MOBILE NAV --- */}
-            <nav className="ud-mobile-nav">
-                <div className="ud-mn-item active" onClick={() => navigate('/dashboard')}>
-                    <LayoutDashboard size={22} />
-                    <span>Home</span>
+            {/* --- UPDATED MOBILE DOCK (No Blue Button) --- */}
+            <nav className="g-dock">
+                <div className={`dock-item ${location.pathname === '/dashboard' ? 'active' : ''}`} onClick={() => navigate('/dashboard')}>
+                    <LayoutDashboard size={24} />
                 </div>
-                <div className="ud-mn-item" onClick={() => navigate('/chat')}>
-                    <div className="ud-fab"><Zap size={22} fill="currentColor" /></div>
-                    <span className="ud-fab-text">AI Chat</span>
+                
+                {/* Chat Icon Added Normally */}
+                <div className={`dock-item ${location.pathname === '/chat' ? 'active' : ''}`} onClick={() => navigate('/chat')}>
+                    <Zap size={24} />
                 </div>
-                <div className="ud-mn-item" onClick={() => navigate('/daily-report')}>
-                    <TrendingUp size={22} />
-                    <span>Stats</span>
+
+                <div className={`dock-item ${location.pathname === '/daily-report' ? 'active' : ''}`} onClick={() => navigate('/daily-report')}>
+                    <TrendingUp size={24} />
                 </div>
-                <div className="ud-mn-item" onClick={() => navigate('/menu')}>
-                    <Settings size={22} />
-                    <span>Menu</span>
+
+                <div className={`dock-item ${location.pathname === '/leaders-videos' ? 'active' : ''}`} onClick={() => navigate('/leaders-videos')}>
+                    <Video size={24} />
+                </div>
+                
+                <div className={`dock-item ${location.pathname === '/menu' ? 'active' : ''}`} onClick={() => navigate('/menu')}>
+                    <Settings size={24} />
                 </div>
             </nav>
 

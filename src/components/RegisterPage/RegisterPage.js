@@ -1,146 +1,129 @@
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import './RegisterPage.css'; 
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Loader2, User, Hash, Mail, Phone, Lock, ArrowRight } from 'lucide-react';
+import './RegisterPage.css';
 
-function RegisterPage() {
-  const [fullName, setFullName] = useState('');
-  const [rcmId, setRcmId] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+// 🔥 CLOUDINARY DIRECT VIDEO URL (Optimized)
+const VIDEO_URL = "https://res.cloudinary.com/dhxlwuyjt/video/upload/q_auto/R_C_M_WORLd_BHILWARA_1080P_online-video-cutter.com_1_fay1i8.mp4";
+
+const RegisterPage = () => {
+  const [formData, setFormData] = useState({
+    fullName: '',
+    rcmId: '',
+    email: '',
+    phone: '',
+    password: ''
+  });
+  
+  const [status, setStatus] = useState({ loading: false, error: '', success: '' });
+  const [mounted, setMounted] = useState(false);
   
   const navigate = useNavigate();
 
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const handleChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+    if (status.error) setStatus({ ...status, error: '' });
+  };
+
   const handleRegister = async (e) => {
     e.preventDefault();
-    setError('');
-    setSuccess('');
+    if (!formData.fullName || !formData.email || !formData.password || !formData.rcmId) {
+       setStatus({ ...status, error: 'All fields are required.' });
+       return;
+    }
+    setStatus({ loading: true, error: '', success: '' });
 
     try {
-      // Robust URL handling
       const baseUrl = (process.env.REACT_APP_API_URL || '').replace(/\/$/, '');
-      
       const response = await fetch(`${baseUrl}/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fullName,
-          rcmId,
-          email,
-          phone,
-          password,
-          role: 'USER', // Default role
-        }),
+        body: JSON.stringify({ ...formData, role: 'USER' }),
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        // 1. Save Token
-        if (data.token) {
-          localStorage.setItem('token', data.token);
-        }
-
-        // 2. ✅ SAVE USER DATA CORRECTLY
-        // We explicitly set 'status' to 'pending' because a new user hasn't paid yet.
-        // We also save 'phone' so the Payment Page can pre-fill it.
+        if (data.token) localStorage.setItem('token', data.token);
         const userObj = {
             id: data.userId || data.user?.id,
-            email: email,
-            fullName: fullName,
-            phone: phone,       // Important for Razorpay
-            rcmId: rcmId,
-            status: 'pending'   // Important for UserProtectedRoute
+            email: formData.email,
+            fullName: formData.fullName,
+            phone: formData.phone,
+            rcmId: formData.rcmId,
+            status: 'pending'
         };
-
         localStorage.setItem('user', JSON.stringify(userObj));
         localStorage.setItem('userRole', 'USER');
-
-        // 3. Redirect to Payment
-        setSuccess('Registration successful! Redirecting to payment setup...');
-        
-        // Short delay to show success message, then move to payment
-        setTimeout(() => {
-            navigate('/payment-setup', { replace: true });
-        }, 1500);
-
+        setStatus({ loading: false, error: '', success: 'Account created! Redirecting...' });
+        setTimeout(() => { navigate('/payment-setup', { replace: true }); }, 1500);
       } else {
-        setError(data.message || 'Registration failed.');
+        setStatus({ loading: false, error: data.message || 'Registration failed.', success: '' });
       }
     } catch (err) {
-      console.error('Registration error:', err);
-      setError('An error occurred. Please try again.');
+      setStatus({ loading: false, error: 'Server error.', success: '' });
     }
   };
 
   return (
-    <div className="auth-container">
-      <div className="auth-form-card">
-        <h1>Create Your Account</h1>
+    <div className="compact-layout">
         
-        <form onSubmit={handleRegister}>
-          <div className="input-group">
-            <input 
-                type="text" 
-                value={fullName} 
-                onChange={(e) => setFullName(e.target.value)} 
-                placeholder="Full Name" 
-                required 
-            />
-          </div>
+        {/* 🎥 FIXED VIDEO BACKGROUND */}
+        <div className="fixed-video-bg">
+            <video autoPlay loop muted playsInline className="bg-video-fill">
+                {/* ✅ Cloudinary URL */}
+                <source src={VIDEO_URL} type="video/mp4" />
+            </video>
+            <div className="video-tint"></div>
+        </div>
 
-          <div className="input-group">
-            <input 
-                type="text" 
-                value={rcmId} 
-                onChange={(e) => setRcmId(e.target.value)} 
-                placeholder="RCM ID" 
-                required 
-            />
-          </div>
+        {/* 💎 GLASS CARD */}
+        <div className={`compact-card register-card-height ${mounted ? 'show-card' : ''}`}>
+            
+            <div className="c-header">
+                <img src="https://i.ibb.co/GrMTmd0/Gemini-Generated-Image-q98hyq98hyq98hyq-removebg-preview-removebg-preview.png" alt="Logo" className="c-logo" />
+                <h3>Create Account</h3>
+            </div>
 
-          <div className="input-group">
-            <input 
-                type="email" 
-                value={email} 
-                onChange={(e) => setEmail(e.target.value)} 
-                placeholder="Email Address" 
-                required 
-            />
-          </div>
+            <form onSubmit={handleRegister} className="c-form">
+                
+                <div className="c-input-box">
+                    <User size={16} className="c-icon" />
+                    <input name="fullName" type="text" value={formData.fullName} onChange={handleChange} placeholder="Full Name" disabled={status.loading} />
+                </div>
+                <div className="c-input-box">
+                    <Hash size={16} className="c-icon" />
+                    <input name="rcmId" type="text" value={formData.rcmId} onChange={handleChange} placeholder="RCM ID" disabled={status.loading} />
+                </div>
+                <div className="c-input-box">
+                    <Mail size={16} className="c-icon" />
+                    <input name="email" type="email" value={formData.email} onChange={handleChange} placeholder="Email" disabled={status.loading} />
+                </div>
+                <div className="c-input-box">
+                    <Phone size={16} className="c-icon" />
+                    <input name="phone" type="tel" value={formData.phone} onChange={handleChange} placeholder="Phone" disabled={status.loading} />
+                </div>
+                <div className="c-input-box">
+                    <Lock size={16} className="c-icon" />
+                    <input name="password" type="password" value={formData.password} onChange={handleChange} placeholder="Password" disabled={status.loading} />
+                </div>
 
-          <div className="input-group">
-            <input 
-                type="tel" 
-                value={phone} 
-                onChange={(e) => setPhone(e.target.value)} 
-                placeholder="Phone Number" 
-                required 
-            />
-          </div>
+                {status.error && <div className="c-error">{status.error}</div>}
+                {status.success && <div className="c-success">{status.success}</div>}
 
-          <div className="input-group">
-            <input 
-                type="password" 
-                value={password} 
-                onChange={(e) => setPassword(e.target.value)} 
-                placeholder="Password" 
-                required 
-            />
-          </div>
+                <button type="submit" className={`c-btn ${status.loading ? 'loading' : ''}`} disabled={status.loading}>
+                    {status.loading ? <Loader2 className="spin" size={18} /> : <ArrowRight size={18} />}
+                </button>
+            </form>
 
-          <button type="submit" className="auth-button">Register</button>
-        </form>
-
-        {error && <p className="error-message">{error}</p>}
-        {success && <p className="success-message">{success}</p>}
-
-        <p className="auth-footer">
-            Already have an account? <Link to="/login" className="auth-link">Login here</Link>
-        </p>
-      </div>
+            <div className="c-footer">
+                Already a member? <span onClick={() => navigate('/login')}>Login Here</span>
+            </div>
+        </div>
     </div>
   );
 }
