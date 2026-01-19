@@ -13,7 +13,8 @@ const VoiceCall = ({ onClose, onMessageAdd }) => {
   const [uiStatus, setUiStatus] = useState('initializing'); 
   const [liveTranscript, setLiveTranscript] = useState('');
   const [isMuted, setIsMuted] = useState(false);
-  // errorMsg removed from read, keeping setter only to suppress unused var warning
+  
+  // FIX: Unused errorMsg removed. Keeping setter to avoid breaking logic if used elsewhere.
   const [, setErrorMsg] = useState(''); 
   
   // --- REFS (Stable Logic) ---

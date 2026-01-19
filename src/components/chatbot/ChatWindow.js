@@ -103,7 +103,8 @@ const ChatWindow = () => {
   // --- IMAGE HANDLING ---
   const handleImageProcessing = async (file) => {
     if (!file || !file.type.startsWith('image/')) return;
-    // Removed unused isCompressing state logic
+    
+    // Removed unused isCompressing logic
     try {
         const compressedFile = await imageCompression(file, { maxSizeMB: 1, useWebWorker: true });
         setSelectedImage(compressedFile);
