@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect, memo } from 'react';
 import { 
-  Send, Menu, Plus, MessageSquare, Settings, 
+  Send, Menu, Plus, 
   Sparkles, Mic, MicOff, X, Volume2, Loader, AudioLines 
 } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import { useChatEngine } from '../../hooks/useChatEngine';
-import VoiceCall from './VoiceCall'; // ✅ Import Added
+import VoiceCall from './VoiceCall';
 import './ChatWindow.css';
 
 // --- TEXT FORMATTER ---
@@ -41,9 +41,6 @@ const ChatWindow = () => {
   // 🎤 States
   const [isListening, setIsListening] = useState(false); // Simple Mic
   const [isVoiceMode, setIsVoiceMode] = useState(false); // ✅ Gemini Live Mode
-  
-  // 🖼️ Compression
-  const [isCompressing, setIsCompressing] = useState(false);
   
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -106,12 +103,11 @@ const ChatWindow = () => {
   // --- IMAGE HANDLING ---
   const handleImageProcessing = async (file) => {
     if (!file || !file.type.startsWith('image/')) return;
-    setIsCompressing(true);
+    // Removed unused isCompressing state logic
     try {
         const compressedFile = await imageCompression(file, { maxSizeMB: 1, useWebWorker: true });
         setSelectedImage(compressedFile);
     } catch (e) { setSelectedImage(file); } 
-    finally { setIsCompressing(false); }
   };
 
   const handleSend = () => {
@@ -133,9 +129,8 @@ const ChatWindow = () => {
          />
       )}
 
-      {/* Sidebar (Existing Code) */}
+      {/* Sidebar */}
       <aside className={`app-sidebar ${isSidebarOpen ? 'open' : 'closed'}`}>
-         {/* Sidebar content same as before... */}
          <div className="sidebar-header">
            <button className="menu-burger" onClick={() => setSidebarOpen(!isSidebarOpen)}><Menu size={20}/></button>
          </div>
@@ -174,15 +169,15 @@ const ChatWindow = () => {
               <div className={`input-box ${isListening ? 'recording-mode' : ''}`}>
                  <button className="add-file-btn" onClick={() => fileInputRef.current.click()}><Plus size={20}/></button>
                  <input 
-                    type="text" 
-                    placeholder={isListening ? "Listening..." : "Type a message..."}
-                    value={input}
-                    onChange={e => setInput(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handleSend()}
+                   type="text" 
+                   placeholder={isListening ? "Listening..." : "Type a message..."}
+                   value={input}
+                   onChange={e => setInput(e.target.value)}
+                   onKeyDown={e => e.key === 'Enter' && handleSend()}
                  />
                  
                  <div className="input-actions">
-                    {/* ✅ LIVE BUTTON (Only shows when empty) */}
+                    {/* ✅ LIVE BUTTON */}
                     {!input.trim() && !selectedImage ? (
                         <button className="voice-live-btn" onClick={() => setIsVoiceMode(true)} title="Start Live Voice Chat">
                             <AudioLines size={20} /><span className="live-wave"></span>

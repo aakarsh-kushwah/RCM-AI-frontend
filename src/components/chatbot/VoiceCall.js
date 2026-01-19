@@ -4,25 +4,17 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { PhoneOff, Volume2, VolumeX, Minimize2, Mic, Activity, AlertCircle } from 'lucide-react';
+import { PhoneOff, Volume2, VolumeX, Minimize2, Mic, Activity } from 'lucide-react';
 import './VoiceCall.css'; 
 import config from '../../config/env'; 
-
-// --- CONSTANTS ---
-const CONFIG = {
-  VISUALIZER: { SMOOTHING: 0.85, FFT_SIZE: 256 },
-  INTERACTION: {
-    INTERRUPT_THRESHOLD: 35,
-    GRACE_PERIOD_MS: 1500, 
-  }
-};
 
 const VoiceCall = ({ onClose, onMessageAdd }) => {
   // --- UI STATE ---
   const [uiStatus, setUiStatus] = useState('initializing'); 
   const [liveTranscript, setLiveTranscript] = useState('');
   const [isMuted, setIsMuted] = useState(false);
-  const [errorMsg, setErrorMsg] = useState(''); 
+  // errorMsg removed from read, keeping setter only to suppress unused var warning
+  const [, setErrorMsg] = useState(''); 
   
   // --- REFS (Stable Logic) ---
   const statusRef = useRef('initializing'); 
