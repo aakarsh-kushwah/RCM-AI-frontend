@@ -1,21 +1,36 @@
 /**
  * @file src/services/chatService.js
+ * @description Handles API communication (Text + Images).
  */
-// ✅ Sahi Path (Agar folder structure sahi hai to ye chalega)
+
 import config from '../config/env';
 
 class ChatService {
-  async sendMessage(message) {
+  async sendMessage(message, imageFile = null) {
     const token = localStorage.getItem('token') || '';
     
     try {
+      let body;
+      let headers = { 'Authorization': `Bearer ${token}` };
+
+      // ✅ FIX: Handle Image Uploads (Multipart vs JSON)
+      if (imageFile) {
+        const formData = new FormData();
+        formData.append('message', message);
+        formData.append('image', imageFile); // Backend expects 'image' field
+        
+        // Note: Do NOT set Content-Type header manually for FormData, browser does it.
+        body = formData;
+      } else {
+        // Standard Text Message
+        headers['Content-Type'] = 'application/json';
+        body = JSON.stringify({ message });
+      }
+
       const response = await fetch(`${config.API.BASE_URL}/api/chat`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json', 
-          'Authorization': `Bearer ${token}` 
-        },
-        body: JSON.stringify({ message })
+        headers: headers,
+        body: body
       });
 
       const data = await response.json();
