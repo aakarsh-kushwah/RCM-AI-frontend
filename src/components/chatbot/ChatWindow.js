@@ -92,63 +92,84 @@ const ChatWindow = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // 3. OPTIMIZED SPEECH RECOGNITION (Fixes Freezing)
+  // 3. OPTIMIZED SPEECH RECOGNITION (Mobile & HTTPS Safe)
   useEffect(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     
     if (SpeechRecognition) {
       const recognition = new SpeechRecognition();
-      recognition.continuous = true; // Keep listening
-      recognition.interimResults = true; // Show words as you speak
+      // Mobile Safari pe continuous true kabhi kabhi crash karta hai, isliye sambhal kar
+      recognition.continuous = true; 
+      recognition.interimResults = true; 
       recognition.lang = 'hi-IN'; // Hindi Support
 
       recognition.onstart = () => setIsListening(true);
+      
       recognition.onend = () => {
-        // Auto restart if it stops unexpectedly, but not if user stopped it manually
-        // For simplicity here, we just set state to false.
         setIsListening(false);
       };
 
       recognition.onresult = (event) => {
-        let interimTranscript = '';
         let finalTranscript = '';
-
+        
         for (let i = event.resultIndex; i < event.results.length; ++i) {
           if (event.results[i].isFinal) {
             finalTranscript += event.results[i][0].transcript + ' ';
-          } else {
-            interimTranscript += event.results[i][0].transcript;
           }
         }
 
-        // Only update state if we have a final result to prevent lag
+        // Only update if final result found (Prevents freezing on mobile)
         if (finalTranscript) {
           setInput(prev => prev + finalTranscript);
         }
       };
       
+      // 🚨 SMART ERROR HANDLING
       recognition.onerror = (event) => {
           console.error("Speech Error:", event.error);
           setIsListening(false);
+
+          if (event.error === 'not-allowed') {
+              alert("Microphone Access Blocked! Please allow permissions in settings.");
+          } else if (event.error === 'network') {
+              // Ignore minor network glitches
+          } else if (event.error === 'no-speech') {
+              // Ignore silence
+          }
       };
 
       recognitionRef.current = recognition;
     }
     
-    // 🛑 CRITICAL CLEANUP: Stop mic when component unmounts
+    // Cleanup
     return () => {
         if (recognitionRef.current) recognitionRef.current.stop();
     };
   }, []);
 
-  // Toggle Mic Function
+  // Toggle Mic Function (With HTTPS Check)
   const toggleListening = useCallback(() => {
-    if (!recognitionRef.current) return alert("Browser does not support Speech Recognition.");
+    // 🛑 HTTPS Check for Mobile
+    if (window.location.protocol === 'http:' && window.innerWidth < 768 && window.location.hostname !== 'localhost') {
+        alert("Mobile par Mic use karne ke liye Website ka HTTPS (Secure) hona zaruri hai.");
+        return;
+    }
+
+    if (!recognitionRef.current) {
+        alert("Browser not supported. Please use Google Chrome.");
+        return;
+    }
     
-    if (isListening) {
-      recognitionRef.current.stop();
-    } else {
-      recognitionRef.current.start();
+    try {
+        if (isListening) {
+            recognitionRef.current.stop();
+        } else {
+            recognitionRef.current.start();
+        }
+    } catch (e) {
+        console.error("Mic Start Error:", e);
+        // Reset mic if stuck
+        setIsListening(false);
     }
   }, [isListening]);
 
