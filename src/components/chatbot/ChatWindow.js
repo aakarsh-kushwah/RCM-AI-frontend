@@ -12,7 +12,6 @@ import './ChatWindow.css';
 const ChatRow = memo(({ msg, onReplay }) => {
   const isAssistant = msg.role === 'assistant';
   
-  // Text formatting helper
   const formatText = (text) => {
     if (!text) return "";
     return text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
@@ -68,8 +67,11 @@ const ChatWindow = () => {
   const scrollRef = useRef(null);
   const fileInputRef = useRef(null);
   const recognitionRef = useRef(null);
+  
+  // 🔥 IMPORTANT: Ref to track listening state instantly (Fixes Mobile Closure Issue)
+  const isListeningRef = useRef(false); 
 
-  // 1. Auto Scroll to Bottom
+  // 1. Auto Scroll
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTo({ 
@@ -92,21 +94,37 @@ const ChatWindow = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // 3. OPTIMIZED SPEECH RECOGNITION (Mobile & HTTPS Safe)
+  // 3. 🚀 SUPERCHARGED SPEECH RECOGNITION (Mobile Fix)
   useEffect(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     
     if (SpeechRecognition) {
       const recognition = new SpeechRecognition();
-      // Mobile Safari pe continuous true kabhi kabhi crash karta hai, isliye sambhal kar
-      recognition.continuous = true; 
-      recognition.interimResults = true; 
+      
+      // 🛠️ MOBILE FIX: Mobile browsers hate 'continuous: true'.
+      // Desktop par continuous rakhenge, Mobile par false karke auto-restart karenge.
+      const isMobileBrowser = window.innerWidth < 768;
+      recognition.continuous = !isMobileBrowser; 
+      
+      recognition.interimResults = true;
       recognition.lang = 'hi-IN'; // Hindi Support
 
-      recognition.onstart = () => setIsListening(true);
-      
+      recognition.onstart = () => {
+        setIsListening(true);
+        isListeningRef.current = true;
+      };
+
       recognition.onend = () => {
-        setIsListening(false);
+        // 🔄 RESTART LOGIC: Agar user ne band nahi kiya, to wapas start karo
+        if (isListeningRef.current) {
+            try {
+                recognition.start();
+            } catch (e) {
+                // Ignore "already started" errors
+            }
+        } else {
+            setIsListening(false);
+        }
       };
 
       recognition.onresult = (event) => {
@@ -115,61 +133,68 @@ const ChatWindow = () => {
         for (let i = event.resultIndex; i < event.results.length; ++i) {
           if (event.results[i].isFinal) {
             finalTranscript += event.results[i][0].transcript + ' ';
+          } else if (!isMobileBrowser) {
+             // Desktop par interim text dikha sakte hain, mobile par lag avoid karein
           }
         }
 
-        // Only update if final result found (Prevents freezing on mobile)
         if (finalTranscript) {
           setInput(prev => prev + finalTranscript);
         }
       };
       
-      // 🚨 SMART ERROR HANDLING
       recognition.onerror = (event) => {
           console.error("Speech Error:", event.error);
-          setIsListening(false);
-
+          
           if (event.error === 'not-allowed') {
-              alert("Microphone Access Blocked! Please allow permissions in settings.");
-          } else if (event.error === 'network') {
-              // Ignore minor network glitches
+              alert("Mic Permission Blocked! Check settings.");
+              isListeningRef.current = false;
+              setIsListening(false);
           } else if (event.error === 'no-speech') {
-              // Ignore silence
+              // Silence detected, ignore
+          } else {
+              // Other errors, stop briefly then restart logic will handle if needed
           }
       };
 
       recognitionRef.current = recognition;
     }
     
-    // Cleanup
     return () => {
-        if (recognitionRef.current) recognitionRef.current.stop();
+        if (recognitionRef.current) {
+            isListeningRef.current = false; // Stop the loop
+            recognitionRef.current.stop();
+        }
     };
   }, []);
 
-  // Toggle Mic Function (With HTTPS Check)
+  // Toggle Mic Function
   const toggleListening = useCallback(() => {
-    // 🛑 HTTPS Check for Mobile
-    if (window.location.protocol === 'http:' && window.innerWidth < 768 && window.location.hostname !== 'localhost') {
-        alert("Mobile par Mic use karne ke liye Website ka HTTPS (Secure) hona zaruri hai.");
+    // 🛑 HTTPS Check
+    if (window.location.protocol === 'http:' && window.location.hostname !== 'localhost') {
+        alert("Mobile Mic requires HTTPS (Secure Connection). Please use Ngrok or deploy with SSL.");
         return;
     }
 
     if (!recognitionRef.current) {
-        alert("Browser not supported. Please use Google Chrome.");
+        alert("Your browser does not support Voice Typing. Try Chrome.");
         return;
     }
     
-    try {
-        if (isListening) {
-            recognitionRef.current.stop();
-        } else {
-            recognitionRef.current.start();
-        }
-    } catch (e) {
-        console.error("Mic Start Error:", e);
-        // Reset mic if stuck
+    if (isListening) {
+        // 🛑 STOP COMMAND
+        isListeningRef.current = false; // Loop Tod Do
+        recognitionRef.current.stop();
         setIsListening(false);
+    } else {
+        // ▶️ START COMMAND
+        isListeningRef.current = true; // Loop Start Karo
+        try {
+            recognitionRef.current.start();
+        } catch (e) {
+            console.error("Mic Start Error:", e);
+        }
+        setIsListening(true);
     }
   }, [isListening]);
 
@@ -190,25 +215,24 @@ const ChatWindow = () => {
     
     sendMessage(input, selectedImage);
     
-    // Clear Input
     setInput('');
     setSelectedImage(null);
     
-    // Stop mic if running
-    if (isListening && recognitionRef.current) {
-        recognitionRef.current.stop();
+    // Stop mic automatically after sending
+    if (isListening) {
+        isListeningRef.current = false;
+        if (recognitionRef.current) recognitionRef.current.stop();
+        setIsListening(false);
     }
   };
 
   return (
     <div className="gemini-app-container">
       
-      {/* Voice Call Overlay */}
       {isVoiceMode && (
          <VoiceCall onClose={() => setIsVoiceMode(false)} />
       )}
 
-      {/* Sidebar */}
       <aside className={`app-sidebar ${isSidebarOpen ? 'open' : 'closed'}`}>
          <div className="sidebar-header">
            <button className="menu-burger" onClick={() => setSidebarOpen(!isSidebarOpen)}>
@@ -224,7 +248,6 @@ const ChatWindow = () => {
          )}
       </aside>
 
-      {/* Main Area */}
       <main className="app-main">
         <header className="main-header">
           <div className="header-left">
@@ -237,7 +260,6 @@ const ChatWindow = () => {
           </div>
         </header>
 
-        {/* Chat Area */}
         <div className="chat-scroll-wrapper" ref={scrollRef}>
           {messages.length === 0 && (
             <div className="welcome-hero">
@@ -259,7 +281,6 @@ const ChatWindow = () => {
           </div>
         </div>
 
-        {/* Input Area */}
         <div className="input-container">
            <div className="input-max-width">
               {selectedImage && (
@@ -283,7 +304,6 @@ const ChatWindow = () => {
                  />
                  
                  <div className="input-actions">
-                    {/* Live Voice Button */}
                     {!input.trim() && !selectedImage ? (
                         <button 
                           className="voice-live-btn" 
@@ -298,7 +318,6 @@ const ChatWindow = () => {
                         </button>
                     )}
 
-                    {/* Mic Button */}
                     {(!input.trim() && !selectedImage) && (
                         <button 
                           className={`mic-btn ${isListening ? 'active-red' : ''}`} 
