@@ -65,10 +65,17 @@ const LoginPage = () => {
                 localStorage.setItem('user', JSON.stringify(userObj));
                 localStorage.setItem('userRole', data.user.role || 'USER');
 
-                const target = data.user.role === 'ADMIN' ? '/admin/dashboard' : 
-                               userObj.status !== 'active' ? '/payment-setup' : 
-                               '/dashboard';
+                // 👇👇👇 FIX START HERE 👇👇👇
                 
+                // Hum check kar rahe hain ki user 'active' hai YA 'premium' hai
+                const isPaidUser = userObj.status === 'active' || userObj.status === 'premium';
+
+                const target = data.user.role === 'ADMIN' ? '/admin/dashboard' : 
+                               isPaidUser ? '/dashboard' : // Agar paid hai to dashboard
+                               '/payment-setup'; // Warna payment page
+                
+                // 👆👆👆 FIX END HERE 👆👆👆
+
                 navigate(target, { replace: true });
             } else {
                 throw new Error('Invalid Token.');

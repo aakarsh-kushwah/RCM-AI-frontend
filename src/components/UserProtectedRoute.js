@@ -27,11 +27,10 @@ const UserProtectedRoute = ({ children }) => {
         return <Navigate to="/admin/dashboard" replace />;
     }
 
-    // 4. 🛑 CRITICAL FIX: Subscription Status Check
-    // If user is logged in but status is 'pending' or 'inactive', 
-    // kick them to the payment page immediately.
-    // They will NEVER see the protected page or trigger its APIs.
-    if (user.status !== 'active') {
+    // 4. ✅ FIXED: Subscription Status Check
+    // Ab hum check kar rahe hain ki agar status na to 'active' hai aur na hi 'premium',
+    // tabhi payment page par bhejo.
+    if (user.status !== 'active' && user.status !== 'premium') {
         return <Navigate to="/payment-setup" replace />;
     }
 

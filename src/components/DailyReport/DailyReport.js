@@ -16,7 +16,9 @@ import './DailyReport.css';
 
 // --- CONFIGURATION ---
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000';
-const API_TIMEOUT = 15000;
+
+// ✅ FIX: Timeout increased to 60 Seconds (1 Minute) to handle slow network/DB
+const API_TIMEOUT = 60000; 
 
 // --- UTILS ---
 const getDaysInMonth = (monthIndex, year) => new Date(year, monthIndex + 1, 0).getDate();
@@ -99,7 +101,7 @@ const DailyReport = () => {
   const [viewState, setViewState] = useState('LOADING'); 
   const [toast, setToast] = useState({ message: '', type: '' });
   
-  // ✅ FIX: Ref to track ongoing requests to prevent duplicates
+  // Ref to track ongoing requests to prevent duplicates
   const abortControllerRef = useRef(null);
 
   // Derived Values
@@ -141,9 +143,8 @@ const DailyReport = () => {
     return opts;
   }, []);
 
-  // ✅ FIX: Optimized Fetch with AbortSignal and 403 Handling
+  // Fetch Data
   const fetchData = useCallback(async (signal) => {
-    // 1. Cache Check: If we already have data for this month, don't fetch!
     setViewState(prev => reportData[monthKey] ? 'IDLE' : 'LOADING');
     if (reportData[monthKey]) return;
 
@@ -156,7 +157,7 @@ const DailyReport = () => {
           { 
             headers: { Authorization: `Bearer ${token}` }, 
             timeout: API_TIMEOUT,
-            signal: signal // Attach signal to cancel if needed
+            signal: signal 
           }
         );
         return response.data?.status && Array.isArray(response.data.data) ? response.data.data : [];
@@ -196,31 +197,27 @@ const DailyReport = () => {
       setViewState('IDLE');
 
     } catch (err) {
-      if (axios.isCancel(err)) return; // Ignore cancelled requests
+      if (axios.isCancel(err)) return; 
 
       console.error('Sync Error:', err);
       
-      // ✅ CRITICAL FIX: Handle Expired Subscription (403)
       if (err.response?.status === 403 && err.response?.data?.code === 'SUBSCRIPTION_REQUIRED') {
-          // Update LocalStorage to match reality
           const user = JSON.parse(localStorage.getItem('user') || '{}');
           user.status = 'pending';
           localStorage.setItem('user', JSON.stringify(user));
           
-          // Force Redirect
           showToast('Subscription expired. Redirecting...', 'error');
           setTimeout(() => navigate('/payment-setup', { replace: true }), 1000);
           return;
       }
 
       setViewState('ERROR');
-      showToast('Unable to sync data. Working offline.', 'error');
+      showToast('Server is slow. Retrying might help.', 'error');
     }
   }, [currentMonthIndex, currentYear, daysInMonth, monthKey, navigate, reportData]);
 
-  // ✅ FIX: Use Effect with Abort Cleanup
+  // Effect with Cleanup
   useEffect(() => {
-    // Create new controller
     if (abortControllerRef.current) {
         abortControllerRef.current.abort();
     }
@@ -233,10 +230,15 @@ const DailyReport = () => {
             abortControllerRef.current.abort();
         }
     };
-  }, [fetchData]); // Dependency is now stable
+  }, [fetchData]); 
 
+  // --- SAVE HANDLER (OPTIMIZED) ---
   const handleSave = async () => {
     setViewState('SAVING');
+
+    // ✅ FIX: Payload Construction
+    // Hum wohi data bhejenge jo valid number hai.
+    // Backend ab bulk update handle karega.
     const payload = Object.entries(currentMonthData).map(([day, { pv }]) => ({
       date: `${currentYear}-${(currentMonthIndex + 1).toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`,
       amount: parseInt(pv || '0', 10),
@@ -247,29 +249,28 @@ const DailyReport = () => {
       const response = await axios.post(
         `${API_BASE_URL}/api/reports/post-dailyReport`,
         payload,
-        { headers: { Authorization: `Bearer ${token}` }, timeout: API_TIMEOUT }
+        { 
+            headers: { Authorization: `Bearer ${token}` }, 
+            timeout: API_TIMEOUT // 60 Seconds wait karega
+        }
       );
 
       if (response.data?.status) {
-        showToast('Changes saved successfully', 'success');
+        showToast('Report saved successfully!', 'success');
       }
     } catch (error) {
       console.error('Save Error:', error);
       
-      // ✅ FIX: Handle 403 on Save as well
-      if (error.response?.status === 403 && error.response?.data?.code === 'SUBSCRIPTION_REQUIRED') {
-         const user = JSON.parse(localStorage.getItem('user') || '{}');
-         user.status = 'pending';
-         localStorage.setItem('user', JSON.stringify(user));
-         navigate('/payment-setup', { replace: true });
-         return;
-      }
-
-      if (error.response?.status === 401) {
-         showToast('Session expired. Please login again.', 'error');
-         setTimeout(() => { localStorage.clear(); navigate('/login'); }, 2000);
+      if (error.code === 'ECONNABORTED') {
+          showToast('Server took too long. Check your connection.', 'error');
+      } else if (error.response?.status === 403) {
+         showToast('Subscription expired.', 'error');
+         navigate('/payment-setup');
+      } else if (error.response?.status === 401) {
+         showToast('Please login again.', 'error');
+         navigate('/login');
       } else {
-         showToast('Could not save changes. Try again.', 'error');
+         showToast('Save failed. Try again.', 'error');
       }
     } finally {
       setViewState('IDLE');
@@ -298,7 +299,7 @@ const DailyReport = () => {
   const showToast = (message, type) => setToast({ message, type });
   const closeToast = () => setToast({ message: '', type: '' });
 
-  // Loading State
+  // Loading Screen
   if (viewState === 'LOADING' && !reportData[monthKey]) {
     return (
       <div className="loading-screen">
@@ -308,12 +309,13 @@ const DailyReport = () => {
     );
   }
 
-  // Error State
+  // Error Screen
   if (viewState === 'ERROR' && !reportData[monthKey]) {
     return (
       <div className="error-screen">
         <AlertCircle size={48} strokeWidth={1.5} />
-        <h3>Connection Failed</h3>
+        <h3>Connection Timeout</h3>
+        <p>Server is taking time to respond.</p>
         <button className="retry-btn" onClick={() => fetchData(null)}>Tap to Retry</button>
       </div>
     );
