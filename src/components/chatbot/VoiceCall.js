@@ -1,6 +1,6 @@
 /**
  * @file src/components/chatbot/VoiceCall.js
- * @description Enterprise Voice Interface with Stable References (Gemini Live Style).
+ * @description Enterprise Voice Interface with Mobile Fixes.
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -14,16 +14,15 @@ const VoiceCall = ({ onClose, onMessageAdd }) => {
   const [liveTranscript, setLiveTranscript] = useState('');
   const [isMuted, setIsMuted] = useState(false);
   
-  // FIX: Unused errorMsg removed. Keeping setter to avoid breaking logic if used elsewhere.
-  const [, setErrorMsg] = useState(''); 
-  
-  // --- REFS (Stable Logic) ---
+  // --- REFS ---
   const statusRef = useRef('initializing'); 
   const recognitionRef = useRef(null);
   const audioRef = useRef(null);
   const abortControllerRef = useRef(null);
-  const speakStartTimeRef = useRef(0);
   const isMountedRef = useRef(true);
+  
+  // 🔥 AUTO-RESTART REF (For Mobile)
+  const shouldListenRef = useRef(true);
 
   // Visualizer Refs
   const canvasRef = useRef(null);
@@ -39,7 +38,10 @@ const VoiceCall = ({ onClose, onMessageAdd }) => {
 
   // --- AUDIO CONTROLLER ---
   const stopAudio = useCallback(() => {
+    // Stop Browser Speech
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    
+    // Stop Server Audio
     if (audioRef.current) {
       try {
         audioRef.current.pause();
@@ -57,16 +59,27 @@ const VoiceCall = ({ onClose, onMessageAdd }) => {
     }
 
     updateStatus('speaking');
-    speakStartTimeRef.current = Date.now();
 
-    const secureUrl = `${url}?t=${Date.now()}`;
-    const audio = new Audio(secureUrl);
+    // ✅ FIX: Mobile Audio Handling
+    const audio = new Audio(url);
     audioRef.current = audio;
 
     audio.onended = () => { if (isMountedRef.current) updateStatus('listening'); };
-    audio.onerror = () => { if (isMountedRef.current) updateStatus('listening'); };
+    
+    audio.onerror = (e) => { 
+        console.error("Audio Playback Error:", e);
+        if (isMountedRef.current) updateStatus('listening'); 
+    };
 
-    audio.play().catch(() => { if (isMountedRef.current) updateStatus('listening'); });
+    // ✅ FIX: Handle Autoplay Blocking
+    const playPromise = audio.play();
+    if (playPromise !== undefined) {
+        playPromise.catch(error => {
+            console.warn("Autoplay Blocked:", error);
+            // Fallback: If blocked, go back to listening so user isn't stuck
+            if (isMountedRef.current) updateStatus('listening');
+        });
+    }
   }, [stopAudio]);
 
   // --- API HANDLER ---
@@ -80,11 +93,11 @@ const VoiceCall = ({ onClose, onMessageAdd }) => {
     updateStatus('processing');
     setLiveTranscript(rawText);
     
-    // Chat history me add karo
     if (onMessageAdd) onMessageAdd('user', rawText);
 
     try {
       const token = localStorage.getItem('token') || '';
+      // ✅ FIX: Ensure Correct API URL
       const response = await fetch(`${config.API.BASE_URL}/api/chat`, {
         method: 'POST',
         headers: { 
@@ -115,14 +128,18 @@ const VoiceCall = ({ onClose, onMessageAdd }) => {
     }
   }, [onMessageAdd, playServerAudio, stopAudio]);
 
-  // --- SPEECH RECOGNITION ---
+  // --- SPEECH RECOGNITION (Mobile Optimized) ---
   const startSpeechRecognition = useCallback(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) return setErrorMsg("Use Chrome Browser");
+    if (!SpeechRecognition) return; // Silent fail if not supported
 
     const recognition = new SpeechRecognition();
-    recognition.continuous = true; 
-    recognition.lang = 'en-IN'; // Change to 'hi-IN' for Hindi
+    
+    // ✅ FIX: Mobile "Continuous" Logic
+    const isMobile = window.innerWidth < 768;
+    recognition.continuous = !isMobile; 
+    
+    recognition.lang = 'hi-IN'; // Default to Hindi/English Mix
     recognition.interimResults = true;
 
     recognition.onstart = () => {
@@ -138,8 +155,9 @@ const VoiceCall = ({ onClose, onMessageAdd }) => {
         else interim += event.results[i][0].transcript;
       }
 
-      // Barge-in Logic
-      if ((final || interim) && statusRef.current === 'speaking') {
+      // ✅ FIX: Less Aggressive Barge-in
+      // Only stop audio if 'final' result is found OR interim is long enough
+      if ((final || interim.length > 5) && statusRef.current === 'speaking') {
           stopAudio();
           updateStatus('listening');
       }
@@ -149,12 +167,21 @@ const VoiceCall = ({ onClose, onMessageAdd }) => {
     };
 
     recognition.onend = () => {
-      if (isMountedRef.current && statusRef.current !== 'processing') {
-         setTimeout(() => { try { recognitionRef.current?.start(); } catch(e) {} }, 300); 
+      // ✅ FIX: Robust Auto-Restart for Mobile
+      if (isMountedRef.current && shouldListenRef.current && statusRef.current !== 'processing' && statusRef.current !== 'speaking') {
+         try { recognition.start(); } catch(e) {} 
       }
     };
 
+    recognition.onerror = (event) => {
+        if (event.error === 'not-allowed') {
+            shouldListenRef.current = false;
+            alert("Mic Permission Blocked");
+        }
+    };
+
     recognitionRef.current = recognition;
+    shouldListenRef.current = true;
     try { recognition.start(); } catch(e) {}
   }, [handleUserQuery, stopAudio]);
 
@@ -192,18 +219,21 @@ const VoiceCall = ({ onClose, onMessageAdd }) => {
         animationFrameRef.current = requestAnimationFrame(drawLoop);
       };
       drawLoop();
-    } catch (err) { console.error("Mic Error:", err); }
+    } catch (err) { console.error("Visualizer Error:", err); }
   }, []);
 
   // --- LIFECYCLE ---
   useEffect(() => {
     isMountedRef.current = true;
+    shouldListenRef.current = true;
     startVisualizer(); 
     startSpeechRecognition();
 
     return () => {
       isMountedRef.current = false;
+      shouldListenRef.current = false;
       stopAudio();
+      
       if (recognitionRef.current) recognitionRef.current.stop();
       if (abortControllerRef.current) abortControllerRef.current.abort();
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
