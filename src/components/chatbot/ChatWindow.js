@@ -12,7 +12,6 @@ import './ChatWindow.css';
 const ChatRow = memo(({ msg, onReplay }) => {
   const isAssistant = msg.role === 'assistant';
   
-  // Text formatting helper
   const formatText = (text) => {
     if (!text) return "";
     return text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
@@ -42,6 +41,7 @@ const ChatRow = memo(({ msg, onReplay }) => {
           dangerouslySetInnerHTML={{ __html: formatText(msg.content) }} 
         />
         
+        {/* Mobile Fix: Speaker button only works if NOT in voice mode */}
         {isAssistant && (
           <button className="replay-tiny" onClick={() => onReplay(msg.content)}>
             <Volume2 size={14} /> Listen
@@ -69,13 +69,10 @@ const ChatWindow = () => {
   const fileInputRef = useRef(null);
   const recognitionRef = useRef(null);
 
-  // 1. Auto Scroll to Bottom
+  // 1. Auto Scroll
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTo({ 
-        top: scrollRef.current.scrollHeight, 
-        behavior: 'smooth' 
-      });
+      scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
     }
   }, [messages, status]);
 
@@ -92,91 +89,99 @@ const ChatWindow = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // 3. OPTIMIZED SPEECH RECOGNITION (Fixes Freezing)
+  // 3. OPTIMIZED SPEECH RECOGNITION (Chat Mode Only)
   useEffect(() => {
+    // 🛑 CRITICAL FIX: Agar Voice Call active hai, to Chat Mic logic initialize hi mat karo
+    if (isVoiceMode) return;
+
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     
     if (SpeechRecognition) {
       const recognition = new SpeechRecognition();
-      recognition.continuous = true; // Keep listening
-      recognition.interimResults = true; // Show words as you speak
-      recognition.lang = 'hi-IN'; // Hindi Support
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'hi-IN';
 
       recognition.onstart = () => setIsListening(true);
+      
       recognition.onend = () => {
-        // Auto restart if it stops unexpectedly, but not if user stopped it manually
-        // For simplicity here, we just set state to false.
         setIsListening(false);
       };
 
       recognition.onresult = (event) => {
-        let interimTranscript = '';
-        let finalTranscript = '';
+        // Double Check: Agar Voice Call beech me start ho gaya, to ignore karo
+        if (isVoiceMode) return;
 
+        let finalTranscript = '';
         for (let i = event.resultIndex; i < event.results.length; ++i) {
           if (event.results[i].isFinal) {
             finalTranscript += event.results[i][0].transcript + ' ';
-          } else {
-            interimTranscript += event.results[i][0].transcript;
           }
         }
-
-        // Only update state if we have a final result to prevent lag
         if (finalTranscript) {
           setInput(prev => prev + finalTranscript);
         }
       };
       
       recognition.onerror = (event) => {
-          console.error("Speech Error:", event.error);
+          console.error("Chat Mic Error:", event.error);
           setIsListening(false);
       };
 
       recognitionRef.current = recognition;
     }
     
-    // 🛑 CRITICAL CLEANUP: Stop mic when component unmounts
     return () => {
         if (recognitionRef.current) recognitionRef.current.stop();
     };
-  }, []);
+  }, [isVoiceMode]); // Dependency added: Re-run if VoiceMode changes
 
-  // Toggle Mic Function
+  // 🛑 Force Stop Chat Mic Logic
+  const stopChatMic = () => {
+    if (recognitionRef.current) {
+        recognitionRef.current.stop();
+        setIsListening(false);
+    }
+  };
+
+  // Toggle Chat Mic
   const toggleListening = useCallback(() => {
     if (!recognitionRef.current) return alert("Browser does not support Speech Recognition.");
-    
     if (isListening) {
-      recognitionRef.current.stop();
+      stopChatMic();
     } else {
       recognitionRef.current.start();
     }
   }, [isListening]);
 
-  // 4. Image Handling
+  // ✅ SPECIAL HANDLER: Start Voice Call (Kills Chat Mic First)
+  const handleStartVoiceCall = () => {
+      // 1. Stop Chat Mic immediately
+      stopChatMic();
+      
+      // 2. Stop any playing audio
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+      
+      // 3. Enable Voice Mode (This unmounts Chat Mic logic via useEffect)
+      setIsVoiceMode(true);
+  };
+
+  // Handle Image
   const handleImageProcessing = async (file) => {
     if (!file || !file.type.startsWith('image/')) return;
     try {
         const compressedFile = await imageCompression(file, { maxSizeMB: 1, useWebWorker: true });
         setSelectedImage(compressedFile);
-    } catch (e) { 
-        setSelectedImage(file); 
-    } 
+    } catch (e) { setSelectedImage(file); } 
   };
 
-  // 5. Send Message Handler
+  // Handle Send
   const handleSend = () => {
     if (!input.trim() && !selectedImage) return;
-    
     sendMessage(input, selectedImage);
-    
-    // Clear Input
     setInput('');
     setSelectedImage(null);
-    
-    // Stop mic if running
-    if (isListening && recognitionRef.current) {
-        recognitionRef.current.stop();
-    }
+    stopChatMic();
   };
 
   return (
@@ -184,7 +189,10 @@ const ChatWindow = () => {
       
       {/* Voice Call Overlay */}
       {isVoiceMode && (
-         <VoiceCall onClose={() => setIsVoiceMode(false)} />
+         <VoiceCall 
+            onClose={() => setIsVoiceMode(false)} 
+            // Optional: Pass user name context if needed
+         />
       )}
 
       {/* Sidebar */}
@@ -238,7 +246,7 @@ const ChatWindow = () => {
           </div>
         </div>
 
-        {/* Input Area */}
+        {/* Input Area - HIDDEN OR DISABLED DURING VOICE CALL IF OVERLAY DOESN'T COVER */}
         <div className="input-container">
            <div className="input-max-width">
               {selectedImage && (
@@ -262,11 +270,11 @@ const ChatWindow = () => {
                  />
                  
                  <div className="input-actions">
-                    {/* Live Voice Button */}
+                    {/* Live Voice Button - Trigger Clean Switch */}
                     {!input.trim() && !selectedImage ? (
                         <button 
                           className="voice-live-btn" 
-                          onClick={() => setIsVoiceMode(true)} 
+                          onClick={handleStartVoiceCall} 
                           title="Start Live Voice Chat"
                         >
                             <AudioLines size={20} /><span className="live-wave"></span>
@@ -277,7 +285,7 @@ const ChatWindow = () => {
                         </button>
                     )}
 
-                    {/* Mic Button */}
+                    {/* Mic Button - Disabled Visually to avoid confusion if needed, logic is already safe */}
                     {(!input.trim() && !selectedImage) && (
                         <button 
                           className={`mic-btn ${isListening ? 'active-red' : ''}`} 
