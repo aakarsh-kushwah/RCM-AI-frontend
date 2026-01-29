@@ -1,13 +1,18 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-   ShieldCheck, Lock, ChevronRight, CheckCircle, Zap, ShieldAlert
+  ShieldCheck, Lock, ChevronRight, CheckCircle, Zap, ShieldAlert
 } from "lucide-react";
 import "./PaymentPage.css";
 
 function PaymentPage() {
    const [loading, setLoading] = useState(false);
+   const [verifying, setVerifying] = useState(false); // New state for better UX
    const [isSdkReady, setSdkReady] = useState(false);
+   
+   // Ref to track if payment was successful to prevent premature loading stop
+   const isPaymentProcessing = useRef(false); 
+   
    const navigate = useNavigate();
 
    // 1. Robust SDK Loading
@@ -29,6 +34,9 @@ function PaymentPage() {
          alert("Payment system is still loading. Please wait...");
          return;
       }
+
+      // Reset the processing tracker
+      isPaymentProcessing.current = false;
 
       try {
          setLoading(true);
@@ -52,16 +60,15 @@ function PaymentPage() {
             return;
          }
 
-         // 3. Configure Razorpay with PREFILL (The Fix)
+         // 3. Configure Razorpay
          const options = {
             key: data.key,
             subscription_id: data.subscriptionId,
             name: "Enterprise AI Suite",
             description: "Refundable Security Verification",
             image: "/rcmai_logo.png",
-            theme: { color: "#0071e3" }, // Matches your UI color
+            theme: { color: "#0071e3" },
 
-            // ✅ CRITICAL FIX: Prefill data so user doesn't type it again
             prefill: {
                name: data.user_name,
                email: data.user_email,
@@ -71,6 +78,10 @@ function PaymentPage() {
 
             // ✅ HANDLER: Verify Payment on Backend
             handler: async function (response) {
+               // CRITICAL FIX: Lock the process so ondismiss doesn't stop the loader
+               isPaymentProcessing.current = true;
+               setVerifying(true); // Change button text to "Verifying..."
+
                try {
                   const verifyRes = await fetch(`${baseUrl}/api/payment/verify-payment`, {
                      method: "POST",
@@ -84,28 +95,36 @@ function PaymentPage() {
                   const vData = await verifyRes.json();
 
                   if (vData.success) {
-                     // Update Local Storage immediately to reflect 'active' status
+                     // Update Local Storage immediately
                      const user = JSON.parse(localStorage.getItem('user') || '{}');
                      user.status = 'active';
                      localStorage.setItem('user', JSON.stringify(user));
 
-                     // Force Redirect to Dashboard
+                     // Force Redirect
                      window.location.href = "/dashboard";
                   } else {
                      alert("❌ Payment Successful, but Verification Failed.");
                      setLoading(false);
+                     setVerifying(false);
                   }
                } catch (e) {
                   console.error("Verification API Error:", e);
                   alert("⚠️ Network Error during verification. Please contact support.");
                   setLoading(false);
+                  setVerifying(false);
                }
             },
 
             modal: {
                ondismiss: () => {
+                  // CRITICAL FIX: Only stop loading if payment was NOT successful
+                  if (isPaymentProcessing.current) {
+                      // Do nothing. The handler is running. 
+                      // This prevents the "pay again" confusion.
+                      return;
+                  }
                   setLoading(false);
-                  // Optional: alert("Payment Cancelled"); 
+                  console.log("Payment cancelled by user");
                }
             },
          };
@@ -115,6 +134,7 @@ function PaymentPage() {
             console.error("Payment Failed:", response.error);
             alert(`Payment Failed: ${response.error.description}`);
             setLoading(false);
+            setVerifying(false);
          });
 
          rzp.open();
@@ -182,8 +202,14 @@ function PaymentPage() {
                      className="shiny-btn"
                      disabled={loading || !isSdkReady}
                   >
-                     {loading ? "Securing Connection..." : "Activate Now for ₹5"}
-                     <ChevronRight size={20} />
+                     {/* Dynamic Button Text for Better UX */}
+                     {verifying 
+                        ? "Verifying Payment..." 
+                        : loading 
+                           ? "Securing Connection..." 
+                           : "Activate Now for ₹5"
+                     }
+                     {!loading && !verifying && <ChevronRight size={20} />}
                   </button>
                </div>
 
