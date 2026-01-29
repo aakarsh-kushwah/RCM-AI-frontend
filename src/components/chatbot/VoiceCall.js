@@ -1,30 +1,37 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { PhoneOff, Volume2, VolumeX, Minimize2, Mic, Activity } from 'lucide-react';
+import { useNavigate } from 'react-router-dom'; // 🆕 Navigation
 import './VoiceCall.css'; 
 import config from '../../config/env'; 
 
-const VoiceCall = ({ onClose, onMessageAdd }) => {
+const VoiceCall = () => {
+  const navigate = useNavigate(); // 🆕 Hook
+  
   // --- UI STATE ---
-  const [uiStatus, setUiStatus] = useState('initializing'); // initializing | listening | processing | speaking
+  const [uiStatus, setUiStatus] = useState('initializing'); 
   const [liveTranscript, setLiveTranscript] = useState('');
   const [isMuted, setIsMuted] = useState(false);
   
-  // --- REFS (Stable Logic) ---
+  // --- REFS ---
   const statusRef = useRef('initializing'); 
   const recognitionRef = useRef(null);
   const audioRef = useRef(null);
   const abortControllerRef = useRef(null);
-  const speakStartTimeRef = useRef(0);
   const isMountedRef = useRef(true);
 
-  // --- VISUALIZER REFS (Gemini Style) ---
+  // --- VISUALIZER REFS ---
   const canvasRef = useRef(null);
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
   const dataArrayRef = useRef(null);
   const sourceRef = useRef(null);
   const animationFrameRef = useRef(null);
-  const orbRef = useRef(null); // Ref for the glowing orb animation
+  const orbRef = useRef(null);
+
+  // ✅ Handle Exit Navigation
+  const handleExit = () => {
+      navigate('/chat'); // Go back to text chat
+  };
 
   const updateStatus = (newStatus) => {
     statusRef.current = newStatus;
@@ -51,9 +58,7 @@ const VoiceCall = ({ onClose, onMessageAdd }) => {
     }
 
     updateStatus('speaking');
-    speakStartTimeRef.current = Date.now();
 
-    // Cache busting for fresh audio
     const secureUrl = `${url}?t=${Date.now()}`;
     const audio = new Audio(secureUrl);
     audioRef.current = audio;
@@ -78,7 +83,8 @@ const VoiceCall = ({ onClose, onMessageAdd }) => {
     updateStatus('processing');
     setLiveTranscript(rawText);
     
-    if (onMessageAdd) onMessageAdd('user', rawText);
+    // Note: onMessageAdd removed as we are on a separate page.
+    // The history will be fetched from backend when user visits /chat again.
 
     try {
       const token = localStorage.getItem('token') || '';
@@ -96,9 +102,6 @@ const VoiceCall = ({ onClose, onMessageAdd }) => {
       if (!isMountedRef.current) return;
 
       if (data.success) {
-        const aiText = typeof data.reply === 'string' ? data.reply : data.reply.content;
-        if (onMessageAdd) onMessageAdd('assistant', aiText);
-        
         if (data.audioUrl) {
            playServerAudio(data.audioUrl);
         } else {
@@ -110,7 +113,7 @@ const VoiceCall = ({ onClose, onMessageAdd }) => {
     } catch (error) {
       if (error.name !== 'AbortError') updateStatus('listening');
     }
-  }, [onMessageAdd, playServerAudio, stopAudio]);
+  }, [playServerAudio, stopAudio]);
 
   // --- SPEECH RECOGNITION ---
   const startSpeechRecognition = useCallback(() => {
@@ -146,9 +149,9 @@ const VoiceCall = ({ onClose, onMessageAdd }) => {
 
     recognition.onend = () => {
       if (isMountedRef.current && statusRef.current !== 'processing') {
-         setTimeout(() => { 
+          setTimeout(() => { 
              try { recognitionRef.current?.start(); } catch(e) {} 
-         }, 300); 
+          }, 300); 
       }
     };
     
@@ -157,7 +160,7 @@ const VoiceCall = ({ onClose, onMessageAdd }) => {
     
   }, [handleUserQuery, stopAudio]);
 
-  // --- GEMINI VISUALIZER (The "Touch") ---
+  // --- GEMINI VISUALIZER ---
   const startVisualizer = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -166,7 +169,6 @@ const VoiceCall = ({ onClose, onMessageAdd }) => {
       audioContextRef.current = new AudioContextClass();
       analyserRef.current = audioContextRef.current.createAnalyser();
       
-      // Smooth smoothing for elegant look
       analyserRef.current.smoothingTimeConstant = 0.8;
       analyserRef.current.fftSize = 256;
       
@@ -178,24 +180,20 @@ const VoiceCall = ({ onClose, onMessageAdd }) => {
       const drawLoop = () => {
         if (!isMountedRef.current) return;
         
-        // 1. Get Data
         analyserRef.current.getByteFrequencyData(dataArrayRef.current);
         
-        // 2. Calculate Average Volume for Orb scaling
+        // Orb Breathing Logic
         let sum = 0;
-        for(let i = 0; i < dataArrayRef.current.length; i++) {
-            sum += dataArrayRef.current[i];
-        }
+        for(let i = 0; i < dataArrayRef.current.length; i++) sum += dataArrayRef.current[i];
         const average = sum / dataArrayRef.current.length;
         
-        // Apply "Breathing" effect to Orb based on volume
         if (orbRef.current) {
-            const scale = 1 + (average / 256) * 0.4; // Scale between 1 and 1.4
+            const scale = 1 + (average / 256) * 0.4;
             orbRef.current.style.transform = `scale(${scale})`;
             orbRef.current.style.opacity = 0.8 + (average / 256) * 0.2;
         }
 
-        // 3. Draw Waveform on Canvas
+        // Canvas Drawing
         const canvas = canvasRef.current;
         if (canvas) {
             const ctx = canvas.getContext('2d');
@@ -204,26 +202,19 @@ const VoiceCall = ({ onClose, onMessageAdd }) => {
             
             ctx.clearRect(0, 0, width, height);
             
-            // Dynamic Color based on Status
-            const color = statusRef.current === 'speaking' ? '#06b6d4' : // Cyan
-                          statusRef.current === 'processing' ? '#a855f7' : // Purple
-                          '#3b82f6'; // Blue
+            const color = statusRef.current === 'speaking' ? '#06b6d4' : 
+                          statusRef.current === 'processing' ? '#a855f7' : '#3b82f6';
             
             ctx.fillStyle = color;
             
-            // Draw symmetric bars from center
             const barWidth = (width / dataArrayRef.current.length) * 2.5;
             let x = 0;
             
             for(let i = 0; i < dataArrayRef.current.length; i++) {
-                // Normalize bar height
                 const barHeight = (dataArrayRef.current[i] / 255) * height * 0.8;
-                
-                // Draw Rounded Bar
                 ctx.beginPath();
                 ctx.roundRect(x, (height - barHeight) / 2, barWidth - 2, barHeight, 5);
                 ctx.fill();
-                
                 x += barWidth;
             }
         }
@@ -252,7 +243,6 @@ const VoiceCall = ({ onClose, onMessageAdd }) => {
       if (abortControllerRef.current) abortControllerRef.current.abort();
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
       
-      // ✅ Lint Fix: Capture current ref value for cleanup
       const audioCtx = audioContextRef.current;
       if (audioCtx) audioCtx.close();
       
@@ -262,23 +252,23 @@ const VoiceCall = ({ onClose, onMessageAdd }) => {
   }, [startSpeechRecognition, stopAudio, startVisualizer]);
 
   return (
-    <div className="voice-call-overlay" data-status={uiStatus}>
+    // Replaced 'voice-call-overlay' with a full-screen container class
+    <div className="voice-call-page-container" data-status={uiStatus} style={{ width: '100vw', height: '100vh', position: 'fixed', top:0, left:0, background: '#0f172a', zIndex: 9999 }}>
       <div className="vc-header">
-        <button onClick={onClose} className="vc-btn"><Minimize2 size={24} /></button>
+        {/* Minimize button acts as Exit/Back */}
+        <button onClick={handleExit} className="vc-btn"><Minimize2 size={24} /></button>
         <div className="vc-brand-badge">
-           <div className={`vc-live-dot ${uiStatus === 'listening' ? 'pulse' : ''}`}></div> RCM Live
+            <div className={`vc-live-dot ${uiStatus === 'listening' ? 'pulse' : ''}`}></div> RCM Live
         </div>
       </div>
 
       <div className="vc-visualizer-container">
-        {/* Animated Orb driven by Mic Volume */}
         <div className="vc-orb" ref={orbRef}>
              {uiStatus === 'processing' && <Activity className="spin" size={40} />}
              {uiStatus === 'speaking' && <Volume2 className="pulse" size={40} />}
              {uiStatus === 'listening' && <Mic size={40} />}
         </div>
         
-        {/* Real-time Canvas Waveform */}
         <canvas ref={canvasRef} className="vc-waveform" width="300" height="60"></canvas>
       </div>
 
@@ -294,7 +284,7 @@ const VoiceCall = ({ onClose, onMessageAdd }) => {
         <button className="vc-btn" onClick={() => setIsMuted(!isMuted)}>
           {isMuted ? <VolumeX size={24} /> : <Volume2 size={24} />}
         </button>
-        <button className="vc-btn vc-btn-red" onClick={onClose}>
+        <button className="vc-btn vc-btn-red" onClick={handleExit}>
           <PhoneOff size={24} />
         </button>
       </div>

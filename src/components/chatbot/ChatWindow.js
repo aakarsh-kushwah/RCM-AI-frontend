@@ -1,15 +1,16 @@
 import React, { useState, useRef, useEffect, memo, useCallback } from 'react';
 import { 
   Send, Menu, Plus, 
-  Sparkles, Mic, MicOff, X, Volume2, Loader, AudioLines 
+  Sparkles, Mic, MicOff, X, Loader, AudioLines 
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom'; // 🆕 Navigation Hook
 import imageCompression from 'browser-image-compression';
 import { useChatEngine } from '../../hooks/useChatEngine';
-import VoiceCall from './VoiceCall';
 import './ChatWindow.css';
 
 // --- MESSAGE ROW COMPONENT ---
-const ChatRow = memo(({ msg, onReplay }) => {
+// 🔄 Updated: Removed 'onReplay' prop and the Listen button
+const ChatRow = memo(({ msg }) => {
   const isAssistant = msg.role === 'assistant';
   
   const formatText = (text) => {
@@ -41,12 +42,7 @@ const ChatRow = memo(({ msg, onReplay }) => {
           dangerouslySetInnerHTML={{ __html: formatText(msg.content) }} 
         />
         
-        {/* Mobile Fix: Speaker button only works if NOT in voice mode */}
-        {isAssistant && (
-          <button className="replay-tiny" onClick={() => onReplay(msg.content)}>
-            <Volume2 size={14} /> Listen
-          </button>
-        )}
+        {/* ❌ REMOVED: Listen/Replay Button is gone */}
       </div>
     </div>
   );
@@ -54,13 +50,14 @@ const ChatRow = memo(({ msg, onReplay }) => {
 
 // --- MAIN CHAT WINDOW ---
 const ChatWindow = () => {
-  const { messages, status, sendMessage, replayLastAudio } = useChatEngine();
+  // 🔄 Updated: Removed 'replayLastAudio' from hook
+  const { messages, status, sendMessage } = useChatEngine();
+  const navigate = useNavigate();
   
   // State Management
   const [input, setInput] = useState('');
   const [selectedImage, setSelectedImage] = useState(null); 
   const [isListening, setIsListening] = useState(false);
-  const [isVoiceMode, setIsVoiceMode] = useState(false);
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   
@@ -89,11 +86,8 @@ const ChatWindow = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // 3. OPTIMIZED SPEECH RECOGNITION (Chat Mode Only)
+  // 3. OPTIMIZED SPEECH RECOGNITION (Text Input Mode)
   useEffect(() => {
-    // 🛑 CRITICAL FIX: Agar Voice Call active hai, to Chat Mic logic initialize hi mat karo
-    if (isVoiceMode) return;
-
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     
     if (SpeechRecognition) {
@@ -103,15 +97,9 @@ const ChatWindow = () => {
       recognition.lang = 'hi-IN';
 
       recognition.onstart = () => setIsListening(true);
-      
-      recognition.onend = () => {
-        setIsListening(false);
-      };
+      recognition.onend = () => setIsListening(false);
 
       recognition.onresult = (event) => {
-        // Double Check: Agar Voice Call beech me start ho gaya, to ignore karo
-        if (isVoiceMode) return;
-
         let finalTranscript = '';
         for (let i = event.resultIndex; i < event.results.length; ++i) {
           if (event.results[i].isFinal) {
@@ -134,36 +122,26 @@ const ChatWindow = () => {
     return () => {
         if (recognitionRef.current) recognitionRef.current.stop();
     };
-  }, [isVoiceMode]); // Dependency added: Re-run if VoiceMode changes
-
-  // 🛑 Force Stop Chat Mic Logic
-  const stopChatMic = () => {
-    if (recognitionRef.current) {
-        recognitionRef.current.stop();
-        setIsListening(false);
-    }
-  };
+  }, []);
 
   // Toggle Chat Mic
   const toggleListening = useCallback(() => {
     if (!recognitionRef.current) return alert("Browser does not support Speech Recognition.");
     if (isListening) {
-      stopChatMic();
+      recognitionRef.current.stop();
     } else {
       recognitionRef.current.start();
     }
   }, [isListening]);
 
-  // ✅ SPECIAL HANDLER: Start Voice Call (Kills Chat Mic First)
-  const handleStartVoiceCall = () => {
-      // 1. Stop Chat Mic immediately
-      stopChatMic();
-      
-      // 2. Stop any playing audio
+  // ✅ SWITCH TO VOICE CALL ROUTE
+  const handleSwitchToVoiceMode = () => {
+      // Stop local interactions
+      if (recognitionRef.current) recognitionRef.current.stop();
       if ('speechSynthesis' in window) window.speechSynthesis.cancel();
       
-      // 3. Enable Voice Mode (This unmounts Chat Mic logic via useEffect)
-      setIsVoiceMode(true);
+      // Navigate to separate route
+      navigate('/voice-call');
   };
 
   // Handle Image
@@ -181,20 +159,12 @@ const ChatWindow = () => {
     sendMessage(input, selectedImage);
     setInput('');
     setSelectedImage(null);
-    stopChatMic();
+    if (isListening && recognitionRef.current) recognitionRef.current.stop();
   };
 
   return (
     <div className="gemini-app-container">
       
-      {/* Voice Call Overlay */}
-      {isVoiceMode && (
-         <VoiceCall 
-            onClose={() => setIsVoiceMode(false)} 
-            // Optional: Pass user name context if needed
-         />
-      )}
-
       {/* Sidebar */}
       <aside className={`app-sidebar ${isSidebarOpen ? 'open' : 'closed'}`}>
          <div className="sidebar-header">
@@ -220,7 +190,7 @@ const ChatWindow = () => {
                 <Menu size={20}/>
               </button>
             )}
-            <span className="model-select">RCM Intelligence <span className="beta-badge">PRO</span></span>
+            <span className="model-select">RCM Intelligence <span className="beta-badge">TEXT</span></span>
           </div>
         </header>
 
@@ -236,7 +206,7 @@ const ChatWindow = () => {
 
           <div className="message-list">
              {messages.map((msg, i) => (
-               <ChatRow key={i} msg={msg} onReplay={replayLastAudio} />
+               <ChatRow key={i} msg={msg} />
              ))}
              {status === 'loading' && (
                <div className="gemini-msg-row assistant">
@@ -246,7 +216,7 @@ const ChatWindow = () => {
           </div>
         </div>
 
-        {/* Input Area - HIDDEN OR DISABLED DURING VOICE CALL IF OVERLAY DOESN'T COVER */}
+        {/* Input Area */}
         <div className="input-container">
            <div className="input-max-width">
               {selectedImage && (
@@ -270,30 +240,30 @@ const ChatWindow = () => {
                  />
                  
                  <div className="input-actions">
-                    {/* Live Voice Button - Trigger Clean Switch */}
-                    {!input.trim() && !selectedImage ? (
-                        <button 
-                          className="voice-live-btn" 
-                          onClick={handleStartVoiceCall} 
-                          title="Start Live Voice Chat"
-                        >
-                            <AudioLines size={20} /><span className="live-wave"></span>
-                        </button>
-                    ) : (
-                        <button className="send-btn active" onClick={handleSend}>
-                          <Send size={18}/>
-                        </button>
-                    )}
+                   {/* Live Voice Button */}
+                   {!input.trim() && !selectedImage ? (
+                       <button 
+                         className="voice-live-btn" 
+                         onClick={handleSwitchToVoiceMode} 
+                         title="Start Live Voice Chat"
+                       >
+                           <AudioLines size={20} /><span className="live-wave"></span>
+                       </button>
+                   ) : (
+                       <button className="send-btn active" onClick={handleSend}>
+                         <Send size={18}/>
+                       </button>
+                   )}
 
-                    {/* Mic Button - Disabled Visually to avoid confusion if needed, logic is already safe */}
-                    {(!input.trim() && !selectedImage) && (
-                        <button 
-                          className={`mic-btn ${isListening ? 'active-red' : ''}`} 
-                          onClick={toggleListening}
-                        >
-                            {isListening ? <MicOff size={20} /> : <Mic size={20}/>}
-                        </button>
-                    )}
+                   {/* Mic Button (Speech-to-Text only) */}
+                   {(!input.trim() && !selectedImage) && (
+                       <button 
+                         className={`mic-btn ${isListening ? 'active-red' : ''}`} 
+                         onClick={toggleListening}
+                       >
+                           {isListening ? <MicOff size={20} /> : <Mic size={20}/>}
+                       </button>
+                   )}
                  </div>
               </div>
            </div>

@@ -2,7 +2,6 @@
  * @file App.js
  * @description Root Component - The Brain of the Application.
  * @architecture Scalable Single Page Application (SPA)
- * @features Lazy Loading, Network Detection, Smart Splash Screen, Push Notifications
  */
 
 import React, { Suspense, lazy, useState, useEffect } from 'react';
@@ -11,8 +10,8 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 // ==========================================
 // 🎨 GLOBAL UI COMPONENTS
 // ==========================================
-import LoadingSpinner from './components/LoadingSpinner/LoadingSpinner'; // Next-Gen Loader
-import SplashScreen from './components/SplashScreen/SplashScreen';     // App-Like Entry
+import LoadingSpinner from './components/LoadingSpinner/LoadingSpinner';
+import SplashScreen from './components/SplashScreen/SplashScreen';
 
 // ==========================================
 // 🔐 SECURITY & LOGIC
@@ -22,7 +21,6 @@ import usePushNotification from './hooks/usePushNotification';
 
 // ==========================================
 // ⚡ PERFORMANCE: LAZY LOADING PAGES
-// (Code split hone se app fast load hoti hai)
 // ==========================================
 
 // --- Public Access ---
@@ -36,11 +34,11 @@ const UserDashboard = lazy(() => import('./components/UserDashboard/UserDashboar
 const Productsvideo = lazy(() => import('./components/Productsvideo/Productsvideo'));
 const LeadersVideo = lazy(() => import('./components/LeadersVideo/LeadersVideo'));
 const ChatWindow = lazy(() => import('./components/chatbot/ChatWindow'));
+const VoiceCallPage = lazy(() => import('./components/chatbot/VoiceCall')); // 🆕 NEW SEPARATE COMPONENT
 const DailyReport = lazy(() => import('./components/DailyReport/DailyReport'));
 
 // ==========================================
 // 🛠️ UTILITY: SCROLL TO TOP
-// (Page change hone par scroll top par le jaye)
 // ==========================================
 const ScrollToTop = () => {
     const { pathname } = useLocation();
@@ -54,42 +52,29 @@ const ScrollToTop = () => {
 // 🚀 MAIN APPLICATION COMPONENT
 // ==========================================
 function App() {
-    // --- 1. STATE MANAGEMENT ---
-    const [showSplash, setShowSplash] = useState(true); // Splash Screen Control
-    const [isOffline, setIsOffline] = useState(!navigator.onLine); // Network Monitor
+    const [showSplash, setShowSplash] = useState(true);
+    const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
-    // --- 2. HOOKS INITIALIZATION ---
-    usePushNotification(); // Initialize Notification Service
+    usePushNotification();
 
-    // --- 3. EFFECTS: NETWORK MONITORING ---
     useEffect(() => {
         const handleOffline = () => setIsOffline(true);
         const handleOnline = () => setIsOffline(false);
-
-        // Listeners add karein
         window.addEventListener('offline', handleOffline);
         window.addEventListener('online', handleOnline);
-
-        // Cleanup (Memory Leak Prevention)
         return () => {
             window.removeEventListener('offline', handleOffline);
             window.removeEventListener('online', handleOnline);
         };
     }, []);
 
-    // --- 4. RENDER PHASE: SPLASH SCREEN ---
-    // Jab tak app fully ready nahi hoti, Splash Screen dikhayein
     if (showSplash) {
         return <SplashScreen onComplete={() => setShowSplash(false)} />;
     }
 
     return (
         <>
-            {/* Utility to handle scroll behavior */}
             <ScrollToTop />
-
-            {/* --- 🔴 CRITICAL: OFFLINE MODE --- */}
-            {/* Agar internet chala jaye, to Red Alert Spinner dikhayein */}
             {isOffline && (
                 <LoadingSpinner 
                     message="Connection Severed. Retrying..." 
@@ -97,80 +82,43 @@ function App() {
                 />
             )}
 
-            {/* --- 🔵 MAIN APP CONTENT --- */}
-            {/* Suspense ensure karta hai ki heavy pages load hote waqt UI freeze na ho */}
             <Suspense fallback={<LoadingSpinner message="Loading Neural Interface..." />}>
                 <Routes>
-                    
-                    {/* =========================================
-                        🌍 PUBLIC ROUTES
-                       ========================================= */}
+                    {/* 🌍 PUBLIC ROUTES */}
                     <Route path="/" element={<LandingPage />} />
                     <Route path="/login" element={<LoginPage />} />
                     <Route path="/register" element={<RegisterPage />} />
                     <Route path="/payment-setup" element={<PaymentPage />} />
 
-                    
-                    {/* =========================================
-                        🔒 PROTECTED ROUTES (High Security)
-                       ========================================= */}
-                    
-                    {/* Dashboard */}
-                    <Route 
-                        path="/dashboard" 
-                        element={
-                            <UserProtectedRoute>
-                                <UserDashboard />
-                            </UserProtectedRoute>
-                        } 
-                    />
+                    {/* 🔒 PROTECTED ROUTES */}
+                    <Route path="/dashboard" element={
+                        <UserProtectedRoute><UserDashboard /></UserProtectedRoute>
+                    } />
 
-                    {/* Analytics */}
-                    <Route 
-                        path="/daily-report" 
-                        element={
-                            <UserProtectedRoute>
-                                <DailyReport />
-                            </UserProtectedRoute>
-                        } 
-                    />
+                    <Route path="/daily-report" element={
+                        <UserProtectedRoute><DailyReport /></UserProtectedRoute>
+                    } />
                     
-                    {/* Academy: Leaders */}
-                    <Route 
-                        path="/leaders-videos" 
-                        element={
-                            <UserProtectedRoute>
-                                <LeadersVideo pageTitle="Leaders' Videos" />
-                            </UserProtectedRoute>
-                        } 
-                    />
+                    <Route path="/leaders-videos" element={
+                        <UserProtectedRoute><LeadersVideo pageTitle="Leaders' Videos" /></UserProtectedRoute>
+                    } />
 
-                    {/* Academy: Products */}
-                    <Route 
-                        path="/products-videos" 
-                        element={
-                            <UserProtectedRoute>
-                                <Productsvideo pageTitle="Products' Videos" />
-                            </UserProtectedRoute>
-                        } 
-                    />
+                    <Route path="/products-videos" element={
+                        <UserProtectedRoute><Productsvideo pageTitle="Products' Videos" /></UserProtectedRoute>
+                    } />
                     
-                    {/* AI Assistant */}
-                    <Route 
-                        path="/chat" 
-                        element={
-                            <UserProtectedRoute>
-                                <ChatWindow />
-                            </UserProtectedRoute>
-                        } 
-                    />
+                    {/* 🤖 AI ASSISTANT ROUTES (Separated) */}
+                    <Route path="/chat" element={
+                        <UserProtectedRoute><ChatWindow /></UserProtectedRoute>
+                    } />
 
-                    {/* =========================================
-                        ⚠️ ERROR HANDLING (404)
-                       ========================================= */}
-                    {/* Unknown paths ko dashboard par redirect karein */}
+                    {/* 🆕 Dedicated Voice Call Route */}
+                    <Route path="/voice-call" element={
+                        <UserProtectedRoute><VoiceCallPage /></UserProtectedRoute>
+                    } />
+
+                    {/* ⚠️ 404 HANDLER */}
                     <Route path="*" element={<Navigate to="/dashboard" replace />} />
-
                 </Routes>
             </Suspense>
         </>
