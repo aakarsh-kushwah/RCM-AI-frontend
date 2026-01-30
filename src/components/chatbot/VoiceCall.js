@@ -36,6 +36,24 @@ const VoiceCall = () => {
     setUiStatus(newStatus); 
   };
 
+  // --- WAKE LOCK (PRO FEATURE: Keeps screen on) ---
+  useEffect(() => {
+    let wakeLock = null;
+    const requestWakeLock = async () => {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLock = await navigator.wakeLock.request('screen');
+        }
+      } catch (err) {
+        console.log("Wake Lock error:", err);
+      }
+    };
+    requestWakeLock();
+    return () => {
+      if (wakeLock) wakeLock.release();
+    };
+  }, []);
+
   // --- AUDIO CONTROLLER ---
   const stopAudio = useCallback(() => {
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
@@ -59,6 +77,7 @@ const VoiceCall = () => {
   const playServerAudio = useCallback((url) => {
     stopAudio(); 
     if (!url) {
+      // No audio? Go straight back to listening
       updateStatus('listening');
       return;
     }
@@ -74,12 +93,22 @@ const VoiceCall = () => {
     if (playPromise !== undefined) {
         playPromise.catch(error => {
             console.error("Auto-play blocked:", error);
+            // If play fails, we must return to listening or user gets stuck
             if (isMountedRef.current) updateStatus('listening');
         });
     }
 
-    audio.onended = () => { if (isMountedRef.current) updateStatus('listening'); };
-    audio.onerror = () => { if (isMountedRef.current) updateStatus('listening'); };
+    audio.onended = () => { 
+        if (isMountedRef.current) {
+            // ✅ CRITICAL FIX: Audio finished, explicitly set to listening
+            // The useEffect hook below will catch this state change and restart the mic
+            updateStatus('listening'); 
+        }
+    };
+    
+    audio.onerror = () => { 
+        if (isMountedRef.current) updateStatus('listening'); 
+    };
 
   }, [stopAudio, isMuted]);
 
@@ -119,7 +148,10 @@ const VoiceCall = () => {
          updateStatus('listening');
       }
     } catch (error) {
-      if (error.name !== 'AbortError') updateStatus('listening');
+      if (error.name !== 'AbortError') {
+          console.error("API Error", error);
+          updateStatus('listening'); // Ensure we go back to listening on error
+      }
     }
   }, [playServerAudio, stopAudio]);
 
@@ -133,14 +165,15 @@ const VoiceCall = () => {
         return;
     }
 
-    // Stop existing
-    if (recognitionRef.current) {
-        try { recognitionRef.current.stop(); } catch(e){}
-    }
+    // Don't restart if already running to avoid flickering
+    // But forcing restart is needed for mobile single-shot mode
+    try { if (recognitionRef.current) recognitionRef.current.stop(); } catch(e){}
 
     const recognition = new SpeechRecognition();
     
-    // 💡 SMART DETECTION: PC uses Continuous (Better), Mobile uses Single (Stable)
+    // 💡 SMART DETECTION: 
+    // Mobile = continuous: false (Stable, restarts via logic)
+    // PC = continuous: true (Fluid)
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
     recognition.continuous = !isMobile; 
     
@@ -149,14 +182,19 @@ const VoiceCall = () => {
     recognition.maxAlternatives = 1;
 
     recognition.onstart = () => {
-      console.log("🎤 Mic Started");
-      if (isMountedRef.current) {
-          updateStatus('listening');
+      console.log("🎤 Mic Active");
+      if (isMountedRef.current && statusRef.current === 'listening') {
           setErrorMsg('');
       }
     };
 
     recognition.onresult = (event) => {
+      // If we are speaking/processing, ignore input (prevents self-listening echo)
+      if (statusRef.current === 'speaking' || statusRef.current === 'processing') {
+          recognition.abort();
+          return;
+      }
+
       let final = '';
       let interim = '';
       
@@ -164,8 +202,6 @@ const VoiceCall = () => {
         if (event.results[i].isFinal) final += event.results[i][0].transcript;
         else interim += event.results[i][0].transcript;
       }
-
-      if (statusRef.current === 'speaking' || statusRef.current === 'processing') return;
 
       if (final) {
           handleUserQuery(final);
@@ -175,19 +211,21 @@ const VoiceCall = () => {
     };
 
     recognition.onerror = (event) => {
-        console.warn("Speech Error:", event.error);
         if (event.error === 'not-allowed') {
             setErrorMsg("Microphone access denied.");
             setUiStatus('error');
         } else if (event.error === 'no-speech') {
-            // Silence detected, handled by onend
+            // Ignorable error, we will restart in onend
+        } else {
+            console.warn("Speech Error:", event.error);
         }
     };
 
     recognition.onend = () => {
-      console.log("🎤 Mic Stopped");
-      // AUTO-RESTART if we are supposed to be listening
-      if (isMountedRef.current && statusRef.current !== 'processing' && statusRef.current !== 'speaking' && statusRef.current !== 'idle') {
+      // ✅ "RESURRECTOR" LOGIC:
+      // If the mic turns off, but we are supposed to be listening (status is 'listening'),
+      // we MUST restart it. This is what fixes the "Stuck" issue on mobile.
+      if (isMountedRef.current && statusRef.current === 'listening') {
           setTimeout(() => { 
              try { recognition.start(); } catch(e) {} 
           }, 300); 
@@ -196,19 +234,29 @@ const VoiceCall = () => {
     
     recognitionRef.current = recognition;
     
-    // Try to start
     try { 
         recognition.start(); 
     } catch(e) {
-        console.error("Start failed:", e);
+        // If it fails to start immediately (e.g. overlap), the onend logic will retry
+        console.error("Mic start mismatch:", e);
     }
     
   }, [handleUserQuery]);
 
+  // --- ✅ CRITICAL FIX: REACTIVE RESTART ---
+  // This useEffect ensures that whenever the status becomes 'listening' 
+  // (e.g., after the AI finishes speaking), the mic is guaranteed to start.
+  useEffect(() => {
+    if (uiStatus === 'listening') {
+        startSpeechRecognition();
+    }
+  }, [uiStatus, startSpeechRecognition]);
+
+
   // --- MANUAL START HANDLER ---
   const handleManualStart = () => {
       updateStatus('listening');
-      startSpeechRecognition();
+      // The useEffect above will catch 'listening' and start the mic
   };
 
   // --- SIMULATED VISUALIZER ---
@@ -259,9 +307,6 @@ const VoiceCall = () => {
     isMountedRef.current = true;
     startVisualizer();
     
-    // We do NOT auto-start mic here to prevent browser block.
-    // User sees "Idle" state and clicks start.
-
     return () => {
       isMountedRef.current = false;
       stopAudio();
@@ -269,7 +314,7 @@ const VoiceCall = () => {
       if (abortControllerRef.current) abortControllerRef.current.abort();
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
-  }, [stopAudio, startVisualizer]); // Removed startSpeechRecognition from dependency to avoid loop
+  }, [stopAudio, startVisualizer]); 
 
   return (
     <div className="voice-call-page-container" data-status={uiStatus}>

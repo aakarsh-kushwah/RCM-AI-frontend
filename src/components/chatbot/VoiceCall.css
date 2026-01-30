@@ -216,12 +216,9 @@
     width: 64px; height: 64px;
     border-radius: 50%;
     border: 1px solid rgba(255,255,255,0.1);
-    
-    /* Glassmorphism */
     background: rgba(255, 255, 255, 0.05);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    
     color: white;
     cursor: pointer;
     display: flex;
@@ -242,7 +239,6 @@
     transform: scale(0.95);
 }
 
-/* Red Hangup Button */
 .vc-btn-red {
     background: rgba(239, 68, 68, 0.8);
     border: none;
@@ -264,8 +260,9 @@
     .voice-call-page-container { padding-bottom: 3rem; }
 }
 
-/* Add to src/pages/VoiceCall.css */
-
+/* =========================================
+   🔘 START OVERLAY
+   ========================================= */
 .vc-start-overlay {
     display: flex;
     flex-direction: column;
@@ -298,4 +295,8 @@
     0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.2); }
     70% { transform: scale(1.05); box-shadow: 0 0 0 15px rgba(255, 255, 255, 0); }
     100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); }
+}
+
+.error {
+    border-color: #ef4444;
 }
