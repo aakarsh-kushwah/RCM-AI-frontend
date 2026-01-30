@@ -13,13 +13,14 @@ class ChatService {
       let body;
       let headers = { 'Authorization': `Bearer ${token}` };
 
-      // ✅ FIX: Handle Image Uploads (Multipart vs JSON)
+      // Handle Image Uploads (Multipart vs JSON)
       if (imageFile) {
         const formData = new FormData();
-        formData.append('message', message);
-        formData.append('image', imageFile); // Backend expects 'image' field
+        // Append message even if empty string to avoid backend errors
+        formData.append('message', message || " "); 
+        formData.append('image', imageFile); 
         
-        // Note: Do NOT set Content-Type header manually for FormData, browser does it.
+        // Browser sets Content-Type to multipart/form-data automatically
         body = formData;
       } else {
         // Standard Text Message

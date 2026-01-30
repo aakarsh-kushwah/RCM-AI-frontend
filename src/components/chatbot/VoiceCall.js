@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { PhoneOff, Volume2, VolumeX, Minimize2, Mic, Activity } from 'lucide-react';
-import { useNavigate } from 'react-router-dom'; // 🆕 Navigation
+import { useNavigate } from 'react-router-dom'; 
 import './VoiceCall.css'; 
 import config from '../../config/env'; 
 
 const VoiceCall = () => {
-  const navigate = useNavigate(); // 🆕 Hook
+  const navigate = useNavigate(); 
   
   // --- UI STATE ---
   const [uiStatus, setUiStatus] = useState('initializing'); 
@@ -30,7 +30,7 @@ const VoiceCall = () => {
 
   // ✅ Handle Exit Navigation
   const handleExit = () => {
-      navigate('/chat'); // Go back to text chat
+      navigate('/chat'); 
   };
 
   const updateStatus = (newStatus) => {
@@ -50,6 +50,15 @@ const VoiceCall = () => {
     }
   }, []);
 
+  // Toggle Mute Function
+  const toggleMute = () => {
+    const newMuteState = !isMuted;
+    setIsMuted(newMuteState);
+    if (audioRef.current) {
+        audioRef.current.muted = newMuteState;
+    }
+  };
+
   const playServerAudio = useCallback((url) => {
     stopAudio(); 
     if (!url) {
@@ -61,6 +70,8 @@ const VoiceCall = () => {
 
     const secureUrl = `${url}?t=${Date.now()}`;
     const audio = new Audio(secureUrl);
+    // Apply current mute state to new audio
+    audio.muted = isMuted; 
     audioRef.current = audio;
 
     audio.onended = () => { if (isMountedRef.current) updateStatus('listening'); };
@@ -70,7 +81,7 @@ const VoiceCall = () => {
         console.error("Audio Play Error:", err);
         if (isMountedRef.current) updateStatus('listening'); 
     });
-  }, [stopAudio]);
+  }, [stopAudio, isMuted]); // Added isMuted dependency
 
   // --- API HANDLER ---
   const handleUserQuery = useCallback(async (rawText) => {
@@ -83,9 +94,6 @@ const VoiceCall = () => {
     updateStatus('processing');
     setLiveTranscript(rawText);
     
-    // Note: onMessageAdd removed as we are on a separate page.
-    // The history will be fetched from backend when user visits /chat again.
-
     try {
       const token = localStorage.getItem('token') || '';
       const response = await fetch(`${config.API.BASE_URL}/api/chat`, {
@@ -252,7 +260,6 @@ const VoiceCall = () => {
   }, [startSpeechRecognition, stopAudio, startVisualizer]);
 
   return (
-    // Replaced 'voice-call-overlay' with a full-screen container class
     <div className="voice-call-page-container" data-status={uiStatus} style={{ width: '100vw', height: '100vh', position: 'fixed', top:0, left:0, background: '#0f172a', zIndex: 9999 }}>
       <div className="vc-header">
         {/* Minimize button acts as Exit/Back */}
@@ -281,7 +288,7 @@ const VoiceCall = () => {
       </div>
 
       <div className="vc-controls">
-        <button className="vc-btn" onClick={() => setIsMuted(!isMuted)}>
+        <button className="vc-btn" onClick={toggleMute}>
           {isMuted ? <VolumeX size={24} /> : <Volume2 size={24} />}
         </button>
         <button className="vc-btn vc-btn-red" onClick={handleExit}>

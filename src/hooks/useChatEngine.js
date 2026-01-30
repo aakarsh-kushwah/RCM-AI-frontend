@@ -1,17 +1,16 @@
 /**
  * @file src/hooks/useChatEngine.js
- * @description Logic Layer.
+ * @description Logic Layer - UPDATED: Silent Mode (Cleaned)
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { chatService } from '../services/chatService';
-import { audioService } from '../services/audioService';
+import { audioService } from '../services/audioService'; // Kept for stopAll() cleanup
 import { transliterateText } from '../utils/textUtils';
 
 export const useChatEngine = () => {
   const [messages, setMessages] = useState([]);
   const [status, setStatus] = useState('idle'); 
-  const [lastAudioUrl, setLastAudioUrl] = useState(null);
   
   const hasWelcomedRef = useRef(false);
 
@@ -34,14 +33,12 @@ export const useChatEngine = () => {
           const content = typeof data.reply === 'string' ? data.reply : (data.reply?.content || data.message);
           
           addMessage('assistant', content);
-          setLastAudioUrl(data.audioUrl);
-          audioService.playSmart(data.audioUrl, content);
+          // Audio URL is ignored in silent mode
         }
       } catch (error) {
         console.error("Welcome Error:", error);
         const fallback = "RCM AI mein swagat hai. Main aapki kya madad karu?";
         addMessage('assistant', fallback);
-        audioService.playBrowserVoice(fallback);
       } finally {
         setStatus('idle');
       }
@@ -50,34 +47,29 @@ export const useChatEngine = () => {
     initChat();
   }, [addMessage]);
 
-  // 2. Send Message Logic (FIXED HERE)
-  const sendMessage = useCallback(async (inputText) => {
-    if (!inputText.trim() || status === 'loading') return;
+  // 2. Send Message Logic
+  const sendMessage = useCallback(async (inputText, imageFile = null) => {
+    if ((!inputText && !imageFile) || status === 'loading') return;
 
-    const displayMsg = inputText.trim();
+    // Use image name or text for display
+    const displayMsg = inputText ? inputText.trim() : "📷 Image Uploaded";
     addMessage('user', displayMsg);
     setStatus('loading');
     
-    // Stop any currently playing audio before sending new request
+    // Stop any currently playing audio (good practice even in silent mode to kill previous sessions)
     audioService.stopAll();
 
     try {
-      // Optional: Transliterate if your utility requires it
-      const serverMsg = transliterateText(displayMsg);
+      // Optional: Transliterate only if text exists
+      const serverMsg = inputText ? transliterateText(inputText) : "";
       
-      const data = await chatService.sendMessage(serverMsg);
+      const data = await chatService.sendMessage(serverMsg, imageFile);
 
-      // ✅ FIX: Correctly extracting text from your API Response
-      // Your API returns: { success: true, reply: "Jai RCM...", message: "Jai RCM...", ... }
       const aiText = typeof data.reply === 'string' 
         ? data.reply 
         : (data.reply?.content || data.message || "Maaf kijiye, koi jawab nahi mila.");
 
       addMessage('assistant', aiText);
-      setLastAudioUrl(data.audioUrl);
-      
-      // Play the audio returned by backend
-      audioService.playSmart(data.audioUrl, aiText);
 
     } catch (error) {
       console.error("Chat Error:", error);
@@ -87,17 +79,10 @@ export const useChatEngine = () => {
     }
   }, [status, addMessage]);
 
-  // 3. Replay Logic
-  const replayLastAudio = useCallback((content) => {
-    // If specific content is passed, we can verify against lastAudioUrl or just play
-    audioService.playSmart(lastAudioUrl, content);
-  }, [lastAudioUrl]);
-
   return {
     messages,
     status,
     sendMessage,
-    addMessage,
-    replayLastAudio
+    addMessage
   };
 };

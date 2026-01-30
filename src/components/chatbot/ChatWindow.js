@@ -3,18 +3,18 @@ import {
   Send, Menu, Plus, 
   Sparkles, Mic, MicOff, X, Loader, AudioLines 
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom'; // 🆕 Navigation Hook
+import { useNavigate } from 'react-router-dom'; 
 import imageCompression from 'browser-image-compression';
 import { useChatEngine } from '../../hooks/useChatEngine';
 import './ChatWindow.css';
 
 // --- MESSAGE ROW COMPONENT ---
-// 🔄 Updated: Removed 'onReplay' prop and the Listen button
 const ChatRow = memo(({ msg }) => {
   const isAssistant = msg.role === 'assistant';
   
   const formatText = (text) => {
     if (!text) return "";
+    // Basic formatting for bold and line breaks
     return text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
                .replace(/\n/g, '<br/>');
   };
@@ -42,7 +42,7 @@ const ChatRow = memo(({ msg }) => {
           dangerouslySetInnerHTML={{ __html: formatText(msg.content) }} 
         />
         
-        {/* ❌ REMOVED: Listen/Replay Button is gone */}
+        {/* Speaker/Listen button has been completely removed from here */}
       </div>
     </div>
   );
@@ -50,7 +50,6 @@ const ChatRow = memo(({ msg }) => {
 
 // --- MAIN CHAT WINDOW ---
 const ChatWindow = () => {
-  // 🔄 Updated: Removed 'replayLastAudio' from hook
   const { messages, status, sendMessage } = useChatEngine();
   const navigate = useNavigate();
   
@@ -66,14 +65,14 @@ const ChatWindow = () => {
   const fileInputRef = useRef(null);
   const recognitionRef = useRef(null);
 
-  // 1. Auto Scroll
+  // 1. Auto Scroll Logic
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
     }
   }, [messages, status]);
 
-  // 2. Responsive Handler
+  // 2. Responsive Sidebar Handler
   useEffect(() => {
     const handleResize = () => {
       const mobile = window.innerWidth < 768;
@@ -86,7 +85,7 @@ const ChatWindow = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // 3. OPTIMIZED SPEECH RECOGNITION (Text Input Mode)
+  // 3. Optimized Speech Recognition (Speech-to-Text Input Only)
   useEffect(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     
@@ -124,7 +123,7 @@ const ChatWindow = () => {
     };
   }, []);
 
-  // Toggle Chat Mic
+  // Toggle Text Input Mic
   const toggleListening = useCallback(() => {
     if (!recognitionRef.current) return alert("Browser does not support Speech Recognition.");
     if (isListening) {
@@ -134,9 +133,9 @@ const ChatWindow = () => {
     }
   }, [isListening]);
 
-  // ✅ SWITCH TO VOICE CALL ROUTE
+  // Switch to Voice Call Page
   const handleSwitchToVoiceMode = () => {
-      // Stop local interactions
+      // Stop local interactions before navigating
       if (recognitionRef.current) recognitionRef.current.stop();
       if ('speechSynthesis' in window) window.speechSynthesis.cancel();
       
@@ -144,7 +143,7 @@ const ChatWindow = () => {
       navigate('/voice-call');
   };
 
-  // Handle Image
+  // Handle Image Selection
   const handleImageProcessing = async (file) => {
     if (!file || !file.type.startsWith('image/')) return;
     try {
@@ -153,7 +152,7 @@ const ChatWindow = () => {
     } catch (e) { setSelectedImage(file); } 
   };
 
-  // Handle Send
+  // Handle Send Message
   const handleSend = () => {
     if (!input.trim() && !selectedImage) return;
     sendMessage(input, selectedImage);
@@ -240,7 +239,7 @@ const ChatWindow = () => {
                  />
                  
                  <div className="input-actions">
-                   {/* Live Voice Button */}
+                   {/* Live Voice Button - Triggers Navigation */}
                    {!input.trim() && !selectedImage ? (
                        <button 
                          className="voice-live-btn" 
