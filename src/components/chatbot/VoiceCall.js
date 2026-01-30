@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { PhoneOff, Volume2, VolumeX, Minimize2, Mic, Activity } from 'lucide-react';
+import { PhoneOff, Volume2, VolumeX, Minimize2, Mic, Activity, Play } from 'lucide-react';
 import { useNavigate } from 'react-router-dom'; 
 import './VoiceCall.css'; 
 import config from '../../config/env'; 
@@ -8,12 +8,13 @@ const VoiceCall = () => {
   const navigate = useNavigate(); 
   
   // --- UI STATE ---
-  const [uiStatus, setUiStatus] = useState('initializing'); 
+  const [uiStatus, setUiStatus] = useState('idle'); // idle | listening | processing | speaking | error
   const [liveTranscript, setLiveTranscript] = useState('');
   const [isMuted, setIsMuted] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
   
   // --- REFS ---
-  const statusRef = useRef('initializing'); 
+  const statusRef = useRef('idle'); 
   const recognitionRef = useRef(null);
   const audioRef = useRef(null);
   const abortControllerRef = useRef(null);
@@ -21,15 +22,12 @@ const VoiceCall = () => {
 
   // --- VISUALIZER REFS ---
   const canvasRef = useRef(null);
-  const audioContextRef = useRef(null);
-  const analyserRef = useRef(null);
-  const dataArrayRef = useRef(null);
-  const sourceRef = useRef(null);
   const animationFrameRef = useRef(null);
-  const orbRef = useRef(null);
 
-  // ✅ Handle Exit Navigation
+  // ✅ Handle Exit
   const handleExit = () => {
+      stopAudio();
+      if (recognitionRef.current) recognitionRef.current.stop();
       navigate('/chat'); 
   };
 
@@ -50,13 +48,12 @@ const VoiceCall = () => {
     }
   }, []);
 
-  // Toggle Mute Function
   const toggleMute = () => {
-    const newMuteState = !isMuted;
-    setIsMuted(newMuteState);
-    if (audioRef.current) {
-        audioRef.current.muted = newMuteState;
-    }
+    setIsMuted(prev => {
+        const newState = !prev;
+        if (audioRef.current) audioRef.current.muted = newState;
+        return newState;
+    });
   };
 
   const playServerAudio = useCallback((url) => {
@@ -70,18 +67,21 @@ const VoiceCall = () => {
 
     const secureUrl = `${url}?t=${Date.now()}`;
     const audio = new Audio(secureUrl);
-    // Apply current mute state to new audio
     audio.muted = isMuted; 
     audioRef.current = audio;
+
+    const playPromise = audio.play();
+    if (playPromise !== undefined) {
+        playPromise.catch(error => {
+            console.error("Auto-play blocked:", error);
+            if (isMountedRef.current) updateStatus('listening');
+        });
+    }
 
     audio.onended = () => { if (isMountedRef.current) updateStatus('listening'); };
     audio.onerror = () => { if (isMountedRef.current) updateStatus('listening'); };
 
-    audio.play().catch((err) => { 
-        console.error("Audio Play Error:", err);
-        if (isMountedRef.current) updateStatus('listening'); 
-    });
-  }, [stopAudio, isMuted]); // Added isMuted dependency
+  }, [stopAudio, isMuted]);
 
   // --- API HANDLER ---
   const handleUserQuery = useCallback(async (rawText) => {
@@ -123,18 +123,37 @@ const VoiceCall = () => {
     }
   }, [playServerAudio, stopAudio]);
 
-  // --- SPEECH RECOGNITION ---
+  // --- SPEECH RECOGNITION CORE ---
   const startSpeechRecognition = useCallback(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) return;
+    
+    if (!SpeechRecognition) {
+        setErrorMsg("Browser not supported. Use Chrome.");
+        setUiStatus('error');
+        return;
+    }
+
+    // Stop existing
+    if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch(e){}
+    }
 
     const recognition = new SpeechRecognition();
-    recognition.continuous = true; 
+    
+    // 💡 SMART DETECTION: PC uses Continuous (Better), Mobile uses Single (Stable)
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    recognition.continuous = !isMobile; 
+    
     recognition.lang = 'hi-IN'; 
     recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
 
     recognition.onstart = () => {
-      if (isMountedRef.current && statusRef.current === 'initializing') updateStatus('listening');
+      console.log("🎤 Mic Started");
+      if (isMountedRef.current) {
+          updateStatus('listening');
+          setErrorMsg('');
+      }
     };
 
     recognition.onresult = (event) => {
@@ -146,123 +165,116 @@ const VoiceCall = () => {
         else interim += event.results[i][0].transcript;
       }
 
-      if ((final || interim) && statusRef.current === 'speaking') {
-          stopAudio();
-          updateStatus('listening');
+      if (statusRef.current === 'speaking' || statusRef.current === 'processing') return;
+
+      if (final) {
+          handleUserQuery(final);
+      } else {
+          setLiveTranscript(interim);
       }
-      
-      if (final) handleUserQuery(final);
-      else setLiveTranscript(interim);
+    };
+
+    recognition.onerror = (event) => {
+        console.warn("Speech Error:", event.error);
+        if (event.error === 'not-allowed') {
+            setErrorMsg("Microphone access denied.");
+            setUiStatus('error');
+        } else if (event.error === 'no-speech') {
+            // Silence detected, handled by onend
+        }
     };
 
     recognition.onend = () => {
-      if (isMountedRef.current && statusRef.current !== 'processing') {
+      console.log("🎤 Mic Stopped");
+      // AUTO-RESTART if we are supposed to be listening
+      if (isMountedRef.current && statusRef.current !== 'processing' && statusRef.current !== 'speaking' && statusRef.current !== 'idle') {
           setTimeout(() => { 
-             try { recognitionRef.current?.start(); } catch(e) {} 
+             try { recognition.start(); } catch(e) {} 
           }, 300); 
       }
     };
     
     recognitionRef.current = recognition;
-    setTimeout(() => { try { recognition.start(); } catch(e) {} }, 100);
     
-  }, [handleUserQuery, stopAudio]);
-
-  // --- GEMINI VISUALIZER ---
-  const startVisualizer = useCallback(async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      
-      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-      audioContextRef.current = new AudioContextClass();
-      analyserRef.current = audioContextRef.current.createAnalyser();
-      
-      analyserRef.current.smoothingTimeConstant = 0.8;
-      analyserRef.current.fftSize = 256;
-      
-      sourceRef.current = audioContextRef.current.createMediaStreamSource(stream);
-      sourceRef.current.connect(analyserRef.current);
-      
-      dataArrayRef.current = new Uint8Array(analyserRef.current.frequencyBinCount);
-      
-      const drawLoop = () => {
-        if (!isMountedRef.current) return;
-        
-        analyserRef.current.getByteFrequencyData(dataArrayRef.current);
-        
-        // Orb Breathing Logic
-        let sum = 0;
-        for(let i = 0; i < dataArrayRef.current.length; i++) sum += dataArrayRef.current[i];
-        const average = sum / dataArrayRef.current.length;
-        
-        if (orbRef.current) {
-            const scale = 1 + (average / 256) * 0.4;
-            orbRef.current.style.transform = `scale(${scale})`;
-            orbRef.current.style.opacity = 0.8 + (average / 256) * 0.2;
-        }
-
-        // Canvas Drawing
-        const canvas = canvasRef.current;
-        if (canvas) {
-            const ctx = canvas.getContext('2d');
-            const width = canvas.width;
-            const height = canvas.height;
-            
-            ctx.clearRect(0, 0, width, height);
-            
-            const color = statusRef.current === 'speaking' ? '#06b6d4' : 
-                          statusRef.current === 'processing' ? '#a855f7' : '#3b82f6';
-            
-            ctx.fillStyle = color;
-            
-            const barWidth = (width / dataArrayRef.current.length) * 2.5;
-            let x = 0;
-            
-            for(let i = 0; i < dataArrayRef.current.length; i++) {
-                const barHeight = (dataArrayRef.current[i] / 255) * height * 0.8;
-                ctx.beginPath();
-                ctx.roundRect(x, (height - barHeight) / 2, barWidth - 2, barHeight, 5);
-                ctx.fill();
-                x += barWidth;
-            }
-        }
-        
-        animationFrameRef.current = requestAnimationFrame(drawLoop);
-      };
-      
-      drawLoop();
-      
-    } catch (err) { 
-      console.error("Visualizer Error:", err); 
+    // Try to start
+    try { 
+        recognition.start(); 
+    } catch(e) {
+        console.error("Start failed:", e);
     }
+    
+  }, [handleUserQuery]);
+
+  // --- MANUAL START HANDLER ---
+  const handleManualStart = () => {
+      updateStatus('listening');
+      startSpeechRecognition();
+  };
+
+  // --- SIMULATED VISUALIZER ---
+  const startVisualizer = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const barCount = 30;
+    const barWidth = canvas.width / barCount;
+    
+    const animate = () => {
+      if (!isMountedRef.current) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      let color = '#3b82f6'; 
+      if (statusRef.current === 'speaking') color = '#06b6d4'; 
+      if (statusRef.current === 'processing') color = '#a855f7'; 
+      if (statusRef.current === 'error') color = '#ef4444';
+      
+      ctx.fillStyle = color;
+      
+      for(let i = 0; i < barCount; i++) {
+         let height = 4; // Base height
+
+         if (statusRef.current === 'speaking') {
+             height = Math.random() * (canvas.height * 0.8) + 5;
+         } else if (statusRef.current === 'listening') {
+             const time = Date.now() / 300;
+             height = (Math.sin(time + i * 0.5) + 1.5) * 8;
+         } else if (statusRef.current === 'processing') {
+             height = Math.random() * 20 + 10;
+         }
+
+         const x = i * barWidth;
+         const y = (canvas.height - height) / 2;
+         
+         ctx.beginPath();
+         ctx.roundRect(x, y, barWidth - 2, height, 4);
+         ctx.fill();
+      }
+      animationFrameRef.current = requestAnimationFrame(animate);
+    };
+    animate();
   }, []);
 
   // --- LIFECYCLE ---
   useEffect(() => {
     isMountedRef.current = true;
-    startSpeechRecognition();
     startVisualizer();
+    
+    // We do NOT auto-start mic here to prevent browser block.
+    // User sees "Idle" state and clicks start.
 
     return () => {
       isMountedRef.current = false;
       stopAudio();
-      
       if (recognitionRef.current) recognitionRef.current.stop();
       if (abortControllerRef.current) abortControllerRef.current.abort();
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-      
-      const audioCtx = audioContextRef.current;
-      if (audioCtx) audioCtx.close();
-      
-      const streamSource = sourceRef.current;
-      if (streamSource) streamSource.disconnect();
     };
-  }, [startSpeechRecognition, stopAudio, startVisualizer]);
+  }, [stopAudio, startVisualizer]); // Removed startSpeechRecognition from dependency to avoid loop
 
   return (
-    <div className="voice-call-page-container" data-status={uiStatus} style={{ width: '100vw', height: '100vh', position: 'fixed', top:0, left:0, background: '#0f172a', zIndex: 9999 }}>
+    <div className="voice-call-page-container" data-status={uiStatus}>
+      
       <div className="vc-header">
-        {/* Minimize button acts as Exit/Back */}
         <button onClick={handleExit} className="vc-btn"><Minimize2 size={24} /></button>
         <div className="vc-brand-badge">
             <div className={`vc-live-dot ${uiStatus === 'listening' ? 'pulse' : ''}`}></div> RCM Live
@@ -270,25 +282,54 @@ const VoiceCall = () => {
       </div>
 
       <div className="vc-visualizer-container">
-        <div className="vc-orb" ref={orbRef}>
-             {uiStatus === 'processing' && <Activity className="spin" size={40} />}
-             {uiStatus === 'speaking' && <Volume2 className="pulse" size={40} />}
-             {uiStatus === 'listening' && <Mic size={40} />}
-        </div>
+        
+        {/* START OVERLAY: Forces user interaction */}
+        {uiStatus === 'idle' && (
+            <div className="vc-start-overlay" onClick={handleManualStart}>
+                <div className="vc-orb idle-pulse">
+                    <Play size={40} fill="white" />
+                </div>
+                <p className="vc-tap-text">Tap to Start</p>
+            </div>
+        )}
+
+        {/* ERROR OVERLAY */}
+        {uiStatus === 'error' && (
+            <div className="vc-start-overlay" onClick={handleManualStart}>
+                <div className="vc-orb error">
+                    <VolumeX size={40} />
+                </div>
+                <p className="vc-tap-text">{errorMsg || "Connection Failed. Tap to Retry"}</p>
+            </div>
+        )}
+
+        {/* ACTIVE STATE ORB */}
+        {(uiStatus !== 'idle' && uiStatus !== 'error') && (
+            <div className="vc-orb">
+                {uiStatus === 'processing' && <Activity className="spin" size={40} />}
+                {uiStatus === 'speaking' && <Volume2 className="pulse" size={40} />}
+                {uiStatus === 'listening' && <Mic size={40} />}
+            </div>
+        )}
         
         <canvas ref={canvasRef} className="vc-waveform" width="300" height="60"></canvas>
       </div>
 
       <div className="vc-text-area">
         <h2 className="vc-main-status">
-            {uiStatus === 'listening' ? "Sun raha hoon..." : 
-             uiStatus === 'speaking' ? "Bol raha hoon..." : "Soch raha hoon..."}
+            {uiStatus === 'idle' ? "Ready" :
+             uiStatus === 'listening' ? "Sun raha hoon..." : 
+             uiStatus === 'speaking' ? "Bol raha hoon..." : 
+             uiStatus === 'processing' ? "Soch raha hoon..." : "Error"}
         </h2>
-        <div className="vc-sub-text">{liveTranscript || "Kahiye, main sun raha hoon..."}</div>
+        <div className="vc-sub-text">
+            {uiStatus === 'idle' ? "Tap the play button to begin" : 
+             (liveTranscript || "Kahiye, main sun raha hoon...")}
+        </div>
       </div>
 
       <div className="vc-controls">
-        <button className="vc-btn" onClick={toggleMute}>
+        <button className="vc-btn" onClick={toggleMute} style={{opacity: isMuted ? 0.5 : 1}}>
           {isMuted ? <VolumeX size={24} /> : <Volume2 size={24} />}
         </button>
         <button className="vc-btn vc-btn-red" onClick={handleExit}>

@@ -1,8 +1,7 @@
 /* =========================================
    🌌 CONTAINER & ATMOSPHERE
    ========================================= */
-.voice-call-page-container, 
-.voice-call-overlay { /* Supporting both class names */
+.voice-call-page-container {
     position: fixed;
     top: 0; 
     left: 0; 
@@ -75,6 +74,9 @@
     70% { transform: scale(1); opacity: 1; box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
     100% { transform: scale(0.95); opacity: 1; box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
 }
+
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { 100% { transform: rotate(360deg); } }
 
 /* =========================================
    🔮 THE ORB (HERO ELEMENT)
@@ -260,4 +262,40 @@
     .vc-orb { width: 110px; height: 110px; margin-bottom: 2rem; }
     .vc-btn { width: 56px; height: 56px; }
     .voice-call-page-container { padding-bottom: 3rem; }
+}
+
+/* Add to src/pages/VoiceCall.css */
+
+.vc-start-overlay {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    cursor: pointer;
+    z-index: 50;
+    transition: transform 0.2s;
+}
+
+.vc-start-overlay:active {
+    transform: scale(0.95);
+}
+
+.vc-tap-text {
+    margin-top: 10px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    font-size: 0.9rem;
+    color: white;
+}
+
+.idle-pulse {
+    animation: idlePulse 2s infinite ease-in-out;
+    background: rgba(255, 255, 255, 0.1);
+    border: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+@keyframes idlePulse {
+    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.2); }
+    70% { transform: scale(1.05); box-shadow: 0 0 0 15px rgba(255, 255, 255, 0); }
+    100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); }
 }
