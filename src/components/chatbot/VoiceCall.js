@@ -16,27 +16,49 @@ const VoiceCall = () => {
   // --- REFS ---
   const statusRef = useRef('idle'); 
   const recognitionRef = useRef(null);
-  const audioRef = useRef(null);
+  const audioRef = useRef(new Audio()); 
   const abortControllerRef = useRef(null);
   const isMountedRef = useRef(true);
+  const transcriptThrottleRef = useRef(null);
+  const silenceTimerRef = useRef(null);
 
-  // --- VISUALIZER REFS ---
+  // ✅ ADDED MISSING REFS HERE
   const canvasRef = useRef(null);
   const animationFrameRef = useRef(null);
 
-  // ✅ Handle Exit
-  const handleExit = () => {
-      stopAudio();
-      if (recognitionRef.current) recognitionRef.current.stop();
-      navigate('/chat'); 
+  // --- HELPER: Haptic Feedback ---
+  const vibrate = (pattern) => {
+      if (navigator.vibrate) navigator.vibrate(pattern);
   };
 
-  const updateStatus = (newStatus) => {
+  // --- STATE MANAGER ---
+  const updateStatus = useCallback((newStatus) => {
     statusRef.current = newStatus;
     setUiStatus(newStatus); 
-  };
+  }, []);
 
-  // --- WAKE LOCK (PRO FEATURE: Keeps screen on) ---
+  // --- AUDIO CONTROLLER ---
+  const stopAudio = useCallback(() => {
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    
+    const audio = audioRef.current;
+    if (audio) {
+      try {
+        audio.pause();
+        audio.currentTime = 0;
+      } catch (e) {}
+    }
+  }, []);
+
+  // ✅ FIXED DEPENDENCY WARNING
+  const handleExit = useCallback(() => {
+      stopAudio();
+      if (recognitionRef.current) recognitionRef.current.stop();
+      vibrate(50); 
+      navigate('/chat'); 
+  }, [navigate, stopAudio]);
+
+  // --- WAKE LOCK ---
   useEffect(() => {
     let wakeLock = null;
     const requestWakeLock = async () => {
@@ -45,25 +67,13 @@ const VoiceCall = () => {
           wakeLock = await navigator.wakeLock.request('screen');
         }
       } catch (err) {
-        console.log("Wake Lock error:", err);
+        console.warn("Wake Lock not supported/allowed");
       }
     };
     requestWakeLock();
     return () => {
       if (wakeLock) wakeLock.release();
     };
-  }, []);
-
-  // --- AUDIO CONTROLLER ---
-  const stopAudio = useCallback(() => {
-    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
-    if (audioRef.current) {
-      try {
-        audioRef.current.pause();
-        audioRef.current.currentTime = 0;
-      } catch (e) {}
-      audioRef.current = null;
-    }
   }, []);
 
   const toggleMute = () => {
@@ -77,31 +87,26 @@ const VoiceCall = () => {
   const playServerAudio = useCallback((url) => {
     stopAudio(); 
     if (!url) {
-      // No audio? Go straight back to listening
       updateStatus('listening');
       return;
     }
 
     updateStatus('speaking');
-
-    const secureUrl = `${url}?t=${Date.now()}`;
-    const audio = new Audio(secureUrl);
+    
+    const audio = audioRef.current;
+    audio.src = `${url}?t=${Date.now()}`;
     audio.muted = isMuted; 
-    audioRef.current = audio;
-
+    
     const playPromise = audio.play();
     if (playPromise !== undefined) {
         playPromise.catch(error => {
             console.error("Auto-play blocked:", error);
-            // If play fails, we must return to listening or user gets stuck
             if (isMountedRef.current) updateStatus('listening');
         });
     }
 
     audio.onended = () => { 
         if (isMountedRef.current) {
-            // ✅ CRITICAL FIX: Audio finished, explicitly set to listening
-            // The useEffect hook below will catch this state change and restart the mic
             updateStatus('listening'); 
         }
     };
@@ -110,7 +115,7 @@ const VoiceCall = () => {
         if (isMountedRef.current) updateStatus('listening'); 
     };
 
-  }, [stopAudio, isMuted]);
+  }, [stopAudio, isMuted, updateStatus]);
 
   // --- API HANDLER ---
   const handleUserQuery = useCallback(async (rawText) => {
@@ -122,6 +127,7 @@ const VoiceCall = () => {
 
     updateStatus('processing');
     setLiveTranscript(rawText);
+    vibrate(50); 
     
     try {
       const token = localStorage.getItem('token') || '';
@@ -149,47 +155,39 @@ const VoiceCall = () => {
       }
     } catch (error) {
       if (error.name !== 'AbortError') {
-          console.error("API Error", error);
-          updateStatus('listening'); // Ensure we go back to listening on error
+         updateStatus('listening'); 
       }
     }
-  }, [playServerAudio, stopAudio]);
+  }, [playServerAudio, stopAudio, updateStatus]);
 
   // --- SPEECH RECOGNITION CORE ---
   const startSpeechRecognition = useCallback(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     
     if (!SpeechRecognition) {
-        setErrorMsg("Browser not supported. Use Chrome.");
-        setUiStatus('error');
+        setErrorMsg("Browser not supported. Use Chrome/Safari.");
+        updateStatus('error');
         return;
     }
 
-    // Don't restart if already running to avoid flickering
-    // But forcing restart is needed for mobile single-shot mode
     try { if (recognitionRef.current) recognitionRef.current.stop(); } catch(e){}
 
     const recognition = new SpeechRecognition();
-    
-    // 💡 SMART DETECTION: 
-    // Mobile = continuous: false (Stable, restarts via logic)
-    // PC = continuous: true (Fluid)
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
     recognition.continuous = !isMobile; 
-    
     recognition.lang = 'hi-IN'; 
     recognition.interimResults = true;
     recognition.maxAlternatives = 1;
 
     recognition.onstart = () => {
-      console.log("🎤 Mic Active");
       if (isMountedRef.current && statusRef.current === 'listening') {
           setErrorMsg('');
       }
     };
 
     recognition.onresult = (event) => {
-      // If we are speaking/processing, ignore input (prevents self-listening echo)
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+
       if (statusRef.current === 'speaking' || statusRef.current === 'processing') {
           recognition.abort();
           return;
@@ -206,25 +204,30 @@ const VoiceCall = () => {
       if (final) {
           handleUserQuery(final);
       } else {
-          setLiveTranscript(interim);
+          if (!transcriptThrottleRef.current) {
+              setLiveTranscript(interim);
+              transcriptThrottleRef.current = setTimeout(() => {
+                  transcriptThrottleRef.current = null;
+              }, 100); 
+          }
+
+          silenceTimerRef.current = setTimeout(() => {
+              if (interim.trim().length > 0) {
+                  recognition.stop();
+                  handleUserQuery(interim);
+              }
+          }, 2500);
       }
     };
 
     recognition.onerror = (event) => {
         if (event.error === 'not-allowed') {
             setErrorMsg("Microphone access denied.");
-            setUiStatus('error');
-        } else if (event.error === 'no-speech') {
-            // Ignorable error, we will restart in onend
-        } else {
-            console.warn("Speech Error:", event.error);
-        }
+            updateStatus('error');
+        } 
     };
 
     recognition.onend = () => {
-      // ✅ "RESURRECTOR" LOGIC:
-      // If the mic turns off, but we are supposed to be listening (status is 'listening'),
-      // we MUST restart it. This is what fixes the "Stuck" issue on mobile.
       if (isMountedRef.current && statusRef.current === 'listening') {
           setTimeout(() => { 
              try { recognition.start(); } catch(e) {} 
@@ -233,69 +236,62 @@ const VoiceCall = () => {
     };
     
     recognitionRef.current = recognition;
+    try { recognition.start(); } catch(e) {}
     
-    try { 
-        recognition.start(); 
-    } catch(e) {
-        // If it fails to start immediately (e.g. overlap), the onend logic will retry
-        console.error("Mic start mismatch:", e);
-    }
-    
-  }, [handleUserQuery]);
+  }, [handleUserQuery, updateStatus]);
 
-  // --- ✅ CRITICAL FIX: REACTIVE RESTART ---
-  // This useEffect ensures that whenever the status becomes 'listening' 
-  // (e.g., after the AI finishes speaking), the mic is guaranteed to start.
+  // --- REACTIVE RESTART ---
   useEffect(() => {
     if (uiStatus === 'listening') {
         startSpeechRecognition();
     }
   }, [uiStatus, startSpeechRecognition]);
 
-
-  // --- MANUAL START HANDLER ---
+  // --- MANUAL START ---
   const handleManualStart = () => {
       updateStatus('listening');
-      // The useEffect above will catch 'listening' and start the mic
+      vibrate(50);
   };
 
-  // --- SIMULATED VISUALIZER ---
+  // --- VISUALIZER ---
   const startVisualizer = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    const barCount = 30;
+    const barCount = 20; 
     const barWidth = canvas.width / barCount;
     
     const animate = () => {
       if (!isMountedRef.current) return;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
       
-      let color = '#3b82f6'; 
-      if (statusRef.current === 'speaking') color = '#06b6d4'; 
-      if (statusRef.current === 'processing') color = '#a855f7'; 
-      if (statusRef.current === 'error') color = '#ef4444';
-      
-      ctx.fillStyle = color;
-      
-      for(let i = 0; i < barCount; i++) {
-         let height = 4; // Base height
+      if (document.visibilityState === 'visible') {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          
+          let color = '#3b82f6'; 
+          if (statusRef.current === 'speaking') color = '#06b6d4'; 
+          if (statusRef.current === 'processing') color = '#a855f7'; 
+          if (statusRef.current === 'error') color = '#ef4444';
+          
+          ctx.fillStyle = color;
+          const time = Date.now() / 300;
+          
+          for(let i = 0; i < barCount; i++) {
+             let height = 4; 
+             if (statusRef.current === 'speaking') {
+                 height = Math.random() * (canvas.height * 0.7) + 5;
+             } else if (statusRef.current === 'listening') {
+                 height = (Math.sin(time + i * 0.5) + 1.5) * 6;
+             } else if (statusRef.current === 'processing') {
+                 height = Math.random() * 15 + 8;
+             }
 
-         if (statusRef.current === 'speaking') {
-             height = Math.random() * (canvas.height * 0.8) + 5;
-         } else if (statusRef.current === 'listening') {
-             const time = Date.now() / 300;
-             height = (Math.sin(time + i * 0.5) + 1.5) * 8;
-         } else if (statusRef.current === 'processing') {
-             height = Math.random() * 20 + 10;
-         }
-
-         const x = i * barWidth;
-         const y = (canvas.height - height) / 2;
-         
-         ctx.beginPath();
-         ctx.roundRect(x, y, barWidth - 2, height, 4);
-         ctx.fill();
+             const x = i * barWidth;
+             const y = (canvas.height - height) / 2;
+             
+             ctx.beginPath();
+             ctx.roundRect(x, y, barWidth - 2, height, 4);
+             ctx.fill();
+          }
       }
       animationFrameRef.current = requestAnimationFrame(animate);
     };
@@ -313,6 +309,8 @@ const VoiceCall = () => {
       if (recognitionRef.current) recognitionRef.current.stop();
       if (abortControllerRef.current) abortControllerRef.current.abort();
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+      if (transcriptThrottleRef.current) clearTimeout(transcriptThrottleRef.current);
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     };
   }, [stopAudio, startVisualizer]); 
 
@@ -327,8 +325,6 @@ const VoiceCall = () => {
       </div>
 
       <div className="vc-visualizer-container">
-        
-        {/* START OVERLAY: Forces user interaction */}
         {uiStatus === 'idle' && (
             <div className="vc-start-overlay" onClick={handleManualStart}>
                 <div className="vc-orb idle-pulse">
@@ -338,7 +334,6 @@ const VoiceCall = () => {
             </div>
         )}
 
-        {/* ERROR OVERLAY */}
         {uiStatus === 'error' && (
             <div className="vc-start-overlay" onClick={handleManualStart}>
                 <div className="vc-orb error">
@@ -348,7 +343,6 @@ const VoiceCall = () => {
             </div>
         )}
 
-        {/* ACTIVE STATE ORB */}
         {(uiStatus !== 'idle' && uiStatus !== 'error') && (
             <div className="vc-orb">
                 {uiStatus === 'processing' && <Activity className="spin" size={40} />}
@@ -368,7 +362,7 @@ const VoiceCall = () => {
              uiStatus === 'processing' ? "Soch raha hoon..." : "Error"}
         </h2>
         <div className="vc-sub-text">
-            {uiStatus === 'idle' ? "Tap the play button to begin" : 
+            {uiStatus === 'idle' ? "Tap to begin voice chat" : 
              (liveTranscript || "Kahiye, main sun raha hoon...")}
         </div>
       </div>
