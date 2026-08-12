@@ -1,0 +1,114 @@
+
+.modal-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.6); /* Backdrop shadow overlay */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.modal-container {
+    background: #fff;
+    padding: 30px;
+    border-radius: 12px; /* Border radius */
+    max-width: 420px; /* Centered responsive container layout */
+    width: 90%; /* Responsive width */
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+    text-align: center;
+    position: relative;
+    color: #333;
+}
+
+.modal-screen-1 .rcm-ai-branding {
+    color: #4CAF50; /* Example branding color */
+    margin-bottom: 25px;
+    font-size: 1.8em;
+}
+
+.modal-button {
+    width: 100%;
+    padding: 12px 20px;
+    margin-bottom: 15px;
+    border: none;
+    border-radius: 8px;
+    font-size: 1em;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.modal-button.primary {
+    background-color: #007bff;
+    color: white;
+}
+
+.modal-button.primary:hover {
+    background-color: #0056b3;
+}
+
+.modal-button.secondary {
+    background-color: #6c757d;
+    color: white;
+}
+
+.modal-button.secondary:hover {
+    background-color: #5a6268;
+}
+
+.modal-button.guest {
+    background-color: #28a745;
+    color: white;
+}
+
+.modal-button.guest:hover {
+    background-color: #218838;
+}
+
+.separator {
+    margin: 20px 0;
+    color: #666;
+    font-size: 0.9em;
+}
+
+.modal-screen-2 h3 {
+    margin-bottom: 20px;
+    color: #333;
+}
+
+.back-arrow {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    background: none;
+    border: none;
+    font-size: 1.5em;
+    cursor: pointer;
+    color: #6c757d;
+}
+
+.back-arrow:hover {
+    color: #5a6268;
+}
+
+.modal-input {
+    width: calc(100% - 20px);
+    padding: 10px;
+    margin-bottom: 15px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 1em;
+}
+
+.read-only-room-id {
+    padding: 10px;
+    margin-bottom: 15px;
+    background-color: #e9ecef;
+    border-radius: 8px;
+    color: #495057;
+    font-family: monospace;
+    text-align: left;
+}

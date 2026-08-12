@@ -4,14 +4,34 @@ import {
   Sparkles, Mic, MicOff, X, Loader, AudioLines 
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom'; 
+import { useAuth } from '../../context/AuthContext';
 import imageCompression from 'browser-image-compression';
 import { useChatEngine } from '../../hooks/useChatEngine';
 import './ChatWindow.css';
+import CalculatorWidget from './CalculatorWidget'; // Import the new widget
 
 // --- MESSAGE ROW COMPONENT ---
 const ChatRow = memo(({ msg }) => {
   const isAssistant = msg.role === 'assistant';
-  
+  let parsedContent = null;
+  let displayContent = msg.content;
+
+  try {
+    if (msg.content && typeof msg.content === 'string') {
+      const parsed = JSON.parse(msg.content);
+      if (parsed && typeof parsed === 'object' && parsed.type) {
+        parsedContent = parsed;
+      }
+    }
+  } catch (error) {
+    // Not a JSON string, treat as normal text
+  }
+
+  // Also support direct message properties if provided by some paths
+  if (!parsedContent && msg.type === 'calculator_widget') {
+    parsedContent = { type: 'calculator_widget', data: msg.data };
+  }
+
   const formatText = (text) => {
     if (!text) return "";
     // Basic formatting for bold and line breaks
@@ -37,10 +57,14 @@ const ChatRow = memo(({ msg }) => {
           </div>
         )}
         
-        <div 
-          className="msg-bubble-text" 
-          dangerouslySetInnerHTML={{ __html: formatText(msg.content) }} 
-        />
+        {isAssistant && parsedContent?.type === 'calculator_widget' ? (
+            <CalculatorWidget initialData={parsedContent.data} />
+        ) : (
+            <div 
+              className="msg-bubble-text" 
+              dangerouslySetInnerHTML={{ __html: formatText(displayContent) }} 
+            />
+        )}
         
         {/* Speaker/Listen button has been completely removed from here */}
       </div>
@@ -52,6 +76,7 @@ const ChatRow = memo(({ msg }) => {
 const ChatWindow = () => {
   const { messages, status, sendMessage } = useChatEngine();
   const navigate = useNavigate();
+  const { user } = useAuth();
   
   // State Management
   const [input, setInput] = useState('');
@@ -152,8 +177,17 @@ const ChatWindow = () => {
     } catch (e) { setSelectedImage(file); } 
   };
 
-  // Handle Send Message
+  // Handle Send Message (With Paywall Interceptor)
   const handleSend = () => {
+    // 🛡️ PAYWALL INTERCEPTOR
+    // Check if user exists and hasn't paid/approved
+    if (user && (user.status === 'pending' || !user.isApproved)) {
+      console.log('Payment required. Redirecting to payment page...');
+      navigate('/payment-setup'); // Redirect to Razorpay gateway page
+      return; // Stop message from sending
+    }
+
+    // Original Logic
     if (!input.trim() && !selectedImage) return;
     sendMessage(input, selectedImage);
     setInput('');

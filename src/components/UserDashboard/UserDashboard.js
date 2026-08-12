@@ -41,6 +41,16 @@ const UserDashboard = () => {
         return 'Good Evening';
     };
 
+    const handleVideoCall = () => {
+        const userName = localStorage.getItem('userName') || 
+                         localStorage.getItem('user_name') || 
+                         localStorage.getItem('email') || 
+                         'rcm-user';
+        const roomName = `rcm-room-${userName.replace(/[^a-z0-9]/gi, '-')}`;
+        const url = `https://localhost:3010/join?room=${roomName}&name=${userName}`;
+        window.open(url, '_blank');
+    };
+
     return (
         <div className="g-layout">
             
@@ -75,6 +85,9 @@ const UserDashboard = () => {
                     </div>
                     <div className={`g-nav-item ${location.pathname === '/leaders-videos' ? 'active' : ''}`} onClick={() => navigate('/leaders-videos')}>
                         <Video size={20} /> <span>Academy</span>
+                    </div>
+                    <div className="g-nav-item" onClick={handleVideoCall}>
+                        <Video size={20} /> <span>Video Call</span>
                     </div>
                 </nav>
 
@@ -114,6 +127,17 @@ const UserDashboard = () => {
                 </header>
 
                 <div className="g-content">
+                    
+                    {/* Premium Banner */}
+                    <div className="g-premium-banner">
+                        <div className="g-banner-content">
+                            <h4>🚀 Boost Your RCM AI Experience</h4>
+                            <p>Install the RCM AI PWA for high-scale network synchronization and instant access.</p>
+                        </div>
+                        <button className="g-banner-btn" onClick={() => window.alert('PWA Install Triggered!')}>
+                            Install PWA
+                        </button>
+                    </div>
                     
                     {/* Hero Section */}
                     <section className="g-hero" onClick={() => navigate('/chat')}>

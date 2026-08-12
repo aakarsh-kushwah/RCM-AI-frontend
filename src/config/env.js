@@ -5,8 +5,8 @@
 
 const config = {
   API: {
-    // Agar .env nahi mila to Localhost, warna Live URL
-    BASE_URL: process.env.REACT_APP_API_URL || 'http://localhost:3000',
+    // Backend runs on port 10000 by default
+    BASE_URL: process.env.REACT_APP_API_URL || 'http://localhost:10000',
     TIMEOUT: 10000,
   },
   CONTACT: {
@@ -18,5 +18,9 @@ const config = {
     DEFAULT_PITCH: 1.0,
   }
 };
+
+if (process.env.NODE_ENV === 'production' && !process.env.REACT_APP_API_URL) {
+  console.error('CRITICAL CONFIG ERROR: REACT_APP_API_URL is not set in production!');
+}
 
 export default config;

@@ -1,8 +1,15 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
+import { GoogleOAuthProvider } from '@react-oauth/google';
 import { AuthProvider } from './context/AuthContext';
 import App from './App';
+
+const googleClientId = process.env.REACT_APP_GOOGLE_CLIENT_ID;
+
+if (!googleClientId) {
+  console.error("🚨 CRITICAL ERROR: REACT_APP_GOOGLE_CLIENT_ID is missing from .env file!");
+}
 
 // Root element ko select karein
 const rootElement = document.getElementById('root');
@@ -12,13 +19,11 @@ const root = ReactDOM.createRoot(rootElement);
 
 // App ko render karein
 root.render(
-  <React.StrictMode>
-    {/* BrowserRouter poore app ko wrap karega taaki routing har jagah kaam kare */}
-    <BrowserRouter>
-      {/* AuthProvider app ko wrap karega taaki user auth state har jagah available ho */}
+  <GoogleOAuthProvider clientId={googleClientId}>
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <AuthProvider>
         <App />
       </AuthProvider>
     </BrowserRouter>
-  </React.StrictMode>
+  </GoogleOAuthProvider>
 );

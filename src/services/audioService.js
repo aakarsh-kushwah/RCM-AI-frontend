@@ -26,15 +26,18 @@ class AudioService {
     this.isBrowserSpeaking = false;
   }
 
-  playServerAudio(url) {
+  playServerAudio(url, fallbackText) {
     this.stopAll(); 
-    if (!url) return;
+    if (!url) {
+        if (fallbackText) this.playBrowserVoice(fallbackText);
+        return;
+    }
 
     // Cache busting to ensure fresh audio
     const secureUrl = `${url}?t=${Date.now()}`;
     this.currentAudio = new Audio(secureUrl);
 
-    // ✅ SAFETY FIX: Handle Browser Autoplay Policy
+    // ✅ SAFETY FIX: Handle Browser Autoplay Policy + Fallback
     const playPromise = this.currentAudio.play();
 
     if (playPromise !== undefined) {
@@ -43,11 +46,9 @@ class AudioService {
           // Audio started successfully
         })
         .catch(error => {
-          if (error.name === 'NotAllowedError') {
-            console.warn("⚠️ Autoplay Blocked: User interaction required.");
-            // Optional: You can trigger a UI toast here telling user to click "Listen"
-          } else {
-            console.error("Audio Play Error:", error);
+          console.error("Audio Play Error, falling back:", error);
+          if (fallbackText) {
+              this.playBrowserVoice(fallbackText);
           }
         });
     }
@@ -58,6 +59,7 @@ class AudioService {
     if (!text) return;
     
     this.isBrowserSpeaking = true;
+    console.log("Using Browser TTS Fallback...");
     
     // Fallback if speakWithBrowser is missing
     if (typeof speakWithBrowser === 'function') {
@@ -68,6 +70,8 @@ class AudioService {
     } else {
         // Native fallback
         const utterance = new SpeechSynthesisUtterance(text);
+        // Basic Hindi support for native TTS
+        utterance.lang = 'hi-IN';
         utterance.onend = () => { this.isBrowserSpeaking = false; };
         window.speechSynthesis.speak(utterance);
     }
@@ -75,7 +79,7 @@ class AudioService {
 
   playSmart(audioUrl, text) {
     if (audioUrl) {
-      this.playServerAudio(audioUrl);
+      this.playServerAudio(audioUrl, text); // Pass text as fallback
     } else if (text) {
       this.playBrowserVoice(text);
     }
