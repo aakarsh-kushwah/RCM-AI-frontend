@@ -2,7 +2,7 @@ import React from 'react';
 import { Navigate } from 'react-router-dom';
 
 const UserProtectedRoute = ({ children }) => {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
     const userRole = localStorage.getItem('userRole'); 
     
     // 1. Safe User Parsing (Handle corrupt data)

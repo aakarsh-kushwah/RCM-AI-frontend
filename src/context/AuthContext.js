@@ -28,6 +28,7 @@ export const AuthProvider = ({ children }) => {
     const login = (userData, newAccessToken, newRefreshToken) => {
         const userWithApproval = { ...userData, isApproved: userData.isApproved || false };
         localStorage.setItem('accessToken', newAccessToken);
+        localStorage.setItem('token', newAccessToken);
         localStorage.setItem('refreshToken', newRefreshToken);
         localStorage.setItem('user', JSON.stringify(userWithApproval));
         setAccessToken(newAccessToken);
@@ -38,6 +39,7 @@ export const AuthProvider = ({ children }) => {
     const logout = () => {
         // Clear local storage and state
         localStorage.removeItem('accessToken');
+        localStorage.removeItem('token');
         localStorage.removeItem('refreshToken');
         localStorage.removeItem('user');
         setAccessToken(null);
