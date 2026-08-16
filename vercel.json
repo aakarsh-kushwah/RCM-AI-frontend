@@ -1,4 +1,10 @@
 {
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "https://rcm-ai-backend.onrender.com/api/$1"
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",
