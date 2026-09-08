@@ -2,11 +2,11 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import axios from 'axios';
 import { useAuth } from '../../context/AuthContext';
 import { useLocation, useNavigate } from 'react-router-dom';
-// ✅ Nayi CSS file import karein
 import './LeadersVideo.css'; 
-import { Search, PlayCircle, X, ArrowLeft } from 'lucide-react';
+import { Search, PlayCircle, ArrowLeft } from 'lucide-react';
+import { VideoModal } from '../common/VideoModal';
+import { extractYouTubeId } from '../../utils/textUtils';
 
-// --- Debounce Hook (Unchanged) ---
 function useDebounce(value, delay) {
     const [debouncedValue, setDebouncedValue] = useState(value);
     useEffect(() => {
@@ -16,68 +16,58 @@ function useDebounce(value, delay) {
     return debouncedValue;
 }
 
-// --- Memoized Components (Unchanged) ---
-const VideoSidebarItem = React.memo(({ video, onVideoSelect, isActive }) => {
-    const thumbnailUrl = video.thumbnailUrl; 
+const VideoCardItem = React.memo(({ video, onVideoSelect }) => {
+    const youtubeId = extractYouTubeId(video.videoUrl);
+    const thumbnailUrl = youtubeId ? `https://img.youtube.com/vi/${youtubeId}/hqdefault.jpg` : video.thumbnailUrl;
+
     return (
-        <div 
-            className={`video-list-item ${isActive ? 'active' : ''}`} 
-            onClick={() => onVideoSelect(video)}
-        >
-            <div className="item-thumbnail">
-                {thumbnailUrl ? <img src={thumbnailUrl} alt={video.title} onError={(e) => e.target.src = 'https://placehold.co/120x68/e0e0e0/777?text=RCM'} /> : <PlayCircle size={40} />}
+        <div className="video-grid-item" onClick={() => onVideoSelect(video)}>
+            <div className="grid-item-thumbnail">
+                {thumbnailUrl ? (
+                    <img 
+                      src={thumbnailUrl} 
+                      alt={video.title} 
+                      onError={(e) => e.target.src = 'https://placehold.co/320x180/e0e0e0/777?text=RCM'} 
+                      loading="lazy"
+                      width="320"
+                      height="180"
+                      style={{ objectFit: 'cover', width: '100%', height: '100%' }}
+                    />
+                ) : (
+                    <div className="thumbnail-placeholder"><PlayCircle size={40} /></div>
+                )}
+                <div className="play-overlay">
+                    <PlayCircle size={48} color="#ffffff" />
+                </div>
             </div>
-            <div className="item-details">
-                <h4 className="item-title">{video.title}</h4>
-                <p className="item-subtitle">Leader's Video</p>
+            <div className="grid-item-details">
+                <h4 className="grid-item-title">{video.title}</h4>
+                <p className="grid-item-subtitle">{video.leaderName || "Leader's Video"}</p>
             </div>
         </div>
     );
 });
 
-const VideoGridItem = React.memo(({ video, onVideoSelect }) => (
-    <div className="video-grid-item" onClick={() => onVideoSelect(video)}>
-        <div className="grid-item-thumbnail">
-            {video.thumbnailUrl ? (
-                 <img src={video.thumbnailUrl} alt={video.title} onError={(e) => e.target.src = 'https://placehold.co/320x180/e0e0e0/777?text=RCM'} />
-            ) : (
-                 <div className="thumbnail-placeholder"><PlayCircle size={40} /></div>
-            )}
-        </div>
-        <div className="grid-item-details">
-            <h4 className="grid-item-title">{video.title}</h4>
-            <p className="grid-item-subtitle">Leader's Video</p>
-        </div>
-    </div>
-));
-
-
-// --- ✅ Mukhya Component (Sirf Leaders ke liye) ---
 function LeadersVideo({ pageTitle }) {
     const [allVideos, setAllVideos] = useState([]);
-    const [selectedVideo, setSelectedVideo] = useState(null); 
+    const [activeVideo, setActiveVideo] = useState(null); 
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     
     const [searchTerm, setSearchTerm] = useState('');
     const debouncedSearchTerm = useDebounce(searchTerm, 300);
     
-    const [isMiniPlayer, setIsMiniPlayer] = useState(false);
-    
     const [page, setPage] = useState(1);
     const [hasMore, setHasMore] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
 
-    // ❌ Category state yahan nahi hai
-
     const { token, API_URL } = useAuth(); 
-    
     const location = useLocation();
     const navigate = useNavigate();
 
-    // --- API Call (✅ Sirf 'leaders' ke liye) ---
     const fetchVideos = useCallback(async (pageNum, isInitialLoad = false) => {
-        if (!token || !API_URL) {
+        const authToken = token || localStorage.getItem('token') || localStorage.getItem('accessToken');
+        if (!authToken || !API_URL) {
              setError("Authentication error. Please log in again.");
              setLoading(false);
              return;
@@ -87,27 +77,14 @@ function LeadersVideo({ pageTitle }) {
         setError('');
         
         const limit = 20;
-        
-        // ✅ URL ab hamesha 'leaders' ke liye hai
         let url = `${API_URL}/api/videos/leaders?page=${pageNum}&limit=${limit}`;
-        
-        // ❌ Category filter logic yahan nahi hai
 
         try {
-            const response = await axios.get(url, { headers: { Authorization: `Bearer ${token}` } });
+            const response = await axios.get(url, { headers: { Authorization: `Bearer ${authToken}` } });
             
             if (response.data.success && Array.isArray(response.data.data)) {
                 const newData = response.data.data;
                 setAllVideos(prev => isInitialLoad ? newData : [...prev, ...newData]);
-                
-                if (isInitialLoad && newData.length > 0 && !selectedVideo) {
-                    if (location.state && location.state.selectedVideo) {
-                        setSelectedVideo(location.state.selectedVideo);
-                    } else {
-                        setSelectedVideo(newData[0]);
-                    }
-                }
-                
                 setHasMore(response.data.pagination.currentPage < response.data.pagination.totalPages); 
             } else {
                 if (isInitialLoad) setAllVideos([]);
@@ -118,69 +95,41 @@ function LeadersVideo({ pageTitle }) {
         } finally {
             if (isInitialLoad) setLoading(false); else setLoadingMore(false);
         }
-    }, [token, API_URL, selectedVideo, location.state]); // category state hata diya
+    }, [token, API_URL]);
 
-    // --- Initial Data Load (✅ Bina category) ---
     useEffect(() => {
         if (token && API_URL) {
             setPage(1); 
             setAllVideos([]);
             setHasMore(true);
             
-            let initialVideo = null;
             if (location.state && location.state.selectedVideo) {
-                 setSelectedVideo(location.state.selectedVideo);
-                 initialVideo = location.state.selectedVideo;
+                 setActiveVideo(location.state.selectedVideo);
                  navigate(location.pathname, { replace: true, state: {} });
             }
             
-            fetchVideos(1, true).then(() => {
-                 if (initialVideo) {
-                     setSelectedVideo(initialVideo);
-                 }
-            });
+            fetchVideos(1, true);
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [token, API_URL]); // 'selectedCategory' dependency se hata diya gaya hai
+    }, [token, API_URL, location.state, navigate, fetchVideos]); 
 
-
-    // --- Filtered Videos (Unchanged) ---
     const filteredVideos = useMemo(() => {
-        if (!debouncedSearchTerm) {
-            return allVideos; 
-        }
+        if (!debouncedSearchTerm) return allVideos; 
         return allVideos.filter(video =>
-            video.title.toLowerCase().includes(debouncedSearchTerm.toLowerCase())
+            video.title.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+            (video.leaderName && video.leaderName.toLowerCase().includes(debouncedSearchTerm.toLowerCase()))
         );
     }, [allVideos, debouncedSearchTerm]);
 
-
-    // --- Event Handlers (Unchanged) ---
     const handleSearchChange = useCallback((e) => {
         setSearchTerm(e.target.value);
-        if (selectedVideo) setIsMiniPlayer(true);
-    }, [selectedVideo]);
-
-    const handleSearchFocus = useCallback(() => {
-        if (selectedVideo) setIsMiniPlayer(true);
-    }, [selectedVideo]);
+    }, []);
 
     const handleVideoSelect = useCallback((video) => {
-        setSelectedVideo(video);
-        setIsMiniPlayer(false); 
-        setSearchTerm(''); 
-        window.scrollTo(0, 0); 
+        setActiveVideo(video);
     }, []);
 
-    const closeMiniPlayer = useCallback((e) => {
-        e.stopPropagation(); 
-        setIsMiniPlayer(false);
-        setSelectedVideo(null); 
-    }, []);
-
-    const maximizePlayer = useCallback(() => {
-        setIsMiniPlayer(false);
-        window.scrollTo(0, 0);
+    const handleCloseModal = useCallback(() => {
+        setActiveVideo(null);
     }, []);
 
     const handleLoadMore = useCallback(() => {
@@ -190,8 +139,6 @@ function LeadersVideo({ pageTitle }) {
             fetchVideos(nextPage, false);
         }
     }, [page, loadingMore, hasMore, fetchVideos]);
-
-    // ❌ Category handler yahan nahi hai
 
     return (
         <div className="leaders-video-page"> 
@@ -207,136 +154,40 @@ function LeadersVideo({ pageTitle }) {
                         type="text"
                         value={searchTerm}
                         onChange={handleSearchChange}
-                        onFocus={handleSearchFocus}
-                        placeholder="Search Videos..."
+                        placeholder="Search Leader Videos..."
                         className="search-input"
                     />
                 </div>
             </div>
 
-            {/* ❌ Category Cards Section yahan nahi hai */}
+            <div className="main-content-layout" style={{ display: 'block', padding: '20px' }}>
+                {loading && allVideos.length === 0 && <div className="video-skeleton-loader">Loading videos...</div>}
+                {error && <div className="video-error-message">{error}</div>}
 
-            <div className="main-content-layout">
-                {/* --- 1. Mukhya Video Column --- */}
-                <div className="video-player-column">
-                    {isMiniPlayer ? (
-                        // --- 1A. Search Result Grid ---
-                        <div className="search-results-main">
-                            <h2 className="sidebar-title">
-                                {debouncedSearchTerm ? `Results for "${debouncedSearchTerm}"` : `All Videos`}
-                            </h2>
-                            <div className="results-grid">
-                                {filteredVideos.length > 0 ? (
-                                    filteredVideos.map((video) => (
-                                        <VideoGridItem
-                                            key={video.id || video.publicId}
-                                            video={video}
-                                            onVideoSelect={handleVideoSelect}
-                                        />
-                                    ))
-                                ) : (
-                                    <p className="sidebar-message">No videos found.</p>
-                                )}
-                            </div>
-                            {hasMore && !debouncedSearchTerm && (
-                                <button className="load-more-btn" onClick={handleLoadMore} disabled={loadingMore}>
-                                    {loadingMore ? 'Loading...' : 'Load More'}
-                                </button>
-                            )}
-                        </div>
-                    ) : (
-                        // --- 1B. Bada Player ---
-                        <>
-                            {loading && <div className="video-skeleton-loader"></div>}
-                            {error && <div className="video-error-message">{error}</div>}
-                            {!selectedVideo && !loading && !error && allVideos.length === 0 && (
-                                <div className="video-error-message">
-                                    {'No videos found for this category.'}
-                                </div>
-                            )}
-                            {selectedVideo && ( 
-                                <>
-                                    <div className="video-player-wrapper">
-                                        <iframe
-                                            className="video-iframe"
-                                            src={`https://www.youtube.com/embed/${selectedVideo.publicId}?autoplay=1&controls=1&modestbranding=1&rel=0`}
-                                            title={selectedVideo.title}
-                                            frameBorder="0"
-                                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                            allowFullScreen
-                                            key={selectedVideo.publicId}
-                                        ></iframe>
-                                        <div className="iframe-top-blocker"></div> 
-                                        <div className="video-watermark-logo">
-                                        <img src="https://i.ibb.co/GrMTmd0/Gemini-Generated-Image-q98hyq98hyq98hyq-removebg-preview-removebg-preview.png" alt="RCM AI" />
-                                        </div>
-                                    </div>
-                                    <div className="video-details-container">
-                                        <h2 className="video-title">{selectedVideo.title}</h2>
-                                        {/* ❌ Category tag yahan nahi hai */}
-                                        <div className="video-description">
-                                            <p>{selectedVideo.description || 'Video description will be displayed here.'}</p>
-                                        </div>
-                                    </div>
-                                </>
-                            )}
-                        </>
-                    )}
+                <div className="results-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
+                    {filteredVideos.map((video) => (
+                        <VideoCardItem
+                            key={video.id || video.publicId}
+                            video={video}
+                            onVideoSelect={handleVideoSelect}
+                        />
+                    ))}
                 </div>
 
-                {/* --- 2. Sidebar Video List --- */}
-                <div className="video-sidebar-column">
-                    <h3 className="sidebar-title">
-                        All Videos
-                    </h3>
-                    <div className="video-list-scroll">
-                        {loading && !loadingMore && allVideos.length === 0 && <p className="sidebar-message">Loading list...</p>}
-                        
-                        {filteredVideos.map((video) => (
-                            <VideoSidebarItem
-                                key={video.id || video.publicId}
-                                video={video}
-                                onVideoSelect={handleVideoSelect}
-                                isActive={!isMiniPlayer && selectedVideo?.publicId === video.publicId}
-                            />
-                        ))}
-                        
-                        {hasMore && !debouncedSearchTerm && (
-                            <button className="load-more-btn" onClick={handleLoadMore} disabled={loadingMore}>
-                                {loadingMore ? 'Loading...' : 'Load More'}
-                            </button>
-                        )}
-                        {!hasMore && !loading && allVideos.length > 0 && (
-                            <p className="sidebar-message">No more videos.</p>
-                        )}
-                        {!loading && allVideos.length === 0 && (
-                             <p className="sidebar-message">No videos found.</p>
-                        )}
+                {!loading && filteredVideos.length === 0 && !error && (
+                    <p className="sidebar-message" style={{ textAlign: 'center', padding: '40px' }}>No leader videos found.</p>
+                )}
+
+                {hasMore && !debouncedSearchTerm && (
+                    <div style={{ textAlign: 'center', marginTop: '30px' }}>
+                        <button className="load-more-btn" onClick={handleLoadMore} disabled={loadingMore}>
+                            {loadingMore ? 'Loading...' : 'Load More Videos'}
+                        </button>
                     </div>
-                </div>
+                )}
             </div>
 
-            {/* --- 3. Mini-Player --- */}
-            {isMiniPlayer && selectedVideo && (
-                <div className="mini-player" onClick={maximizePlayer}>
-                    <div className="mini-player-video-wrapper">
-                        <iframe
-                            className="video-iframe"
-                            src={`https://www.youtube.com/embed/${selectedVideo.publicId}?autoplay=1&controls=0&modestbranding=1&rel=0`}
-                            title={selectedVideo.title}
-                            frameBorder="0"
-                            allow="autoplay"
-                        ></iframe>
-                    </div>
-                    <div className="mini-player-details">
-                        <p className="mini-player-title">{selectedVideo.title}</p>
-                        <p className="mini-player-subtitle">Leader's Video</p>
-                    </div>
-                    <button className="mini-player-close" onClick={closeMiniPlayer}>
-                        <X size={20} />
-                    </button>
-                </div>
-            )}
+            <VideoModal video={activeVideo} onClose={handleCloseModal} />
         </div>
     );
 }

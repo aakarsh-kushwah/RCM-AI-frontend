@@ -1,0 +1,277 @@
+/* ==========================================================================
+   RCM AI — Login Page (light / "crystal clear" theme — matches the
+   dashboard's design tokens exactly: --u-bg, --u-primary, --u-surface…)
+
+   Everything is scoped under .rcmlp-* and .rcmlp-page — no global/html/body
+   selector — so this can never bleed into any other screen.
+
+   FIX NOTES (why this version stops the shifting/off-center bug):
+   - .rcmlp-page is `position: fixed; inset: 0`, not a normal flow element.
+     Centering no longer depends on the parent route wrapper's own layout
+     (flex/grid quirks, margins, a stray width on a parent div, etc.) — this
+     is what was pushing the card off to one side depending on the route
+     tree it mounted inside.
+   - Every element in the tree is forced to `box-sizing: border-box`, and
+     the page clips overflow — so the ambient glow, which is deliberately
+     larger than the viewport, can never create horizontal scroll/jitter.
+   - The Google button slot has a reserved `min-height`, so when Google's
+     SDK injects its iframe a beat after first paint, the card doesn't
+     suddenly grow/jump (that growth was very likely the "hilna" you saw).
+   ========================================================================== */
+
+.rcmlp-page {
+  --lp-bg: #f6f6fb;
+  --lp-surface: #ffffff;
+  --lp-surface-alt: #f1f0fa;
+  --lp-border: #ececf3;
+  --lp-border-strong: #e0deec;
+
+  --lp-text: #1b1b23;
+  --lp-text-dim: #6b6d80;
+  --lp-text-faint: #9a9cae;
+
+  --lp-primary: #5b2a9e;
+  --lp-primary-2: #7c3fd1;
+  --lp-primary-soft: rgba(91, 42, 158, 0.08);
+  --lp-teal: #0e9f8e;
+  --lp-teal-soft: rgba(14, 159, 142, 0.08);
+  --lp-rose: #d1483a;
+  --lp-rose-soft: rgba(209, 72, 58, 0.08);
+
+  --lp-radius: 14px;
+  --lp-radius-lg: 22px;
+  --lp-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 2px 8px rgba(16, 24, 40, 0.06);
+  --lp-shadow-lg: 0 24px 60px -20px rgba(91, 42, 158, 0.28), 0 2px 8px rgba(16, 24, 40, 0.06);
+
+  --lp-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --lp-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100vw;
+  height: 100dvh;
+  padding: 24px;
+  background: var(--lp-bg);
+  color: var(--lp-text);
+  font-family: var(--lp-font);
+  overflow: hidden;
+  isolation: isolate;
+  -webkit-font-smoothing: antialiased;
+}
+
+.rcmlp-page,
+.rcmlp-page * {
+  box-sizing: border-box;
+}
+
+/* ---- Ambient field: soft purple/teal wash, deliberately oversized but
+   always clipped by .rcmlp-page's own overflow:hidden above. ---- */
+
+.rcmlp-field {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.rcmlp-glow {
+  position: absolute;
+  left: 50%;
+  top: 40%;
+  width: min(760px, 140vw);
+  height: min(760px, 140vw);
+  transform: translate(-50%, -50%);
+  background: radial-gradient(
+    circle,
+    var(--lp-primary-soft) 0%,
+    var(--lp-teal-soft) 38%,
+    transparent 68%
+  );
+  filter: blur(10px);
+}
+
+/* ---- Card: white glass-clean panel, same family as the dashboard's
+   cards — a hairline accent bar on top is what pushes it from "clean"
+   to "expensive". ---- */
+
+.rcmlp-card {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  width: 100%;
+  max-width: 400px;
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
+  padding: 40px 32px 32px;
+  border-radius: var(--lp-radius-lg);
+  background: var(--lp-surface);
+  border: 1px solid var(--lp-border);
+  box-shadow: var(--lp-shadow-lg);
+  animation: rcmlp-rise-in 420ms var(--lp-ease) both;
+}
+
+.rcmlp-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 14%;
+  right: 14%;
+  height: 3px;
+  border-radius: 0 0 3px 3px;
+  background: linear-gradient(90deg, var(--lp-primary), var(--lp-teal));
+  opacity: 0.9;
+}
+
+@keyframes rcmlp-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ---- Logo badge: soft glow ring behind the mark ---- */
+
+.rcmlp-logo-badge {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  margin-bottom: 20px;
+  border-radius: 18px;
+  background: linear-gradient(155deg, #ffffff, var(--lp-surface-alt));
+  border: 1px solid var(--lp-border);
+  box-shadow: 0 10px 24px -8px rgba(91, 42, 158, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.rcmlp-logo {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+}
+
+.rcmlp-title {
+  margin: 0 0 8px;
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--lp-text);
+}
+
+.rcmlp-subtitle {
+  margin: 0 0 26px;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--lp-text-dim);
+  max-width: 300px;
+}
+
+/* ---- Error ---- */
+
+.rcmlp-error {
+  width: 100%;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--lp-rose-soft);
+  border: 1px solid rgba(209, 72, 58, 0.22);
+  color: var(--lp-rose);
+  font-size: 0.85rem;
+  font-weight: 500;
+  animation: rcmlp-shake-in 260ms var(--lp-ease) both;
+}
+
+@keyframes rcmlp-shake-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ---- Google button slot ----
+   min-height reserves the exact space Google's rendered pill button
+   occupies, so nothing in the card grows/jumps once the SDK's iframe
+   mounts a beat after first paint. */
+
+.rcmlp-google-btn {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  transition: transform 160ms var(--lp-ease);
+}
+
+.rcmlp-google-btn:hover {
+  transform: translateY(-1px);
+}
+
+.rcmlp-fineprint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 22px 0 0;
+  font-size: 0.74rem;
+  color: var(--lp-text-faint);
+  letter-spacing: 0.01em;
+}
+
+.rcmlp-fineprint svg {
+  flex-shrink: 0;
+  color: var(--lp-teal);
+}
+
+/* ---- Responsive ---- */
+
+@media (max-width: 420px) {
+  .rcmlp-page {
+    padding: 16px;
+  }
+
+  .rcmlp-card {
+    padding: 30px 22px 26px;
+    border-radius: 18px;
+  }
+
+  .rcmlp-title {
+    font-size: 1.22rem;
+  }
+
+  .rcmlp-logo-badge {
+    width: 56px;
+    height: 56px;
+  }
+}
+
+@media (min-width: 720px) {
+  .rcmlp-card {
+    max-width: 420px;
+    padding: 46px 40px 36px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rcmlp-card,
+  .rcmlp-error {
+    animation: none;
+  }
+  .rcmlp-google-btn {
+    transition: none;
+  }
+}

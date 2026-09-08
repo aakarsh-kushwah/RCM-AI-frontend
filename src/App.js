@@ -1,11 +1,12 @@
 /**
  * @file App.js
- * @description Root Component - Claude.ai style Google-first onboarding & routing + Professional Push Notification UX.
+ * @description Root Component - Handles routing, protected routes, and global UX
+ *              (offline status, push notification prompts, install app modal).
+ *              The login flow has been refactored into a dedicated /login route.
  */
 
 import React, { Suspense, lazy, useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
-import { GoogleLogin } from '@react-oauth/google';
 import { Bell, X } from 'lucide-react';
 
 // ==========================================
@@ -13,6 +14,8 @@ import { Bell, X } from 'lucide-react';
 // ==========================================
 import LoadingSpinner from './components/LoadingSpinner/LoadingSpinner';
 import InstallAppModal from './components/InstallAppModal.jsx';
+import RootRedirector from './components/RootRedirector';
+import LoginPage from './components/login/LoginPage';
 
 // ==========================================
 // 🔐 SECURITY & LOGIC
@@ -30,89 +33,10 @@ const SubscriptionRequired = lazy(() => import('./components/SubscriptionRequire
 const UserDashboard = lazy(() => import('./components/UserDashboard/UserDashboard'));
 const Productsvideo = lazy(() => import('./components/Productsvideo/Productsvideo'));
 const LeadersVideo = lazy(() => import('./components/LeadersVideo/LeadersVideo'));
+const ChannelVideos = lazy(() => import('./components/Channels/ChannelVideos'));
 const ChatWindow = lazy(() => import('./components/chatbot/ChatWindow'));
 const VoiceCallPage = lazy(() => import('./components/chatbot/VoiceCall'));
 const DailyReport = lazy(() => import('./components/DailyReport/DailyReport'));
-
-// ==========================================
-// 🌐 CLAUDE.AI STYLE PUBLIC / PREVIEW HOME (ROOT '/')
-// ==========================================
-const HomeLandingRoute = () => {
-    const { user, login, API_URL, loading } = useAuth();
-    const [error, setError] = useState('');
-
-    if (loading) {
-        return <LoadingSpinner message="Checking session..." />;
-    }
-
-    const handleGoogleSuccess = async (credentialResponse) => {
-        try {
-            const response = await fetch(`${API_URL || 'http://localhost:10000'}/api/auth/google`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ credential: credentialResponse.credential })
-            });
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.message || 'Google Auth Failed');
-            if (data.success && data.accessToken) {
-                login(data.user, data.accessToken);
-            }
-        } catch (err) {
-            setError(err.message || 'Google login failed.');
-        }
-    };
-
-    if (user) {
-        return <UserDashboard />;
-    }
-
-    return (
-        <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            height: '100vh',
-            width: '100vw',
-            background: '#121212',
-            color: '#fff',
-            fontFamily: 'Inter, sans-serif'
-        }}>
-            <div style={{
-                background: '#1e1e1e',
-                padding: '2.5rem',
-                borderRadius: '16px',
-                border: '1px solid rgba(255,255,255,0.1)',
-                boxShadow: '0 20px 40px rgba(0,0,0,0.6)',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                textAlign: 'center',
-                maxWidth: '400px',
-                width: '90%'
-            }}>
-                <img 
-                    src="https://i.ibb.co/GrMTmd0/Gemini-Generated-Image-q98hyq98hyq98hyq-removebg-preview-removebg-preview.png" 
-                    alt="RCM AI" 
-                    style={{ height: '48px', width: '48px', objectFit: 'contain', marginBottom: '1.5rem' }}
-                />
-                <h1 style={{ fontSize: '1.5rem', fontWeight: '700', marginBottom: '0.5rem', letterSpacing: '-0.5px' }}>RCM AI Platform</h1>
-                <p style={{ fontSize: '0.95rem', color: '#a0a0a0', marginBottom: '2rem' }}>Sign in to access your enterprise dashboard and AI tools.</p>
-                
-                {error && <div style={{ color: '#ff4d4f', fontSize: '0.9rem', marginBottom: '1rem' }}>{error}</div>}
-
-                <GoogleLogin
-                    onSuccess={handleGoogleSuccess}
-                    onError={() => setError('Google Sign-In unsuccessful.')}
-                    theme="filled_black"
-                    shape="pill"
-                    size="large"
-                    text="continue_with"
-                />
-            </div>
-        </div>
-    );
-};
 
 // ==========================================
 // 🔒 SUBSCRIPTION PROTECTION HOC
@@ -126,7 +50,7 @@ const RequireSubscription = ({ children }) => {
     }
 
     if (!user) {
-        return <Navigate to="/" replace />;
+        return <Navigate to="/login" replace />;
     }
 
     if (!isApproved) {
@@ -275,8 +199,13 @@ function App() {
 
             <Suspense fallback={<LoadingSpinner message="Loading Neural Interface..." />}>
                 <Routes>
-                    {/* 🌍 PUBLIC / CLAUDE.AI ROOT ROUTE */}
-                    <Route path="/" element={<HomeLandingRoute />} />
+                    {/* 🌍 ROOT ROUTE - Redirects based on auth status */}
+                    <Route path="/" element={<RootRedirector />} />
+
+                    {/* 🔐 LOGIN ROUTE - Public route for unauthenticated users */}
+                    <Route path="/login" element={<LoginPage />} />
+
+                    {/* 💳 PUBLIC PAGES */}
                     <Route path="/payment-setup" element={<PaymentPage />} />
                     <Route path="/subscription-required" element={<SubscriptionRequired />} />
 
@@ -306,6 +235,10 @@ function App() {
 
                     <Route path="/products-videos" element={
                         <UserProtectedRoute><Productsvideo pageTitle="Products' Videos" /></UserProtectedRoute>
+                    } />
+
+                    <Route path="/channels-videos" element={
+                        <UserProtectedRoute><ChannelVideos pageTitle="Official Channels Videos" /></UserProtectedRoute>
                     } />
 
                     {/* 🤖 AI ASSISTANT ROUTES */}

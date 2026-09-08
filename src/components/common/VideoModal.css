@@ -1,0 +1,112 @@
+.video-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+  animation: fadeIn 0.2s ease-out;
+}
+
+.video-modal-container {
+  background: var(--bg-card, #ffffff);
+  width: 90%;
+  max-width: 900px;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.video-modal-close-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #ffffff;
+  border: none;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 10;
+  transition: background 0.2s;
+}
+
+.video-modal-close-btn:hover {
+  background: rgba(0, 0, 0, 0.85);
+}
+
+.video-modal-player-wrapper {
+  position: relative;
+  width: 100%;
+  padding-top: 56.25%; /* 16:9 Aspect Ratio */
+  background: #000000;
+}
+
+.video-modal-iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+.video-modal-watermark {
+  position: absolute;
+  top: 15px;
+  left: 15px;
+  pointer-events: none;
+  opacity: 0.85;
+}
+
+.video-modal-watermark img {
+  height: 32px;
+  width: auto;
+}
+
+.video-modal-details {
+  padding: 20px 24px;
+}
+
+.video-modal-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-main, #1f2937);
+  margin: 0 0 10px 0;
+}
+
+.video-modal-tag {
+  display: inline-block;
+  background: var(--bg-main, #f3f4f6);
+  color: var(--u-primary, #6366f1);
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-right: 8px;
+  margin-bottom: 12px;
+}
+
+.video-modal-desc {
+  font-size: 0.95rem;
+  color: var(--text-dim, #4b5563);
+  line-height: 1.5;
+  margin: 0;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}

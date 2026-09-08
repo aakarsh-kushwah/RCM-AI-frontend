@@ -1,223 +1,287 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { 
-  Zap, Video, Star, TrendingUp, LogOut, 
-  LayoutDashboard, ChevronRight, Bell, Settings, Sparkles, Search 
-} from 'lucide-react'; 
-import './UserDashboard.css'; 
+import {
+  Zap, Star, TrendingUp, LogOut, ChevronRight, ExternalLink, ArrowUpRight, Sparkles, Bell, X
+} from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import './UserDashboard.css';
+
+// Team Dekho — the in-house WebRTC meeting platform (~90% cheaper than Zoom,
+// built specifically for direct-selling teams). Configurable per environment
+// so this never silently points at the wrong domain in production.
+const TEAM_DEKHO_URL = process.env.REACT_APP_TEAM_DEKHO_URL || 'https://teamdekho.com';
+
+// The dashboard's own logo (top-left brand mark).
+const RCM_LOGO_URL =
+  'https://i.ibb.co/GrMTmd0/Gemini-Generated-Image-q98hyq98hyq98hyq-removebg-preview-removebg-preview.png';
+
+// Team Dekho's logo — place teamdekhologo.png in /public so this path
+// resolves, or swap this for a bundler import if your assets live in /src.
+const TEAM_DEKHO_LOGO = '/teamdekhologo.png';
+
+// Desktop sidebar navigation. On mobile there's no bottom dock anymore —
+// the "Your Assistant" card below does that job, so a duplicate nav row
+// just for the same destination would be redundant clutter.
+const NAV_ITEMS = [{ path: '/chat', label: 'Assistant', icon: Zap }];
 
 const UserDashboard = () => {
-    const navigate = useNavigate(); 
-    const location = useLocation();
-    const [scrolled, setScrolled] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { user, logout } = useAuth();
 
-    const userData = useMemo(() => {
-        try {
-            return JSON.parse(localStorage.getItem('user')) || {};
-        } catch (e) { return {}; }
-    }, []);
+  const [scrolled, setScrolled] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [confirmingLogout, setConfirmingLogout] = useState(false);
 
-    const userName = userData.fullName || 'Creator';
-    const userRole = userData.role || 'Partner';
+  const profileRef = useRef(null);
+  const notifRef = useRef(null);
 
-    useEffect(() => {
-        document.documentElement.style.setProperty('background-color', '#0e121e', 'important');
-        document.body.style.setProperty('background-color', '#0e121e', 'important');
-        
-        const handleScroll = () => setScrolled(window.scrollY > 10);
-        window.addEventListener('scroll', handleScroll);
-        return () => window.removeEventListener('scroll', handleScroll);
-    }, []);
+  const firstName = useMemo(() => {
+    const name = user?.fullName || 'Partner';
+    return name.split(' ')[0];
+  }, [user]);
 
-    const handleLogout = () => {
-        localStorage.clear();
-        navigate('/login', { replace: true });
+  const initial = firstName.charAt(0).toUpperCase();
+  const role = user?.role === 'ADMIN' ? 'Admin' : (user?.status === 'premium' ? 'Premium Partner' : 'Partner');
+
+  useEffect(() => {
+    const handleScroll = () => setScrolled(window.scrollY > 8);
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Close any open popover on an outside click, and disarm a pending
+  // logout confirmation so it never lingers armed in the background.
+  useEffect(() => {
+    const handleClick = (e) => {
+      if (profileRef.current && !profileRef.current.contains(e.target)) {
+        setProfileOpen(false);
+        setConfirmingLogout(false);
+      }
+      if (notifRef.current && !notifRef.current.contains(e.target)) {
+        setNotifOpen(false);
+      }
     };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
 
-    const getGreeting = () => {
-        const hour = new Date().getHours();
-        if (hour < 12) return 'Good Morning';
-        if (hour < 18) return 'Good Afternoon';
-        return 'Good Evening';
-    };
+  const performLogout = () => {
+    logout();
+    navigate('/login', { replace: true });
+  };
 
-    const handleVideoCall = () => {
-        const userName = localStorage.getItem('userName') || 
-                         localStorage.getItem('user_name') || 
-                         localStorage.getItem('email') || 
-                         'rcm-user';
-        const roomName = `rcm-room-${userName.replace(/[^a-z0-9]/gi, '-')}`;
-        const url = `https://localhost:3010/join?room=${roomName}&name=${userName}`;
-        window.open(url, '_blank');
-    };
+  // Opens Team Dekho — our own meeting platform — in a new tab. Kept as a
+  // plain link to the product's own domain rather than inventing a query
+  // contract Team Dekho may not expect; add room/name params here later if
+  // the platform ends up supporting deep links for a specific room.
+  const handleVideoCall = () => {
+    window.open(TEAM_DEKHO_URL, '_blank', 'noopener,noreferrer');
+  };
 
-    return (
-        <div className="g-layout">
-            
-            {/* --- DESKTOP SIDEBAR --- */}
-            <aside className="g-sidebar">
-                <div className="g-logo-box">
-                    <img 
-                        src="https://i.ibb.co/GrMTmd0/Gemini-Generated-Image-q98hyq98hyq98hyq-removebg-preview-removebg-preview.png" 
-                        alt="Logo" 
-                        className="g-logo-img"
-                    />
-                    <span className="g-brand-text">RCM <span className="g-gradient-text">AI</span></span>
-                </div>
+  const isItemActive = (item) => location.pathname === item.path;
 
-                <div className="g-user-card">
-                    <div className="g-avatar">{userName.charAt(0).toUpperCase()}</div>
-                    <div className="g-user-meta">
-                        <span className="g-user-role">{userRole}</span>
-                        <span className="g-user-name">{userName.split(' ')[0]}</span>
-                    </div>
-                </div>
-
-                <nav className="g-nav">
-                    <div className={`g-nav-item ${location.pathname === '/dashboard' ? 'active' : ''}`} onClick={() => navigate('/dashboard')}>
-                        <LayoutDashboard size={20} /> <span>Overview</span>
-                    </div>
-                    <div className={`g-nav-item ${location.pathname === '/chat' ? 'active' : ''}`} onClick={() => navigate('/chat')}>
-                        <Zap size={20} /> <span>Gemini Chat</span>
-                    </div>
-                    <div className={`g-nav-item ${location.pathname === '/daily-report' ? 'active' : ''}`} onClick={() => navigate('/daily-report')}>
-                        <TrendingUp size={20} /> <span>Analytics</span>
-                    </div>
-                    <div className={`g-nav-item ${location.pathname === '/leaders-videos' ? 'active' : ''}`} onClick={() => navigate('/leaders-videos')}>
-                        <Video size={20} /> <span>Academy</span>
-                    </div>
-                    <div className="g-nav-item" onClick={handleVideoCall}>
-                        <Video size={20} /> <span>Video Call</span>
-                    </div>
-                </nav>
-
-                <div className="g-footer">
-                    <button className="g-logout" onClick={handleLogout}>
-                        <LogOut size={18} /> <span>Sign Out</span>
-                    </button>
-                </div>
-            </aside>
-
-            {/* --- MAIN CONTENT --- */}
-            <main className="g-main">
-                
-                {/* Header */}
-                <header className={`g-header ${scrolled ? 'glass' : ''}`}>
-                    <div className="g-header-left">
-                        {/* Mobile Logo (Bada kar diya gaya hai CSS me) */}
-                        <div className="g-mobile-brand">
-                            <img src="https://i.ibb.co/GrMTmd0/Gemini-Generated-Image-q98hyq98hyq98hyq-removebg-preview-removebg-preview.png" alt="Logo" />
-                            <span className="g-gradient-text">RCM.AI</span>
-                        </div>
-                        <div className="g-desktop-search">
-                            <Search size={16} className="search-icon" />
-                            <input type="text" placeholder="Search training, reports..." />
-                        </div>
-                    </div>
-
-                    <div className="g-header-right">
-                        <div className="g-status">
-                            <span className="g-dot"></span> Online
-                        </div>
-                        <button className="g-icon-btn">
-                            <Bell size={20} />
-                            <span className="g-badge"></span>
-                        </button>
-                    </div>
-                </header>
-
-                <div className="g-content">
-                    
-                    {/* Premium Banner */}
-                    <div className="g-premium-banner">
-                        <div className="g-banner-content">
-                            <h4>🚀 Boost Your RCM AI Experience</h4>
-                            <p>Install the RCM AI PWA for high-scale network synchronization and instant access.</p>
-                        </div>
-                        <button className="g-banner-btn" onClick={() => window.alert('PWA Install Triggered!')}>
-                            Install PWA
-                        </button>
-                    </div>
-                    
-                    {/* Hero Section */}
-                    <section className="g-hero" onClick={() => navigate('/chat')}>
-                        <div className="g-hero-glow"></div>
-                        <div className="g-hero-inner">
-                            <div className="g-pill">
-                                <Sparkles size={14} className="spin" /> 
-                                <span>Gemini Engine Active</span>
-                            </div>
-                            <h1>{getGreeting()}, <br /><span className="g-gradient-text">{userName.split(' ')[0]}</span></h1>
-                            <p>Unlock insights about your business growth.</p>
-                            
-                            <div className="g-fake-input">
-                                <span>Ask about RCM plans or products...</span>
-                                <div className="g-send-btn"><Sparkles size={16} /></div>
-                            </div>
-                        </div>
-                    </section>
-
-                    {/* Cards */}
-                    <h3 className="g-section-title">Your Dashboard</h3>
-                    <div className="g-grid">
-                        <div className="g-card" onClick={() => navigate('/daily-report')}>
-                            <div className="g-card-icon cyan"><TrendingUp size={24} /></div>
-                            <div className="g-card-text">
-                                <h4>Analytics</h4>
-                                <p>Track PV & Growth</p>
-                            </div>
-                            <ChevronRight className="g-arrow" />
-                        </div>
-
-                        <div className="g-card" onClick={() => navigate('/leaders-videos')}>
-                            <div className="g-card-icon orange"><Video size={24} /></div>
-                            <div className="g-card-text">
-                                <h4>Academy</h4>
-                                <p>Leader Training</p>
-                            </div>
-                            <ChevronRight className="g-arrow" />
-                        </div>
-
-                        <div className="g-card" onClick={() => navigate('/products-videos')}>
-                            <div className="g-card-icon purple"><Star size={24} /></div>
-                            <div className="g-card-text">
-                                <h4>Products</h4>
-                                <p>Visual Catalog</p>
-                            </div>
-                            <ChevronRight className="g-arrow" />
-                        </div>
-                    </div>
-                    
-                    <div className="g-spacer"></div>
-                </div>
-            </main>
-
-            {/* --- UPDATED MOBILE DOCK (No Blue Button) --- */}
-            <nav className="g-dock">
-                <div className={`dock-item ${location.pathname === '/dashboard' ? 'active' : ''}`} onClick={() => navigate('/dashboard')}>
-                    <LayoutDashboard size={24} />
-                </div>
-                
-                {/* Chat Icon Added Normally */}
-                <div className={`dock-item ${location.pathname === '/chat' ? 'active' : ''}`} onClick={() => navigate('/chat')}>
-                    <Zap size={24} />
-                </div>
-
-                <div className={`dock-item ${location.pathname === '/daily-report' ? 'active' : ''}`} onClick={() => navigate('/daily-report')}>
-                    <TrendingUp size={24} />
-                </div>
-
-                <div className={`dock-item ${location.pathname === '/leaders-videos' ? 'active' : ''}`} onClick={() => navigate('/leaders-videos')}>
-                    <Video size={24} />
-                </div>
-                
-                <div className={`dock-item ${location.pathname === '/menu' ? 'active' : ''}`} onClick={() => navigate('/menu')}>
-                    <Settings size={24} />
-                </div>
-            </nav>
-
+  return (
+    <div className="rcmud-shell">
+      {/* ---------- SIDEBAR (desktop only) ---------- */}
+      <aside className="rcmud-side">
+        <div className="rcmud-brand">
+          <img src={RCM_LOGO_URL} alt="" className="rcmud-brand-mark" />
+          <span className="rcmud-brand-name">RCM<span className="rcmud-accent">AI</span></span>
         </div>
-    );
+
+        <div className="rcmud-identity">
+          <span className="rcmud-avatar">{initial}</span>
+          <span className="rcmud-identity-text">
+            <span className="rcmud-identity-name">{firstName}</span>
+            <span className="rcmud-identity-role">{role}</span>
+          </span>
+        </div>
+
+        <nav className="rcmud-nav" aria-label="Primary">
+          {NAV_ITEMS.map((item) => (
+            <button
+              key={item.label}
+              className={`rcmud-nav-item ${isItemActive(item) ? 'is-active' : ''}`}
+              onClick={() => navigate(item.path)}
+            >
+              <item.icon size={19} strokeWidth={1.8} />
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </nav>
+
+        <div className="rcmud-signout-zone">
+          {!confirmingLogout ? (
+            <button className="rcmud-signout" onClick={() => setConfirmingLogout(true)}>
+              <LogOut size={17} strokeWidth={1.8} />
+              <span>Sign out</span>
+            </button>
+          ) : (
+            <div className="rcmud-signout-confirm">
+              <span>Sign out of RCM AI?</span>
+              <div className="rcmud-signout-actions">
+                <button className="rcmud-mini-btn" onClick={() => setConfirmingLogout(false)}>Cancel</button>
+                <button className="rcmud-mini-btn is-danger" onClick={performLogout}>Yes, sign out</button>
+              </div>
+            </div>
+          )}
+        </div>
+      </aside>
+
+      {/* ---------- MAIN ---------- */}
+      <main className="rcmud-main">
+        <header className={`rcmud-topbar ${scrolled ? 'is-scrolled' : ''}`}>
+          <div className="rcmud-topbar-brand">
+            <img src={RCM_LOGO_URL} alt="" />
+            <span>RCM<span className="rcmud-accent">AI</span></span>
+          </div>
+
+          <div className="rcmud-topbar-right">
+            <div className="rcmud-profile" ref={notifRef}>
+              <button
+                className="rcmud-icon-btn"
+                aria-label="Notifications"
+                onClick={() => setNotifOpen((v) => !v)}
+              >
+                <Bell size={19} strokeWidth={1.8} />
+                <i className="rcmud-dot" />
+              </button>
+
+              {notifOpen && (
+                <div className="rcmud-profile-sheet">
+                  <div className="rcmud-profile-head">
+                    <strong style={{ fontSize: '0.9rem' }}>Notifications</strong>
+                    <button className="rcmud-sheet-close" onClick={() => setNotifOpen(false)} aria-label="Close">
+                      <X size={16} />
+                    </button>
+                  </div>
+                  <p className="rcmud-empty-note">You're all caught up — nothing new right now.</p>
+                </div>
+              )}
+            </div>
+
+            <div className="rcmud-profile" ref={profileRef}>
+              <button
+                className="rcmud-avatar-btn"
+                onClick={() => setProfileOpen((v) => !v)}
+                aria-label="Account menu"
+              >
+                {initial}
+              </button>
+
+              {profileOpen && (
+                <div className="rcmud-profile-sheet">
+                  <div className="rcmud-profile-head">
+                    <span className="rcmud-avatar">{initial}</span>
+                    <span>
+                      <strong>{firstName}</strong>
+                      <em>{role}</em>
+                    </span>
+                    <button className="rcmud-sheet-close" onClick={() => setProfileOpen(false)} aria-label="Close">
+                      <X size={16} />
+                    </button>
+                  </div>
+
+                  {!confirmingLogout ? (
+                    <button className="rcmud-sheet-signout" onClick={() => setConfirmingLogout(true)}>
+                      <LogOut size={17} strokeWidth={1.8} />
+                      <span>Sign out</span>
+                    </button>
+                  ) : (
+                    <div className="rcmud-signout-confirm">
+                      <span>Sign out of RCM AI?</span>
+                      <div className="rcmud-signout-actions">
+                        <button className="rcmud-mini-btn" onClick={() => setConfirmingLogout(false)}>Cancel</button>
+                        <button className="rcmud-mini-btn is-danger" onClick={performLogout}>Yes, sign out</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </header>
+
+        <div className="rcmud-content">
+          {/* ---------- The two headline entry points ---------- */}
+          <section className="rcmud-feature-grid" aria-label="Quick access" style={{ marginTop: '1.5rem' }}>
+            <button
+              type="button"
+              className="rcmud-feature-card is-ai"
+              onClick={() => navigate('/chat')}
+              aria-label="Open your AI assistant"
+            >
+              <span className="rcmud-ai-shine" aria-hidden="true" />
+              <span className="rcmud-ai-icon">
+                <Sparkles size={20} strokeWidth={1.8} />
+              </span>
+              <span className="rcmud-feature-copy">
+                <span className="rcmud-feature-title">Your Assistant</span>
+                <span className="rcmud-feature-sub">Ask about PV, products, training — anything</span>
+              </span>
+              <span className="rcmud-feature-go" aria-hidden="true">
+                <ArrowUpRight size={18} />
+              </span>
+            </button>
+
+            <button
+              type="button"
+              className="rcmud-feature-card is-team"
+              onClick={handleVideoCall}
+              aria-label="Open Team Dekho video call"
+            >
+              <span className="rcmud-feature-go is-corner" aria-hidden="true">
+                <ExternalLink size={14} />
+              </span>
+              <img src={TEAM_DEKHO_LOGO} alt="Team Dekho" className="rcmud-team-logo" />
+            </button>
+          </section>
+
+          <section className="rcmud-stats" aria-label="More">
+            <button className="rcmud-stat" onClick={() => navigate('/daily-report')}>
+              <span className="rcmud-stat-icon amber"><TrendingUp size={18} /></span>
+              <span className="rcmud-stat-body">
+                <span className="rcmud-stat-title">Growth &amp; PV</span>
+                <span className="rcmud-stat-sub">Full breakdown of this month's numbers</span>
+              </span>
+              <ChevronRight size={16} className="rcmud-stat-arrow" />
+            </button>
+
+            <button className="rcmud-stat" onClick={() => navigate('/leaders-videos')}>
+              <span className="rcmud-stat-icon teal"><Star size={18} /></span>
+              <span className="rcmud-stat-body">
+                <span className="rcmud-stat-title">Leader Academy</span>
+                <span className="rcmud-stat-sub">Training from top leaders</span>
+              </span>
+              <ChevronRight size={16} className="rcmud-stat-arrow" />
+            </button>
+
+            <button className="rcmud-stat" onClick={() => navigate('/products-videos')}>
+              <span className="rcmud-stat-icon rose"><Star size={18} /></span>
+              <span className="rcmud-stat-body">
+                <span className="rcmud-stat-title">Product Catalog</span>
+                <span className="rcmud-stat-sub">Browse with visual guides</span>
+              </span>
+              <ChevronRight size={16} className="rcmud-stat-arrow" />
+            </button>
+
+            <button className="rcmud-stat" onClick={() => navigate('/channels-videos')}>
+              <span className="rcmud-stat-icon indigo"><Sparkles size={18} /></span>
+              <span className="rcmud-stat-body">
+                <span className="rcmud-stat-title">Official Channels</span>
+                <span className="rcmud-stat-sub">Auto-synced YouTube feeds</span>
+              </span>
+              <ChevronRight size={16} className="rcmud-stat-arrow" />
+            </button>
+          </section>
+
+          <div className="rcmud-spacer" />
+        </div>
+      </main>
+    </div>
+  );
 };
 
 export default UserDashboard;

@@ -24,3 +24,10 @@ export const transliterateText = (text) => {
 export const generateWhatsAppLink = (number, message) => {
   return `https://wa.me/${number}?text=${encodeURIComponent(message)}`;
 };
+
+export const extractYouTubeId = (url) => {
+  if (!url) return null;
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+  const match = url.match(regExp);
+  return (match && match[2].length === 11) ? match[2] : null;
+};
