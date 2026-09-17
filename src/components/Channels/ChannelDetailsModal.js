@@ -9,9 +9,7 @@ export function ChannelDetailsModal({ channel, onClose }) {
   const description = channel.description || channel.channel_description || 'No description available.';
   const ytId = channel.channelId || channel.youtubeChannelId || channel.youtube_channel_id || channel.id;
   const ytHandle = channel.handle;
-  const ytUrl = ytHandle 
-    ? `https://www.youtube.com/${ytHandle.startsWith('@') ? ytHandle : `@${ytHandle}`}` 
-    : (ytId ? `https://www.youtube.com/channel/${ytId}` : 'https://www.youtube.com');
+  const ytUrl = `https://www.youtube.com/${channel.handle ? (channel.handle.startsWith('@') ? channel.handle : '@' + channel.handle) : 'channel/' + ytId}`;
 
   const subscribers = channel.subscriberCount ?? channel.subscriber_count ?? 0;
   const videoCount = channel.videoCount ?? channel.video_count ?? 0;

@@ -149,7 +149,6 @@ function ChannelVideos() {
 
       if (res.data.success && Array.isArray(res.data.data)) {
         // Separate live/upcoming from regular videos
-        const fetchedChannel = res.data.channel;
         let regularVideos = res.data.data;
 
         // Live and Upcoming videos will now be directly in regularVideos with their correct titles/scheduled times
@@ -240,20 +239,18 @@ function ChannelVideos() {
   }, [accessToken, API_URL, fetchChannelVideos]);
 
   useEffect(() => {
-    if (selectedChannel) {
-      console.log('Selected channel details:', selectedChannel);
-    }
-    if (selectedChannel?.id) {
-      setPage(1);
-      setVideos([]);
-      setHasMore(true);
-      fetchChannelVideos(selectedChannel.id, 1, true);
-      
-      // Start polling for live/upcoming status
-      const pollInterval = setInterval(() => pollLiveStatus(selectedChannel.id), 60 * 1000); // Poll every 1 minute
-      return () => clearInterval(pollInterval);
-    }
-  }, [selectedChannel, fetchChannelVideos, pollLiveStatus]);
+    if (!selectedChannel?.id) return;
+
+    console.log('Selected channel details:', selectedChannel);
+
+    setPage(1);
+    setVideos([]);
+    setHasMore(true);
+    fetchChannelVideos(selectedChannel.id, 1, true);
+
+    const pollInterval = setInterval(() => pollLiveStatus(selectedChannel.id), 60 * 1000);
+    return () => clearInterval(pollInterval);
+  }, [selectedChannel?.id, fetchChannelVideos, pollLiveStatus]);
 
   const handleSelectChannel = useCallback((channel) => {
     setSelectedChannel(prev => {
@@ -288,6 +285,13 @@ function ChannelVideos() {
     }
     return display;
   }, [filteredVideos, liveVideoData, upcomingVideoData]);
+
+  console.log("Current selectedChannel object:", selectedChannel);
+
+  const subscribers = Number(selectedChannel?.subscriberCount ?? selectedChannel?.subscriber_count ?? 0);
+  const videosCount = Number(selectedChannel?.videoCount ?? selectedChannel?.video_count ?? 0);
+  const views = Number(selectedChannel?.viewCount ?? selectedChannel?.view_count ?? 0);
+  const description = selectedChannel?.description?.trim() || "";
 
   return (
     <div className="channels-page-container">
@@ -348,16 +352,16 @@ function ChannelVideos() {
                       </>
                     ) : null;
                   })()}
-                  <span className="channel-sub-count">{formatCount(selectedChannel.subscriberCount ?? selectedChannel.subscriber_count ?? 0)} subscribers</span>
+                  <span className="channel-sub-count">{formatCount(subscribers)} subscribers</span>
                   <span className="separator">•</span>
-                  <span className="channel-video-count">{formatCount(selectedChannel.videoCount ?? selectedChannel.video_count ?? 0)} videos</span>
+                  <span className="channel-video-count">{formatCount(videosCount)} videos</span>
                   <span className="separator">•</span>
-                  <span className="channel-view-count">{formatCount(selectedChannel.viewCount ?? selectedChannel.view_count ?? 0)} views</span>
+                  <span className="channel-view-count">{formatCount(views)} views</span>
                 </p>
                 <div className="channel-description-container">
                   <p className="channel-description-excerpt">
-                    {selectedChannel.description ? (
-                      selectedChannel.description.length > 100 ? `${selectedChannel.description.substring(0, 100)}...` : selectedChannel.description
+                    {description ? (
+                      description.length > 100 ? `${description.substring(0, 100)}...` : description
                     ) : (
                       'Official RCM channel for training, updates, and leadership videos.'
                     )}
