@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../../context/AuthContext';
 import { Youtube, Tv, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -18,6 +19,7 @@ function ChannelsSidebar({ selectedChannelId, onSelectChannel }) {
   const isPausedRef = useRef(false);
   const resumeTimeoutRef = useRef(null);
   const { accessToken, API_URL } = useAuth();
+  const navigate = useNavigate();
 
   const fetchChannels = useCallback(async () => {
     if (!accessToken || !API_URL) return;

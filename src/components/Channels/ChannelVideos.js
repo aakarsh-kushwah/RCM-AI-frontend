@@ -5,6 +5,7 @@ import { Search, PlayCircle, Tv, RefreshCw, Youtube, Info } from 'lucide-react';
 import ChannelsSidebar from './ChannelsSidebar';
 import { VideoModal } from '../common/VideoModal';
 import { ChannelDetailsModal } from './ChannelDetailsModal'; // Will create this
+import ShortsFeed from '../Shorts/ShortsFeed';
 import { extractYouTubeId } from '../../utils/textUtils';
 import { formatCount, formatDate } from '../../utils/formatUtils';
 import './ChannelVideos.css';
@@ -442,7 +443,6 @@ function ChannelVideos() {
           </div>
         )}
       </div>
-
       {activeVideo && (
         <VideoModal video={activeVideo} onClose={() => setActiveVideo(null)} />
       )}

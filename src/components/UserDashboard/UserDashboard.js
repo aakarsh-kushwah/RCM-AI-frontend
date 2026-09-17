@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  Zap, Star, TrendingUp, LogOut, ChevronRight, ExternalLink, ArrowUpRight, Sparkles, Bell, X
+  Zap, Star, TrendingUp, LogOut, ChevronRight, ExternalLink, ArrowUpRight, Sparkles, Bell, X, Film
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import './UserDashboard.css';
@@ -239,41 +239,80 @@ const UserDashboard = () => {
             </button>
           </section>
 
-          <section className="rcmud-stats" aria-label="More">
-            <button className="rcmud-stat" onClick={() => navigate('/daily-report')}>
-              <span className="rcmud-stat-icon amber"><TrendingUp size={18} /></span>
-              <span className="rcmud-stat-body">
-                <span className="rcmud-stat-title">Growth &amp; PV</span>
-                <span className="rcmud-stat-sub">Full breakdown of this month's numbers</span>
-              </span>
-              <ChevronRight size={16} className="rcmud-stat-arrow" />
+          <section className="rcmud-app-grid" aria-label="Core Modules">
+            <button className="rcmud-app-card" onClick={() => navigate('/shorts')}>
+              <div className="rcmud-app-header">
+                <span className="rcmud-app-icon red-pink-gradient"><Film size={22} /></span>
+                <span className="rcmud-app-badge">🔥 340+</span>
+              </div>
+              <div className="rcmud-app-body">
+                <span className="rcmud-app-title">RCM Shorts</span>
+                <span className="rcmud-app-sub">60s Micro-Learning & Sales Hacks</span>
+              </div>
+              <div className="rcmud-app-footer">
+                <span>Explore Feed</span>
+                <ArrowUpRight size={16} />
+              </div>
             </button>
 
-            <button className="rcmud-stat" onClick={() => navigate('/leaders-videos')}>
-              <span className="rcmud-stat-icon teal"><Star size={18} /></span>
-              <span className="rcmud-stat-body">
-                <span className="rcmud-stat-title">Leader Academy</span>
-                <span className="rcmud-stat-sub">Training from top leaders</span>
-              </span>
-              <ChevronRight size={16} className="rcmud-stat-arrow" />
+            <button className="rcmud-app-card" onClick={() => navigate('/leaders-videos')}>
+              <div className="rcmud-app-header">
+                <span className="rcmud-app-icon teal"><Star size={22} /></span>
+                <span className="rcmud-app-badge is-teal">Academy</span>
+              </div>
+              <div className="rcmud-app-body">
+                <span className="rcmud-app-title">Leader Academy</span>
+                <span className="rcmud-app-sub">Training from top direct-selling leaders</span>
+              </div>
+              <div className="rcmud-app-footer">
+                <span>Watch Classes</span>
+                <ArrowUpRight size={16} />
+              </div>
             </button>
 
-            <button className="rcmud-stat" onClick={() => navigate('/products-videos')}>
-              <span className="rcmud-stat-icon rose"><Star size={18} /></span>
-              <span className="rcmud-stat-body">
-                <span className="rcmud-stat-title">Product Catalog</span>
-                <span className="rcmud-stat-sub">Browse with visual guides</span>
-              </span>
-              <ChevronRight size={16} className="rcmud-stat-arrow" />
+            <button className="rcmud-app-card" onClick={() => navigate('/products-videos')}>
+              <div className="rcmud-app-header">
+                <span className="rcmud-app-icon rose"><Star size={22} /></span>
+                <span className="rcmud-app-badge is-rose">Catalog</span>
+              </div>
+              <div className="rcmud-app-body">
+                <span className="rcmud-app-title">Product Catalog</span>
+                <span className="rcmud-app-sub">Browse items with visual guides & demos</span>
+              </div>
+              <div className="rcmud-app-footer">
+                <span>Browse Products</span>
+                <ArrowUpRight size={16} />
+              </div>
             </button>
 
-            <button className="rcmud-stat" onClick={() => navigate('/channels-videos')}>
-              <span className="rcmud-stat-icon indigo"><Sparkles size={18} /></span>
-              <span className="rcmud-stat-body">
-                <span className="rcmud-stat-title">Official Channels</span>
-                <span className="rcmud-stat-sub">Auto-synced YouTube feeds</span>
-              </span>
-              <ChevronRight size={16} className="rcmud-stat-arrow" />
+            <button className="rcmud-app-card" onClick={() => navigate('/daily-report')}>
+              <div className="rcmud-app-header">
+                <span className="rcmud-app-icon amber"><TrendingUp size={22} /></span>
+                <span className="rcmud-app-badge is-amber">Analytics</span>
+              </div>
+              <div className="rcmud-app-body">
+                <span className="rcmud-app-title">Growth &amp; PV</span>
+                <span className="rcmud-app-sub">Full breakdown of this month's numbers</span>
+              </div>
+              <div className="rcmud-app-footer">
+                <span>View Reports</span>
+                <ArrowUpRight size={16} />
+              </div>
+            </button>
+
+            <button className="rcmud-app-card is-wide" onClick={() => navigate('/channels-videos')}>
+              <div className="rcmud-app-header">
+                <span className="rcmud-app-icon indigo"><Sparkles size={22} /></span>
+                <span className="rcmud-app-badge is-indigo">Synced Live</span>
+              </div>
+              <div className="rcmud-app-body">
+                <span className="rcmud-app-title">Official Channels</span>
+                <span className="rcmud-app-sub">Auto-synced YouTube feeds & live broadcasts</span>
+              </div>
+              <div className="rcmud-app-footer">
+                <span>Open Channels</span>
+                <ArrowUpRight size={16} />
+              </div>
             </button>
           </section>
 

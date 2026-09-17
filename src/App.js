@@ -16,6 +16,7 @@ import LoadingSpinner from './components/LoadingSpinner/LoadingSpinner';
 import InstallAppModal from './components/InstallAppModal.jsx';
 import RootRedirector from './components/RootRedirector';
 import LoginPage from './components/login/LoginPage';
+const ShortsFeed = lazy(() => import('./components/Shorts/ShortsFeed'));
 
 // ==========================================
 // 🔐 SECURITY & LOGIC
@@ -250,6 +251,10 @@ function App() {
 
                     <Route path="/voice-call" element={
                         <UserProtectedRoute><VoiceCallPage /></UserProtectedRoute>
+                    } />
+
+                    <Route path="/shorts" element={
+                        <UserProtectedRoute><ShortsFeed pageTitle="Shorts" /></UserProtectedRoute>
                     } />
 
                     {/* ⚠️ 404 HANDLER */}

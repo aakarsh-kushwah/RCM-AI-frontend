@@ -350,52 +350,140 @@
   box-shadow: var(--u-shadow);
 }
 
-/* -------------------------------- STAT ROWS -------------------------------- */
+/* ----------------------- CORE MODULES APP GRID ----------------------- */
 
-.rcmud-stats {
+.rcmud-app-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.rcmud-app-card {
+  position: relative;
   display: flex;
   flex-direction: column;
-  border-radius: var(--u-radius-lg);
-  overflow: hidden;
-  box-shadow: var(--u-shadow);
-  margin-bottom: 0;
-}
-
-.rcmud-stat {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 16px 18px;
+  justify-content: space-between;
+  padding: 18px 20px;
+  min-height: 150px;
   background: var(--u-surface);
-  border: none;
-  border-bottom: 1px solid var(--u-border);
-  color: inherit;
-  font: inherit;
+  border: 1px solid var(--u-border);
+  border-radius: var(--u-radius-lg);
+  box-shadow: var(--u-shadow);
   text-align: left;
   cursor: pointer;
-  transition: background 0.15s ease, transform 0.1s ease;
+  font: inherit;
+  color: inherit;
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s ease, border-color 0.18s ease;
+  overflow: hidden;
 }
 
-.rcmud-stat:last-child { border-bottom: none; }
-.rcmud-stat:hover { background: var(--u-surface-alt); }
-.rcmud-stat:active { transform: scale(0.995); }
+.rcmud-app-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 24px -6px rgba(16, 24, 40, 0.1);
+  border-color: rgba(91, 42, 158, 0.25);
+}
 
-.rcmud-stat-icon {
-  width: 38px;
-  height: 38px;
-  flex: none;
-  border-radius: 10px;
+.rcmud-app-card:active {
+  transform: translateY(-1px) scale(0.99);
+}
+
+.rcmud-app-card.is-wide {
+  grid-column: span 2;
+}
+
+.rcmud-app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.rcmud-app-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
   display: grid;
   place-items: center;
+  flex: none;
 }
-.rcmud-stat-icon.amber { background: rgba(201, 130, 15, 0.12); color: var(--u-amber); }
-.rcmud-stat-icon.teal { background: rgba(14, 159, 142, 0.12); color: var(--u-teal); }
-.rcmud-stat-icon.rose { background: rgba(209, 72, 58, 0.1); color: var(--u-rose); }
 
-.rcmud-stat-body { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
-.rcmud-stat-title { font-weight: 600; font-size: 0.92rem; color: var(--u-text); }
-.rcmud-stat-sub { font-size: 0.78rem; color: var(--u-text-faint); }
-.rcmud-stat-arrow { color: var(--u-text-faint); flex: none; }
+.rcmud-app-icon.teal { background: rgba(14, 159, 142, 0.12); color: var(--u-teal); }
+.rcmud-app-icon.rose { background: rgba(209, 72, 58, 0.12); color: var(--u-rose); }
+.rcmud-app-icon.amber { background: rgba(201, 130, 15, 0.12); color: var(--u-amber); }
+.rcmud-app-icon.indigo { background: rgba(91, 42, 158, 0.12); color: var(--u-primary); }
+.rcmud-app-icon.red-pink-gradient {
+  background: linear-gradient(135deg, #ff007f, #7928ca);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(255, 0, 127, 0.3);
+}
+
+.rcmud-app-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 4px 8px;
+  border-radius: 20px;
+  background: rgba(255, 0, 127, 0.1);
+  color: #d80064;
+}
+
+.rcmud-app-badge.is-teal {
+  background: rgba(14, 159, 142, 0.1);
+  color: var(--u-teal);
+}
+
+.rcmud-app-badge.is-rose {
+  background: rgba(209, 72, 58, 0.1);
+  color: var(--u-rose);
+}
+
+.rcmud-app-badge.is-amber {
+  background: rgba(201, 130, 15, 0.1);
+  color: var(--u-amber);
+}
+
+.rcmud-app-badge.is-indigo {
+  background: rgba(91, 42, 158, 0.1);
+  color: var(--u-primary);
+}
+
+.rcmud-app-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.rcmud-app-title {
+  font-size: 1.02rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--u-text);
+}
+
+.rcmud-app-sub {
+  font-size: 0.8rem;
+  color: var(--u-text-dim);
+  line-height: 1.4;
+}
+
+.rcmud-app-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--u-border);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--u-text-faint);
+  transition: color 0.15s ease;
+}
+
+.rcmud-app-card:hover .rcmud-app-footer {
+  color: var(--u-primary);
+}
 
 .rcmud-spacer { height: 16px; }
 
