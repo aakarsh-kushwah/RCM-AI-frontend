@@ -54,7 +54,9 @@ const RequireSubscription = ({ children }) => {
     }
 
     if (!isApproved) {
-        return <Navigate to="/subscription-required" replace />;
+        // Removed automatic redirect to /subscription-required based on isApproved status.
+        // Payment checks are now action-triggered. The component is still here for direct navigation
+        // to /subscription-required but will not auto-redirect from protected routes.
     }
 
     return children;

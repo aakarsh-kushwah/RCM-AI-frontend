@@ -11,6 +11,7 @@ axios.defaults.withCredentials = true;
 
 let isRefreshing = false;
 let refreshWaiters = [];
+let globalSetAccessToken = null;
 
 const onRefreshSuccess = (newToken) => {
     refreshWaiters.forEach(cb => cb(newToken));
@@ -22,8 +23,57 @@ const onRefreshFailure = (err) => {
     refreshWaiters = [];
 };
 
+// Shared single-flight refresh helper function to prevent race conditions & token rotation reuse alerts
+const refreshAccessToken = async () => {
+    if (isRefreshing) {
+        return new Promise((resolve, reject) => {
+            refreshWaiters.push((token, err) => {
+                if (err) return reject(err);
+                resolve(token);
+            });
+        });
+    }
+
+    isRefreshing = true;
+    try {
+        const res = await axios.post(`${API_URL}/api/auth/refresh`, {}, { withCredentials: true });
+        const newToken = res?.data?.accessToken;
+        if (newToken) {
+            localStorage.setItem('accessToken', newToken);
+            if (globalSetAccessToken) {
+                globalSetAccessToken(newToken);
+            }
+        }
+        isRefreshing = false;
+        onRefreshSuccess(newToken);
+        return newToken;
+    } catch (refreshError) {
+        isRefreshing = false;
+        onRefreshFailure(refreshError);
+        localStorage.removeItem('accessToken');
+        localStorage.removeItem('user');
+        localStorage.removeItem('refreshToken');
+        if (globalSetAccessToken) {
+            globalSetAccessToken(null);
+        }
+        // Defensive self-heal redirect on refresh failure
+        if (window.location.pathname !== '/login') {
+            window.location.href = '/login';
+        }
+        throw refreshError;
+    }
+};
+
+const parseJwt = (token) => {
+    try {
+        return JSON.parse(atob(token.split('.')[1]));
+    } catch (e) {
+        return null;
+    }
+};
+
 axios.interceptors.request.use((config) => {
-    const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
+    const token = localStorage.getItem('accessToken');
     if (token) {
         config.headers = config.headers || {};
         config.headers.Authorization = `Bearer ${token}`;
@@ -45,39 +95,13 @@ axios.interceptors.response.use(
         ) {
             originalRequest.__retry = true;
 
-            if (isRefreshing) {
-                return new Promise((resolve, reject) => {
-                    refreshWaiters.push((token, err) => {
-                        if (err) return reject(err);
-                        if (token) {
-                            originalRequest.headers.Authorization = `Bearer ${token}`;
-                        }
-                        resolve(axios(originalRequest));
-                    });
-                });
-            }
-
-            isRefreshing = true;
             try {
-                const res = await axios.post(`${API_URL}/api/auth/refresh`, {}, { withCredentials: true });
-                const newToken = res?.data?.accessToken;
-                if (newToken) {
-                    localStorage.setItem('accessToken', newToken);
-                    localStorage.setItem('token', newToken);
-                }
-                isRefreshing = false;
-                onRefreshSuccess(newToken);
-
+                const newToken = await refreshAccessToken();
                 if (newToken) {
                     originalRequest.headers.Authorization = `Bearer ${newToken}`;
                 }
                 return axios(originalRequest);
             } catch (refreshError) {
-                isRefreshing = false;
-                onRefreshFailure(refreshError);
-                localStorage.removeItem('accessToken');
-                localStorage.removeItem('token');
-                localStorage.removeItem('user');
                 return Promise.reject(refreshError);
             }
         }
@@ -100,13 +124,46 @@ export const useAuth = () => {
 // 3. Provider Component बनाएं
 export const AuthProvider = ({ children }) => {
     const [accessToken, setAccessToken] = useState(localStorage.getItem('accessToken') || null);
-    const [user, setUser] = useState(JSON.parse(localStorage.getItem('user')) || null);
+    const [user, setUser] = useState(() => {
+        try {
+            const stored = localStorage.getItem('user');
+            return stored ? JSON.parse(stored) : null;
+        } catch (err) {
+            localStorage.removeItem('user');
+            return null;
+        }
+    });
     const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        globalSetAccessToken = setAccessToken;
+
+        // Lightweight keep-alive trigger on app mount / open to slide refresh window
+        const keepAliveSession = async () => {
+            const storedUser = localStorage.getItem('user');
+            const currentAccessToken = localStorage.getItem('accessToken');
+
+            if (storedUser && currentAccessToken) {
+                const decodedToken = parseJwt(currentAccessToken);
+                const currentTime = Date.now() / 1000; // in seconds
+                const expiryThreshold = 120; // 2 minutes before expiry
+
+                // Only refresh if token is expired or close to expiry
+                if (!decodedToken || decodedToken.exp < (currentTime + expiryThreshold)) {
+                    try {
+                        await refreshAccessToken();
+                    } catch (e) {
+                        // Errors are handled by refreshAccessToken's internal self-heal
+                    }
+                }
+            }
+        };
+        keepAliveSession();
+    }, [API_URL]);
 
     const login = (userData, newAccessToken, newRefreshToken) => {
         const userWithApproval = { ...userData, isApproved: userData.isApproved || false };
         localStorage.setItem('accessToken', newAccessToken);
-        localStorage.setItem('token', newAccessToken);
         // refreshToken is now stored in HttpOnly cookie by backend, removed from localStorage entirely
         localStorage.setItem('user', JSON.stringify(userWithApproval));
         setAccessToken(newAccessToken);
@@ -122,7 +179,6 @@ export const AuthProvider = ({ children }) => {
 
         // Clear local storage and state
         localStorage.removeItem('accessToken');
-        localStorage.removeItem('token');
         localStorage.removeItem('refreshToken');
         localStorage.removeItem('user');
         setAccessToken(null);

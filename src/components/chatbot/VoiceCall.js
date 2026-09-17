@@ -221,7 +221,7 @@ const VoiceCall = () => {
       vibrate(50);
 
       try {
-        const token = localStorage.getItem('token') || '';
+        const token = localStorage.getItem('accessToken') || '';
         const response = await fetch(`${config.API.BASE_URL}/api/chat`, {
           method: 'POST',
           headers: {

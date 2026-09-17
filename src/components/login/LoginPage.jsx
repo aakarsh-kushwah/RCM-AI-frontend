@@ -7,6 +7,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GoogleLogin } from '@react-oauth/google';
+import axios from 'axios';
 import { ShieldCheck } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import LoadingSpinner from '../LoadingSpinner/LoadingSpinner';
@@ -35,19 +36,19 @@ const LoginPage = () => {
     }
 
     /**
-     * Handles the success callback from the Google Login button.
-     * Sends the Google credential to the backend for verification and token exchange.
+     * Handles the success callback from the Google Login component.
+     * Sends the Google credential ID token to the backend using axios with withCredentials: true
+     * to ensure the httpOnly refresh-token cookie is properly stored by the browser.
      * On success, stores the user/token in context and navigates to the dashboard.
      */
     const handleGoogleSuccess = async (credentialResponse) => {
         try {
-            const response = await fetch(`${API_URL || 'http://localhost:10000'}/api/auth/google`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ credential: credentialResponse.credential })
-            });
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.message || 'Google Auth Failed');
+            const response = await axios.post(
+                `${API_URL || 'http://localhost:10000'}/api/auth/google`,
+                { credential: credentialResponse.credential },
+                { withCredentials: true }
+            );
+            const data = response.data;
             if (data.success && data.accessToken) {
                 // Store user and token in AuthContext (which also persists to localStorage)
                 login(data.user, data.accessToken);
@@ -56,7 +57,8 @@ const LoginPage = () => {
                 navigate('/dashboard', { replace: true });
             }
         } catch (err) {
-            setError(err.message || 'Google login failed.');
+            const errorMessage = err.response?.data?.message || err.message || 'Google login failed.';
+            setError(errorMessage);
         }
     };
 
@@ -87,6 +89,7 @@ const LoginPage = () => {
                         shape="pill"
                         size="large"
                         text="continue_with"
+                        auto_select={false}
                     />
                 </div>
 

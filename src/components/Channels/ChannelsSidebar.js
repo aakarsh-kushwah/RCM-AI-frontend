@@ -17,32 +17,34 @@ function ChannelsSidebar({ selectedChannelId, onSelectChannel }) {
   const scrollerRef = useRef(null);
   const isPausedRef = useRef(false);
   const resumeTimeoutRef = useRef(null);
-  const { token, API_URL } = useAuth();
+  const { accessToken, API_URL } = useAuth();
+
+  const fetchChannels = useCallback(async () => {
+    if (!accessToken || !API_URL) return;
+    try {
+      setLoading(true);
+      const res = await axios.get(`${API_URL}/api/channels`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (res.data.success && Array.isArray(res.data.data)) {
+        const chList = res.data.data;
+        setChannels(chList);
+        if (!selectedChannelId && chList.length > 0) {
+          onSelectChannel(chList[0]);
+        }
+      }
+    } catch (err) {
+      setError('Failed to load channels');
+    } finally {
+      setLoading(false);
+    }
+  }, [accessToken, API_URL, selectedChannelId, onSelectChannel]);
 
   useEffect(() => {
-    async function fetchChannels() {
-      if (!token || !API_URL) return;
-      try {
-        setLoading(true);
-        const res = await axios.get(`${API_URL}/api/channels`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.data.success && Array.isArray(res.data.data)) {
-          const chList = res.data.data;
-          setChannels(chList);
-          if (!selectedChannelId && chList.length > 0) {
-            onSelectChannel(chList[0]);
-          }
-        }
-      } catch (err) {
-        setError('Failed to load channels');
-      } finally {
-        setLoading(false);
-      }
-    }
     fetchChannels();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, API_URL]);
+    const interval = setInterval(fetchChannels, 60000); // Poll every minute
+    return () => clearInterval(interval);
+  }, [fetchChannels]);
 
   const markLogoFailed = useCallback((channelId) => {
     setFailedLogos(prev => {
@@ -72,8 +74,6 @@ function ChannelsSidebar({ selectedChannelId, onSelectChannel }) {
     };
   }, [channels, updateScrollButtons]);
 
-  // Continuous auto-slide — loops seamlessly through a duplicated list,
-  // pauses whenever the user is interacting with the strip.
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el || channels.length === 0) return;
@@ -152,11 +152,39 @@ function ChannelsSidebar({ selectedChannelId, onSelectChannel }) {
     );
   }
 
-  // Duplicated so the auto-slide can loop seamlessly once content overflows.
-  const displayChannels = [...channels, ...channels];
+  const pinnedChannels = channels.filter(ch => ch.isPinned);
+  const scrollingChannels = channels.filter(ch => !ch.isPinned);
+  const displayChannels = scrollingChannels.length > 0 ? [...scrollingChannels, ...scrollingChannels] : [];
 
   const renderChip = (ch, copyIndex) => {
     const isSelected = ch.id === selectedChannelId;
+    let timeLabel = null;
+
+    if (ch.isLiveNow) {
+      // Live channel, no time label needed
+    } else if (ch.upcomingPremiereAt) {
+      const scheduledTime = new Date(ch.upcomingPremiereAt);
+      const now = new Date();
+      const diffMs = scheduledTime.getTime() - now.getTime();
+
+      if (diffMs > 0) {
+        // Upcoming
+        const diffHours = Math.max(0, Math.round(diffMs / (1000 * 60 * 60)));
+        const diffMinutes = Math.max(0, Math.round(diffMs / (1000 * 60))) % 60;
+
+        if (diffHours > 0) {
+          timeLabel = `in ${diffHours}h ${diffMinutes}m`;
+        } else if (diffMinutes > 0) {
+          timeLabel = `in ${diffMinutes}m`;
+        } else {
+          timeLabel = "Soon";
+        }
+      } else {
+        // Past scheduled time, but not live (might have ended or missed)
+        timeLabel = "Ended"; // Or some other appropriate status
+      }
+    }
+
     return (
       <button
         key={`${ch.id}-${copyIndex}`}
@@ -179,45 +207,59 @@ function ChannelsSidebar({ selectedChannelId, onSelectChannel }) {
               <Youtube size={24} />
             </span>
           )}
+          {ch.isLiveNow && <span className="channel-live-badge">LIVE</span>}
         </span>
         <span className="channel-chip-name" title={ch.name}>{ch.name}</span>
+        {timeLabel && <span className="channel-upcoming-label">{timeLabel}</span>}
       </button>
     );
   };
 
   return (
     <div
-      className="channels-strip"
-      onMouseEnter={pauseAutoScroll}
-      onMouseLeave={() => { isPausedRef.current = false; }}
-      onTouchStart={pauseAutoScroll}
-      onTouchEnd={resumeAutoScrollSoon}
+      className="channels-strip-wrapper"
+      style={{ display: 'flex', alignItems: 'center', width: '100%', overflow: 'hidden' }}
     >
-      {canScrollLeft && (
-        <button
-          type="button"
-          className="channel-scroll-btn channel-scroll-btn-left"
-          onClick={() => scrollByAmount(-1)}
-          aria-label="Scroll channels left"
-        >
-          <ChevronLeft size={20} />
-        </button>
-      )}
+      {pinnedChannels.map(ch => (
+        <div key={`pinned-${ch.id}`} className="channel-pinned-container" style={{ flexShrink: 0, paddingRight: '10px' }}>
+          {renderChip(ch, 'pinned')}
+        </div>
+      ))}
 
-      <div className="channel-scroller" ref={scrollerRef}>
-        {displayChannels.map((ch, idx) => renderChip(ch, idx < channels.length ? 'a' : 'b'))}
+      <div
+        className="channels-strip"
+        onMouseEnter={pauseAutoScroll}
+        onMouseLeave={() => { isPausedRef.current = false; }}
+        onTouchStart={pauseAutoScroll}
+        onTouchEnd={resumeAutoScrollSoon}
+        style={{ flexGrow: 1, overflow: 'hidden', position: 'relative' }}
+      >
+        {canScrollLeft && (
+          <button
+            type="button"
+            className="channel-scroll-btn channel-scroll-btn-left"
+            onClick={() => scrollByAmount(-1)}
+            aria-label="Scroll channels left"
+          >
+            <ChevronLeft size={20} />
+          </button>
+        )}
+
+        <div className="channel-scroller" ref={scrollerRef}>
+          {displayChannels.map((ch, idx) => renderChip(ch, idx < scrollingChannels.length ? 'a' : 'b'))}
+        </div>
+
+        {canScrollRight && (
+          <button
+            type="button"
+            className="channel-scroll-btn channel-scroll-btn-right"
+            onClick={() => scrollByAmount(1)}
+            aria-label="Scroll channels right"
+          >
+            <ChevronRight size={20} />
+          </button>
+        )}
       </div>
-
-      {canScrollRight && (
-        <button
-          type="button"
-          className="channel-scroll-btn channel-scroll-btn-right"
-          onClick={() => scrollByAmount(1)}
-          aria-label="Scroll channels right"
-        >
-          <ChevronRight size={20} />
-        </button>
-      )}
     </div>
   );
 }

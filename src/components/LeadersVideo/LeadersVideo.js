@@ -61,12 +61,12 @@ function LeadersVideo({ pageTitle }) {
     const [hasMore, setHasMore] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
 
-    const { token, API_URL } = useAuth(); 
+    const { accessToken, API_URL } = useAuth();
     const location = useLocation();
     const navigate = useNavigate();
 
     const fetchVideos = useCallback(async (pageNum, isInitialLoad = false) => {
-        const authToken = token || localStorage.getItem('token') || localStorage.getItem('accessToken');
+        const authToken = accessToken || localStorage.getItem('accessToken');
         if (!authToken || !API_URL) {
              setError("Authentication error. Please log in again.");
              setLoading(false);
@@ -95,10 +95,10 @@ function LeadersVideo({ pageTitle }) {
         } finally {
             if (isInitialLoad) setLoading(false); else setLoadingMore(false);
         }
-    }, [token, API_URL]);
+    }, [accessToken, API_URL]);
 
     useEffect(() => {
-        if (token && API_URL) {
+        if (accessToken && API_URL) {
             setPage(1); 
             setAllVideos([]);
             setHasMore(true);
@@ -110,7 +110,7 @@ function LeadersVideo({ pageTitle }) {
             
             fetchVideos(1, true);
         }
-    }, [token, API_URL, location.state, navigate, fetchVideos]); 
+    }, [accessToken, API_URL, location.state, navigate, fetchVideos]);
 
     const filteredVideos = useMemo(() => {
         if (!debouncedSearchTerm) return allVideos; 

@@ -150,7 +150,7 @@ const DailyReport = () => {
 
     try {
       const getMonthData = async (m, y) => {
-        const token = localStorage.getItem('token');
+        const token = localStorage.getItem('accessToken');
         const response = await axios.post(
           `${API_BASE_URL}/api/reports/get-dailyReport`,
           { month: m, year: y },
@@ -200,16 +200,6 @@ const DailyReport = () => {
       if (axios.isCancel(err)) return; 
 
       console.error('Sync Error:', err);
-      
-      if (err.response?.status === 403 && err.response?.data?.code === 'SUBSCRIPTION_REQUIRED') {
-          const user = JSON.parse(localStorage.getItem('user') || '{}');
-          user.status = 'pending';
-          localStorage.setItem('user', JSON.stringify(user));
-          
-          showToast('Subscription expired. Redirecting...', 'error');
-          setTimeout(() => navigate('/payment-setup', { replace: true }), 1000);
-          return;
-      }
 
       setViewState('ERROR');
       showToast('Server is slow. Retrying might help.', 'error');
@@ -245,7 +235,7 @@ const DailyReport = () => {
     })).filter(item => !isNaN(item.amount));
 
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('accessToken');
       const response = await axios.post(
         `${API_BASE_URL}/api/reports/post-dailyReport`,
         payload,
@@ -263,9 +253,6 @@ const DailyReport = () => {
       
       if (error.code === 'ECONNABORTED') {
           showToast('Server took too long. Check your connection.', 'error');
-      } else if (error.response?.status === 403) {
-         showToast('Subscription expired.', 'error');
-         navigate('/payment-setup');
       } else if (error.response?.status === 401) {
          showToast('Please login again.', 'error');
          navigate('/login');

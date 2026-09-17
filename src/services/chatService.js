@@ -7,7 +7,7 @@ import config from '../config/env';
 
 class ChatService {
   async sendMessage(message, imageFile = null) {
-    const token = localStorage.getItem('token') || '';
+    const token = localStorage.getItem('accessToken') || '';
     
     try {
       let body;

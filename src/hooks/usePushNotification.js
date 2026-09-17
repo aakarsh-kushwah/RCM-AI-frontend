@@ -6,7 +6,7 @@ const usePushNotification = () => {
   const [showNotificationPrompt, setShowNotificationPrompt] = useState(false);
 
   useEffect(() => {
-    const authToken = localStorage.getItem('token');
+    const authToken = localStorage.getItem('accessToken');
     const promptShown = localStorage.getItem('notificationPromptShown');
 
     // Fire polite prompt once after successful login if not already shown/responded
@@ -33,7 +33,7 @@ const usePushNotification = () => {
 
     try {
       const token = await requestForToken();
-      const authToken = localStorage.getItem('token');
+      const authToken = localStorage.getItem('accessToken');
 
       if (token && authToken) {
         const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:10000';

@@ -2,7 +2,7 @@ import React from 'react';
 import { Navigate } from 'react-router-dom';
 
 const UserProtectedRoute = ({ children }) => {
-    const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
+    const token = localStorage.getItem('accessToken');
     const userRole = localStorage.getItem('userRole'); 
     
     // 1. Safe User Parsing (Handle corrupt data)
@@ -27,14 +27,7 @@ const UserProtectedRoute = ({ children }) => {
         return <Navigate to="/admin/dashboard" replace />;
     }
 
-    // 4. ✅ FIXED: Subscription Status Check
-    // Ab hum check kar rahe hain ki agar status na to 'active' hai aur na hi 'premium',
-    // tabhi payment page par bhejo.
-    if (user.status !== 'active' && user.status !== 'premium') {
-        return <Navigate to="/payment-setup" replace />;
-    }
-
-    // 5. If everything is good, render the page
+    // 4. If everything is good, render the page
     return children;
 };
 

@@ -71,12 +71,12 @@ function Productsvideo({ pageTitle }) {
 
     const [selectedCategory, setSelectedCategory] = useState('All');
 
-    const { token, API_URL } = useAuth(); 
+    const { accessToken, API_URL } = useAuth();
     const location = useLocation();
     const navigate = useNavigate();
 
     const fetchVideos = useCallback(async (pageNum, isInitialLoad = false, category = selectedCategory) => {
-        const authToken = token || localStorage.getItem('token') || localStorage.getItem('accessToken');
+        const authToken = accessToken || localStorage.getItem('accessToken');
         if (!authToken || !API_URL) {
              setError("Authentication error. Please log in again.");
              setLoading(false);
@@ -109,11 +109,11 @@ function Productsvideo({ pageTitle }) {
         } finally {
             if (isInitialLoad) setLoading(false); else setLoadingMore(false);
         }
-    }, [token, API_URL, selectedCategory]);
+    }, [accessToken, API_URL, selectedCategory]);
 
     useEffect(() => {
-        if (token && API_URL) {
-            setPage(1); 
+        if (accessToken && API_URL) {
+            setPage(1);
             setAllVideos([]);
             setHasMore(true);
             
@@ -124,7 +124,7 @@ function Productsvideo({ pageTitle }) {
             
             fetchVideos(1, true, selectedCategory);
         }
-    }, [token, API_URL, selectedCategory, location.state, navigate, fetchVideos]); 
+    }, [accessToken, API_URL, selectedCategory, location.state, navigate, fetchVideos]);
 
     const filteredVideos = useMemo(() => {
         if (!debouncedSearchTerm) return allVideos; 

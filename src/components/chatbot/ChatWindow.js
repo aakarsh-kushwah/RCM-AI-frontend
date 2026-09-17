@@ -274,7 +274,7 @@ const ChatWindow = () => {
   const handleSend = () => {
     if (isLoading) return;
 
-    if (user && (user.status === 'pending' || !user.isApproved)) {
+    if (user && (user.status === 'free' || user.status === 'pending' || (user.status !== 'active' && user.status !== 'premium'))) {
       navigate('/payment-setup');
       return;
     }
