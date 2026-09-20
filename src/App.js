@@ -8,23 +8,16 @@
 import React, { Suspense, lazy, useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
 import { Bell, X } from 'lucide-react';
-
-// ==========================================
-// 🎨 GLOBAL UI COMPONENTS
-// ==========================================
 import LoadingSpinner from './components/LoadingSpinner/LoadingSpinner';
 import InstallAppModal from './components/InstallAppModal.jsx';
 import RootRedirector from './components/RootRedirector';
 import LoginPage from './components/login/LoginPage';
-const ShortsFeed = lazy(() => import('./components/Shorts/ShortsFeed'));
-
-// ==========================================
-// 🔐 SECURITY & LOGIC
-// ==========================================
 import UserProtectedRoute from './components/UserProtectedRoute';
 import { useAuth } from './context/AuthContext';
 import usePushNotification from './hooks/usePushNotification';
 import ScrollToTop from './utils/ScrollToTop';
+
+const ShortsFeed = lazy(() => import('./components/Shorts/ShortsFeed'));
 
 // ==========================================
 // ⚡ PERFORMANCE: LAZY LOADING PAGES
