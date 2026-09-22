@@ -2,15 +2,24 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './ShortsFeed.css';
 
 /* ---------------------------------------------------------------------------
- * ShortsFeed
+ * ReelsFeed — Apple-grade vertical video feed
  *
- * Self-contained on purpose: this file imports only React and its own
- * stylesheet. It never imports App.js, a barrel index.js or any shared module
- * that could import it back, so it cannot be part of an import cycle (the
- * cause of "Cannot access 'WEBPACK_DEFAULT_EXPORT' before initialization").
+ * Self-contained: imports only React and its own stylesheet, so it can never
+ * be part of an import cycle (the classic cause of a WEBPACK_DEFAULT_EXPORT
+ * TDZ crash). Declared directly as the default export.
+ *
+ * Playback engine
+ *   - The active slide, its 1 previous and its 2 next neighbours are mounted
+ *     ("preload window"), so the player already exists and is buffering by
+ *     the time you swipe to it — no black flash, no reload delay.
+ *   - Every mounted player starts muted. A reconcile loop is the single
+ *     source of truth: not-active => muted + paused; active => playing and
+ *     unmuted only if the global sound toggle is on. Leaving a slide fires
+ *     mute+pause in the same tick the slide stops being active, so a swipe
+ *     can never leave two videos audible at once.
  * ------------------------------------------------------------------------- */
 
-/* ---------- configuration (adjust here if your backend differs) ---------- */
+/* ---------- configuration ---------- */
 
 const API_BASE = (process.env.REACT_APP_API_URL || '').replace(/\/+$/, '');
 const API = {
@@ -18,9 +27,12 @@ const API = {
   like: (id) => `/api/shorts/${encodeURIComponent(id)}/like`,
   comments: (id) => `/api/shorts/${encodeURIComponent(id)}/comments`,
 };
-const TOKEN_KEY = 'token';
-const SUBS_KEY = 'rcm_shorts_subscriptions';
+const SUBS_KEY = 'rcm_reels_follows';
+const BOOKMARKS_KEY = 'rcm_reels_bookmarks';
 const ACTIVE_THRESHOLD = 0.65;
+const HOLD_MS = 220; // press-and-hold threshold before we pause + hide the UI
+const PRELOAD_BEHIND = 1;
+const PRELOAD_AHEAD = 2;
 
 /* ---------- network ---------- */
 
@@ -28,13 +40,17 @@ async function api(path, options = {}) {
   const headers = { Accept: 'application/json', ...(options.headers || {}) };
   if (options.body) headers['Content-Type'] = 'application/json';
   try {
-    const token = window.localStorage.getItem(TOKEN_KEY);
+    const token = window.localStorage.getItem('accessToken') || window.localStorage.getItem('token');
     if (token) headers.Authorization = `Bearer ${token}`;
   } catch (e) {
-    /* storage unavailable, continue without auth header */
+    /* storage unavailable */
   }
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
-  if (!res.ok) throw new Error(`Request failed with status ${res.status}`);
+  if (!res.ok) {
+    const err = new Error(`Request failed with status ${res.status} (${path})`);
+    err.status = res.status;
+    throw err;
+  }
   if (res.status === 204) return null;
   const type = res.headers.get('content-type') || '';
   return type.includes('json') ? res.json() : null;
@@ -43,7 +59,7 @@ async function api(path, options = {}) {
 function unwrapList(payload) {
   if (Array.isArray(payload)) return payload;
   if (payload && typeof payload === 'object') {
-    const keys = ['shorts', 'comments', 'data', 'items', 'results'];
+    const keys = ['shorts', 'reels', 'comments', 'data', 'items', 'results'];
     for (let i = 0; i < keys.length; i += 1) {
       if (Array.isArray(payload[keys[i]])) return payload[keys[i]];
     }
@@ -51,7 +67,26 @@ function unwrapList(payload) {
   return [];
 }
 
-/* ---------- data normalisation (real DB fields, no fake fallbacks) ---------- */
+/* ---------- storage ---------- */
+
+function readStore(key) {
+  try {
+    const value = JSON.parse(window.localStorage.getItem(key) || '{}');
+    return value && typeof value === 'object' ? value : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function writeStore(key, value) {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch (e) {
+    /* storage unavailable */
+  }
+}
+
+/* ---------- data normalisation ---------- */
 
 const YT_ID = /^[A-Za-z0-9_-]{11}$/;
 
@@ -61,17 +96,10 @@ function num(value) {
 }
 
 function extractVideoId(short) {
-  const direct =
-    short.youtubeId ?? short.youtube_id ?? short.videoId ?? short.video_id ?? short.ytId;
+  const direct = short.youtubeId ?? short.youtube_id ?? short.videoId ?? short.video_id ?? short.ytId;
   if (direct && YT_ID.test(String(direct))) return String(direct);
   const url =
-    short.youtubeUrl ??
-    short.youtube_url ??
-    short.videoUrl ??
-    short.video_url ??
-    short.url ??
-    short.link ??
-    direct;
+    short.youtubeUrl ?? short.youtube_url ?? short.videoUrl ?? short.video_url ?? short.url ?? short.link ?? direct;
   if (typeof url === 'string') {
     const match = url.match(/(?:v=|youtu\.be\/|shorts\/|embed\/)([A-Za-z0-9_-]{11})/);
     if (match) return match[1];
@@ -82,10 +110,7 @@ function extractVideoId(short) {
 function extractHashtags(short) {
   const found = new Map();
   const add = (tag) => {
-    const clean = String(tag)
-      .trim()
-      .replace(/^#+/, '')
-      .replace(/[.,;:!?)]+$/, '');
+    const clean = String(tag).trim().replace(/^#+/, '').replace(/[.,;:!?)]+$/, '');
     if (clean) found.set(clean.toLowerCase(), clean);
   };
   const explicit = short.hashtags ?? short.tags ?? [];
@@ -94,32 +119,34 @@ function extractHashtags(short) {
   return Array.from(found.values());
 }
 
-function normalizeShort(short) {
+function normalizeReel(short) {
   const videoId = extractVideoId(short);
   if (!videoId) return null;
+  const channelObj = short.channel || {};
   return {
     id: String(short._id ?? short.id ?? videoId),
     videoId,
-    title: short.title || 'Untitled short',
+    title: short.title || 'Untitled reel',
     description: String(short.description ?? ''),
     thumb:
       short.thumbnail ??
       short.thumbnailUrl ??
       short.thumbnail_url ??
+      channelObj.logoUrl ??
       `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-    channelName:
-      short.channelName ??
-      short.channel_name ??
-      short.channelTitle ??
-      short.channel?.name ??
-      'Channel',
+    channelId: String(short.channelId ?? short.channel_id ?? channelObj.id ?? ''),
+    channelName: short.channelName ?? short.channel_name ?? short.channelTitle ?? channelObj.name ?? 'Channel',
     channelLogo:
       short.channelLogo ??
       short.channel_logo ??
       short.channelAvatar ??
-      short.channel?.logo ??
-      short.channel?.avatar ??
+      channelObj.logo ??
+      channelObj.avatar ??
+      channelObj.logoUrl ??
       '',
+    channelHandle: channelObj.handle ?? short.channelHandle ?? '',
+    verified: Boolean(short.channelVerified ?? channelObj.verified ?? short.verified ?? false),
+    subscribers: num(channelObj.subscriberCount ?? channelObj.subscribers ?? 0),
     likes: num(short.likesCount ?? short.likes_count ?? 0),
     comments: num(short.commentsCount ?? short.comments_count ?? 0),
     views: num(short.viewCount ?? short.view_count ?? short.views ?? 0),
@@ -130,25 +157,26 @@ function normalizeShort(short) {
 }
 
 function normalizeComment(c, i = 0) {
+  const userObj = c.user || {};
   const authorRaw =
-    c.userName ??
-    c.user_name ??
-    c.username ??
-    c.user?.name ??
-    c.user?.username ??
-    c.author?.name ??
-    c.author;
+    c.userName ?? c.user_name ?? c.username ?? userObj.name ?? userObj.username ?? userObj.fullName ?? c.author?.name ?? c.author;
   const author = typeof authorRaw === 'string' && authorRaw.trim() ? authorRaw.trim() : 'User';
+  const avatar = c.avatar ?? userObj.avatar ?? '';
   return {
     id: String(c._id ?? c.id ?? `c-${i}`),
     author,
+    avatar,
     text: String(c.text ?? c.content ?? c.comment ?? c.body ?? ''),
     date: c.createdAt ?? c.created_at ?? c.date ?? null,
     pending: false,
   };
 }
 
-/* ---------- formatting helpers ---------- */
+const titleOf = (r) => r.title || 'Untitled reel';
+const nameOf = (r) => r.channelName || 'Channel';
+const soundOf = (r) => `${nameOf(r)} · Original audio — ${titleOf(r)}`;
+
+/* ---------- formatting ---------- */
 
 const compactFormatter = (() => {
   try {
@@ -195,25 +223,16 @@ function hueFor(name) {
 }
 
 function initialOf(name) {
-  return (Array.from(String(name || '?').trim())[0] || '?').toUpperCase();
+  return (Array.from(String(name || '?').trim().replace(/^@+/, ''))[0] || '?').toUpperCase();
 }
 
 /* ---------- misc helpers ---------- */
 
 function shouldStartMuted() {
-  // Sound autoplay is only allowed once the user has interacted with the page.
   try {
     return !(navigator.userActivation && navigator.userActivation.hasBeenActive);
   } catch (e) {
     return true;
-  }
-}
-
-function loadSubs() {
-  try {
-    return JSON.parse(window.localStorage.getItem(SUBS_KEY) || '{}') || {};
-  } catch (e) {
-    return {};
   }
 }
 
@@ -222,11 +241,14 @@ function goBack() {
   else window.location.assign('/');
 }
 
-function buildEmbedSrc(videoId, muted) {
+// Every embed starts muted and playing (this is what makes preloading work —
+// a mounted-but-inactive player is already buffering by the time it's swiped
+// to). Only the reconcile loop in VideoLayer is ever allowed to unmute.
+function buildEmbedSrc(videoId) {
   const params = new URLSearchParams({
     autoplay: '1',
     enablejsapi: '1',
-    mute: muted ? '1' : '0',
+    mute: '1',
     controls: '0',
     playsinline: '1',
     rel: '0',
@@ -243,7 +265,7 @@ function buildEmbedSrc(videoId, muted) {
 
 /* ---------- icons ---------- */
 
-function Icon({ children, size = 24, fill = 'none', stroke = 'currentColor' }) {
+function Icon({ children, size = 24, fill = 'none', stroke = 'currentColor', sw = 2 }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -251,7 +273,7 @@ function Icon({ children, size = 24, fill = 'none', stroke = 'currentColor' }) {
       height={size}
       fill={fill}
       stroke={stroke}
-      strokeWidth="2"
+      strokeWidth={sw}
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
@@ -278,10 +300,20 @@ function CommentIcon() {
   );
 }
 
-function WhatsAppIcon() {
+function ShareIcon() {
   return (
-    <Icon fill="currentColor" stroke="none">
-      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+    <Icon>
+      <path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7" />
+      <polyline points="16 6 12 2 8 6" />
+      <line x1="12" y1="2" x2="12" y2="15" />
+    </Icon>
+  );
+}
+
+function BookmarkIcon({ filled }) {
+  return (
+    <Icon fill={filled ? 'currentColor' : 'none'}>
+      <path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
     </Icon>
   );
 }
@@ -325,7 +357,7 @@ function VolumeIcon({ muted }) {
 
 function PlayIcon() {
   return (
-    <Icon size={34} fill="currentColor" stroke="none">
+    <Icon size={30} fill="currentColor" stroke="none">
       <path d="M8 5.14v13.72a1 1 0 0 0 1.53.85l10.78-6.86a1 1 0 0 0 0-1.7L9.53 4.29A1 1 0 0 0 8 5.14z" />
     </Icon>
   );
@@ -355,6 +387,18 @@ function ChevronIcon({ up }) {
   );
 }
 
+function VerifiedBadge() {
+  return (
+    <svg className="rf-verified" viewBox="0 0 22 22" width="15" height="15" aria-hidden="true">
+      <path
+        fill="#3b9dff"
+        d="M11 0l1.9 1.6 2.4-.7 1.2 2.2 2.4.4.1 2.5 2 1.4-1 2.3 1 2.3-2 1.4-.1 2.5-2.4.4-1.2 2.2-2.4-.7L11 22l-1.9-1.6-2.4.7-1.2-2.2-2.4-.4-.1-2.5-2-1.4 1-2.3-1-2.3 2-1.4.1-2.5 2.4-.4 1.2-2.2 2.4.7z"
+      />
+      <path fill="#fff" d="M9.7 14.9L6.4 11.6l1.1-1.1 2.2 2.2 4.6-4.6 1.1 1.1z" />
+    </svg>
+  );
+}
+
 /* ---------- small building blocks ---------- */
 
 function Avatar({ name, src, className = '' }) {
@@ -365,7 +409,7 @@ function Avatar({ name, src, className = '' }) {
   if (src && !failed) {
     return (
       <img
-        className={`sf-avatar ${className}`}
+        className={`rf-avatar ${className}`}
         src={src}
         alt=""
         referrerPolicy="no-referrer"
@@ -375,8 +419,8 @@ function Avatar({ name, src, className = '' }) {
   }
   return (
     <span
-      className={`sf-avatar ${className}`}
-      style={{ background: `hsl(${hueFor(name)}, 55%, 38%)` }}
+      className={`rf-avatar ${className}`}
+      style={{ background: `hsl(${hueFor(name)}, 62%, 42%)` }}
       aria-hidden="true"
     >
       {initialOf(name)}
@@ -388,24 +432,33 @@ function RailButton({ label, caption, active, onClick, tone, children }) {
   return (
     <button
       type="button"
-      className={`sf-rail-btn${active ? ' is-active' : ''}${tone ? ` sf-rail-btn--${tone}` : ''}`}
+      className={`rf-rail-btn${active ? ' is-active' : ''}${tone ? ` rf-rail-btn--${tone}` : ''}`}
       onClick={onClick}
       aria-label={label}
       aria-pressed={typeof active === 'boolean' ? active : undefined}
     >
-      <span className="sf-rail-icon">{children}</span>
-      <span className="sf-rail-caption">{caption}</span>
+      <span className="rf-rail-icon">{children}</span>
+      {caption ? <span className="rf-rail-caption">{caption}</span> : null}
     </button>
+  );
+}
+
+function SoundDisc({ src, name, spinning }) {
+  return (
+    <div className={`rf-disc${spinning ? ' is-spinning' : ''}`} aria-hidden="true">
+      <div className="rf-disc-ring" />
+      <Avatar name={name} src={src} className="rf-disc-art" />
+    </div>
   );
 }
 
 function StateCard({ title, body, actionLabel, onAction }) {
   return (
-    <div className="sf-state" role="status">
+    <div className="rf-state" role="status">
       <h2>{title}</h2>
       <p>{body}</p>
       {actionLabel && (
-        <button type="button" className="sf-pill-btn" onClick={onAction}>
+        <button type="button" className="rf-pill-btn" onClick={onAction}>
           {actionLabel}
         </button>
       )}
@@ -415,28 +468,28 @@ function StateCard({ title, body, actionLabel, onAction }) {
 
 function Skeleton() {
   return (
-    <div className="sf-skeleton" role="status" aria-label="Loading Shorts">
-      <div className="sf-skel-stage">
-        <div className="sf-skel-rail">
+    <div className="rf-skeleton" role="status" aria-label="Loading Reels">
+      <div className="rf-skel-stage">
+        <div className="rf-skel-rail">
           <span />
           <span />
           <span />
           <span />
         </div>
-        <div className="sf-skel-meta">
-          <div className="sf-skel-row">
-            <span className="sf-skel-dot" />
-            <span className="sf-skel-bar sf-w40" />
+        <div className="rf-skel-meta">
+          <div className="rf-skel-row">
+            <span className="rf-skel-dot" />
+            <span className="rf-skel-bar rf-w40" />
           </div>
-          <span className="sf-skel-bar sf-w90" />
-          <span className="sf-skel-bar sf-w60" />
+          <span className="rf-skel-bar rf-w90" />
+          <span className="rf-skel-bar rf-w60" />
         </div>
       </div>
     </div>
   );
 }
 
-/* ---------- bottom sheet (65vh, slide-up, drag to dismiss) ---------- */
+/* ---------- bottom sheet ---------- */
 
 function Sheet({ open, title, meta, onClose, children, footer }) {
   const sheetRef = useRef(null);
@@ -444,7 +497,7 @@ function Sheet({ open, title, meta, onClose, children, footer }) {
 
   const onDown = (e) => {
     if (e.target.closest && e.target.closest('button')) return;
-    drag.current = { startY: e.clientY, dy: 0 };
+    drag.current = { startY: e.clientY };
     e.currentTarget.setPointerCapture(e.pointerId);
     if (sheetRef.current) sheetRef.current.style.transition = 'none';
   };
@@ -456,7 +509,7 @@ function Sheet({ open, title, meta, onClose, children, footer }) {
   };
   const onUp = () => {
     if (!drag.current) return;
-    const { dy } = drag.current;
+    const dy = drag.current.dy || 0;
     drag.current = null;
     if (sheetRef.current) {
       sheetRef.current.style.transition = '';
@@ -466,38 +519,32 @@ function Sheet({ open, title, meta, onClose, children, footer }) {
   };
 
   return (
-    <div className={`sf-sheet-root${open ? ' is-open' : ''}`} aria-hidden={!open}>
-      <div className="sf-backdrop" onClick={onClose} />
-      <div ref={sheetRef} className="sf-sheet" role="dialog" aria-modal="true" aria-label={title}>
-        <div
-          className="sf-sheet-top"
-          onPointerDown={onDown}
-          onPointerMove={onMove}
-          onPointerUp={onUp}
-          onPointerCancel={onUp}
-        >
-          <div className="sf-sheet-grab" aria-hidden="true" />
-          <header className="sf-sheet-head">
+    <div className={`rf-sheet-root${open ? ' is-open' : ''}`} aria-hidden={!open}>
+      <div className="rf-backdrop" onClick={onClose} />
+      <div ref={sheetRef} className="rf-sheet" role="dialog" aria-modal="true" aria-label={title}>
+        <div className="rf-sheet-top" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}>
+          <div className="rf-sheet-grab" aria-hidden="true" />
+          <header className="rf-sheet-head">
             <h2>
               {title}
-              {meta ? <span className="sf-sheet-meta">{meta}</span> : null}
+              {meta ? <span className="rf-sheet-meta">{meta}</span> : null}
             </h2>
-            <button type="button" className="sf-icon-btn" onClick={onClose} aria-label="Close">
+            <button type="button" className="rf-icon-btn" onClick={onClose} aria-label="Close">
               <CloseIcon />
             </button>
           </header>
         </div>
-        <div className="sf-sheet-body">{children}</div>
+        <div className="rf-sheet-body">{children}</div>
         {footer}
       </div>
     </div>
   );
 }
 
-function CommentsSheet({ short, open, onClose, onCountDelta }) {
-  const shortId = short ? short.id : null;
+function CommentsSheet({ reel, open, onClose, onCountDelta }) {
+  const reelId = reel ? reel.id : null;
   const [items, setItems] = useState([]);
-  const [state, setState] = useState('idle'); // idle | loading | ready | error
+  const [state, setState] = useState('idle');
   const [text, setText] = useState('');
   const [posting, setPosting] = useState(false);
   const [postError, setPostError] = useState('');
@@ -505,12 +552,12 @@ function CommentsSheet({ short, open, onClose, onCountDelta }) {
   const bodyRef = useRef(null);
 
   useEffect(() => {
-    if (!open || !shortId) return undefined;
+    if (!open || !reelId) return undefined;
     const controller = new AbortController();
     setItems([]);
     setPostError('');
     setState('loading');
-    api(API.comments(shortId), { signal: controller.signal })
+    api(API.comments(reelId), { signal: controller.signal })
       .then((payload) => {
         setItems(unwrapList(payload).map(normalizeComment));
         setState('ready');
@@ -519,44 +566,39 @@ function CommentsSheet({ short, open, onClose, onCountDelta }) {
         if (err && err.name !== 'AbortError') setState('error');
       });
     return () => controller.abort();
-  }, [open, shortId, reloadKey]);
+  }, [open, reelId, reloadKey]);
 
   const submit = async () => {
     const value = text.trim();
-    if (!value || posting || !shortId) return;
+    if (!value || posting || !reelId) return;
     const tempId = `tmp-${Date.now()}`;
     setPosting(true);
     setPostError('');
     setText('');
     setState('ready');
     setItems((prev) => [
-      { id: tempId, author: 'You', text: value, date: new Date().toISOString(), pending: true },
+      { id: tempId, author: 'You', avatar: '', text: value, date: new Date().toISOString(), pending: true },
       ...prev,
     ]);
-    onCountDelta(shortId, 1); // counter moves immediately
+    onCountDelta(reelId, 1);
     if (bodyRef.current) bodyRef.current.scrollTop = 0;
     try {
-      const saved = await api(API.comments(shortId), {
+      const saved = await api(API.comments(reelId), {
         method: 'POST',
-        body: JSON.stringify({ text: value, content: value }),
+        body: JSON.stringify({ comment: value, text: value, content: value }),
       });
-      const payload = saved && typeof saved === 'object' ? saved.comment ?? saved.data ?? saved : null;
-      const hasText =
-        payload &&
-        typeof payload === 'object' &&
-        !Array.isArray(payload) &&
-        (payload.text ?? payload.content ?? payload.comment ?? payload.body);
+      const payload = saved && typeof saved === 'object' ? saved.data ?? saved.comment ?? saved : null;
       setItems((prev) =>
         prev.map((c) => {
           if (c.id !== tempId) return c;
-          if (!hasText) return { ...c, pending: false };
+          if (!payload) return { ...c, pending: false };
           const real = normalizeComment(payload);
           return { ...real, author: real.author === 'User' ? 'You' : real.author };
         })
       );
     } catch (err) {
       setItems((prev) => prev.filter((c) => c.id !== tempId));
-      onCountDelta(shortId, -1);
+      onCountDelta(reelId, -1);
       setText(value);
       setPostError("Couldn't post your comment. Check your connection and try again.");
     } finally {
@@ -572,16 +614,16 @@ function CommentsSheet({ short, open, onClose, onCountDelta }) {
   };
 
   const footer = (
-    <div className="sf-compose-wrap">
+    <div className="rf-compose-wrap">
       {postError ? (
-        <p className="sf-inline-error" role="alert">
+        <p className="rf-inline-error" role="alert">
           {postError}
         </p>
       ) : null}
-      <div className="sf-compose">
+      <div className="rf-compose">
         <input
           type="text"
-          className="sf-input"
+          className="rf-input"
           placeholder="Add a comment"
           value={text}
           maxLength={500}
@@ -590,13 +632,7 @@ function CommentsSheet({ short, open, onClose, onCountDelta }) {
           onKeyDown={onKeyDown}
           aria-label="Add a comment"
         />
-        <button
-          type="button"
-          className="sf-send"
-          onClick={submit}
-          disabled={!text.trim() || posting}
-          aria-label="Post comment"
-        >
+        <button type="button" className="rf-send" onClick={submit} disabled={!text.trim() || posting} aria-label="Post comment">
           <SendIcon />
         </button>
       </div>
@@ -604,42 +640,36 @@ function CommentsSheet({ short, open, onClose, onCountDelta }) {
   );
 
   return (
-    <Sheet
-      open={open}
-      title="Comments"
-      meta={short ? formatCount(short.comments) : ''}
-      onClose={onClose}
-      footer={footer}
-    >
-      <div ref={bodyRef} className="sf-comments">
+    <Sheet open={open} title="Comments" meta={reel ? formatCount(reel.comments) : ''} onClose={onClose} footer={footer}>
+      <div ref={bodyRef} className="rf-comments">
         {state === 'loading' && items.length === 0 && (
-          <div className="sf-comment-skeletons" role="status" aria-label="Loading comments">
+          <div className="rf-comment-skeletons" role="status" aria-label="Loading comments">
             <span />
             <span />
             <span />
           </div>
         )}
         {state === 'error' && (
-          <div className="sf-sheet-empty">
+          <div className="rf-sheet-empty">
             <p>Couldn&apos;t load comments.</p>
-            <button type="button" className="sf-pill-btn" onClick={() => setReloadKey((k) => k + 1)}>
+            <button type="button" className="rf-pill-btn" onClick={() => setReloadKey((k) => k + 1)}>
               Try again
             </button>
           </div>
         )}
         {state === 'ready' && items.length === 0 && (
-          <div className="sf-sheet-empty">
+          <div className="rf-sheet-empty">
             <p>No comments yet.</p>
             <span>Be the first to say something.</span>
           </div>
         )}
         {items.length > 0 && (
-          <ul className="sf-comment-list">
+          <ul className="rf-comment-list">
             {items.map((c) => (
-              <li key={c.id} className={`sf-comment${c.pending ? ' is-pending' : ''}`}>
-                <Avatar name={c.author} className="sf-avatar--sm" />
-                <div className="sf-comment-main">
-                  <div className="sf-comment-head">
+              <li key={c.id} className={`rf-comment${c.pending ? ' is-pending' : ''}`}>
+                <Avatar name={c.author} src={c.avatar} className="rf-avatar--sm" />
+                <div className="rf-comment-main">
+                  <div className="rf-comment-head">
                     <strong>{c.author}</strong>
                     <time>{c.pending ? 'Posting' : timeAgo(c.date)}</time>
                   </div>
@@ -654,64 +684,189 @@ function CommentsSheet({ short, open, onClose, onCountDelta }) {
   );
 }
 
-function DetailsSheet({ short, open, onClose }) {
+function DetailsSheet({ reel, open, onClose, onOpenChannel, following, onToggleFollow }) {
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    if (open) setExpanded(false);
+  }, [open]);
+
+  if (!reel) return null;
+  const desc = reel.description || 'No description provided.';
+  const isLong = desc.length > 120;
+  const displayText = expanded || !isLong ? desc : `${desc.slice(0, 120)}...`;
+
   return (
     <Sheet open={open} title="Details" onClose={onClose}>
-      {short && (
-        <div className="sf-details">
-          <h3 className="sf-d-title">{short.title}</h3>
-          <p className="sf-d-channel">{short.channelName}</p>
-          <div className="sf-d-stats">
-            <div>
-              <strong title={short.views.toLocaleString('en-IN')}>{formatCount(short.views)}</strong>
-              <span>Views</span>
+      <div className="rf-details">
+        <div className="rf-d-header">
+          <button type="button" className="rf-d-channel-info" onClick={() => onOpenChannel(reel)} aria-label={`View ${nameOf(reel)} channel profile`}>
+            <Avatar name={nameOf(reel)} src={reel.channelLogo} />
+            <div className="rf-d-channel-text">
+              <span className="rf-d-channel-name">
+                {nameOf(reel)}
+                {reel.verified && <VerifiedBadge />}
+              </span>
+              <span className="rf-d-channel-handle">{reel.channelHandle || '@channel'}</span>
             </div>
-            <div>
-              <strong>{formatCount(short.likes)}</strong>
-              <span>Likes</span>
-            </div>
-            <div>
-              <strong>{formatDate(short.date)}</strong>
-              <span>Posted</span>
-            </div>
-          </div>
-          <p className="sf-d-desc">{short.description || 'No description provided.'}</p>
-          {short.hashtags.length > 0 && (
-            <div className="sf-tags">
-              {short.hashtags.map((tag) => (
-                <span key={tag} className="sf-tag">
-                  #{tag}
-                </span>
-              ))}
-            </div>
-          )}
+          </button>
+          <button type="button" className={`rf-follow${following ? ' is-on' : ''}`} aria-pressed={following} onClick={() => onToggleFollow(reel.channelId || nameOf(reel))}>
+            {following ? 'Following' : 'Follow'}
+          </button>
         </div>
-      )}
+
+        <h3 className="rf-d-title">{titleOf(reel)}</h3>
+
+        <div className="rf-d-stats">
+          <div>
+            <strong title={reel.views.toLocaleString('en-IN')}>{formatCount(reel.views)}</strong>
+            <span>Views</span>
+          </div>
+          <div>
+            <strong>{formatCount(reel.likes)}</strong>
+            <span>Likes</span>
+          </div>
+          <div>
+            <strong>{formatDate(reel.date)}</strong>
+            <span>Posted</span>
+          </div>
+        </div>
+
+        <p className="rf-d-desc">
+          {displayText}
+          {isLong && (
+            <button type="button" className="rf-more-btn" onClick={() => setExpanded((e) => !e)}>
+              {expanded ? '...less' : '...more'}
+            </button>
+          )}
+        </p>
+
+        {reel.hashtags.length > 0 && (
+          <div className="rf-tags">
+            {reel.hashtags.map((tag) => (
+              <span key={tag} className="rf-tag">
+                #{tag}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
     </Sheet>
   );
 }
 
-/* ---------- video layer: poster, iframe (active slide only), tap, progress ---------- */
+function ChannelProfileSheet({ channelId, channelName, channelLogo, channelHandle, verified, subscribers, open, onClose, following, onToggleFollow, onSelectReel }) {
+  const [reels, setReels] = useState([]);
+  const [status, setStatus] = useState('loading');
 
-function VideoLayer({ short, isActive, muted, onDoubleLike }) {
+  useEffect(() => {
+    if (!open || !channelId) return undefined;
+    const controller = new AbortController();
+    setStatus('loading');
+    api(`/api/shorts?channelId=${encodeURIComponent(channelId)}`, { signal: controller.signal })
+      .then((payload) => {
+        setReels(unwrapList(payload).map(normalizeReel).filter(Boolean));
+        setStatus('ready');
+      })
+      .catch((err) => {
+        if (err && err.name !== 'AbortError') setStatus('error');
+      });
+    return () => controller.abort();
+  }, [open, channelId]);
+
+  return (
+    <Sheet open={open} title="Channel" onClose={onClose}>
+      <div className="rf-cp-profile">
+        <div className="rf-cp-top">
+          <Avatar name={channelName} src={channelLogo} className="rf-cp-avatar" />
+          <h3 className="rf-cp-name">
+            {channelName}
+            {verified && <VerifiedBadge />}
+          </h3>
+          {channelHandle ? <span className="rf-cp-handle">{channelHandle}</span> : null}
+          <span className="rf-cp-subscribers">{subscribers > 0 ? `${formatCount(subscribers)} followers` : 'Official Channel'}</span>
+          <button type="button" className={`rf-follow${following ? ' is-on' : ''}`} aria-pressed={following} onClick={() => onToggleFollow(channelId || channelName)}>
+            {following ? 'Following' : 'Follow'}
+          </button>
+        </div>
+
+        <div className="rf-cp-grid-title">Reels ({reels.length})</div>
+        {status === 'loading' && (
+          <div className="rf-sheet-empty">
+            <p>Loading channel reels...</p>
+          </div>
+        )}
+        {status === 'error' && (
+          <div className="rf-sheet-empty">
+            <p>Couldn&apos;t load channel reels.</p>
+          </div>
+        )}
+        {status === 'ready' && reels.length === 0 && (
+          <div className="rf-sheet-empty">
+            <p>No reels from this channel yet.</p>
+          </div>
+        )}
+        {status === 'ready' && reels.length > 0 && (
+          <div className="rf-cp-grid">
+            {reels.map((r) => (
+              <div
+                key={r.id}
+                className="rf-cp-thumb"
+                onClick={() => {
+                  onClose();
+                  onSelectReel(r.id);
+                }}
+                role="button"
+                tabIndex={0}
+                aria-label={titleOf(r)}
+              >
+                <img src={r.thumb} alt="" loading="lazy" />
+                <span className="rf-cp-views">{formatCount(r.views)} views</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Sheet>
+  );
+}
+
+/* ---------------------------------------------------------------------------
+ * VideoLayer — the playback engine.
+ * ------------------------------------------------------------------------- */
+
+function VideoLayer({ reel, isActive, mounted, muted, onDoubleLike, onForceMute, onPlayStateChange, onHoldChange }) {
   const iframeRef = useRef(null);
   const fillRef = useRef(null);
-  const statusRef = useRef('loading');
+  const trackRef = useRef(null);
+  const stateRef = useRef(-1);
+  const mutedInfoRef = useRef(true);
+  const readyRef = useRef(false);
+  const durationRef = useRef(0);
+  const tapPausedRef = useRef(false);
+  const holdPausedRef = useRef(false);
+  const seekingRef = useRef(false);
+  const unmuteTries = useRef(0);
+  const lastMuteCmd = useRef(0);
+  const lastPlayCmd = useRef(0);
   const lastTap = useRef(0);
   const tapTimer = useRef(null);
+  const holdTimer = useRef(null);
   const burstTimer = useRef(null);
-  const mutedRef = useRef(muted);
-  const [status, setStatus] = useState('loading'); // loading | playing | paused
+  const startPos = useRef(null);
+  const flags = useRef({ isActive, muted });
+  const onForceMuteRef = useRef(onForceMute);
+  const onPlayStateRef = useRef(onPlayStateChange);
+  const onHoldRef = useRef(onHoldChange);
+  const [status, setStatus] = useState('loading');
+  const [userPaused, setUserPaused] = useState(false);
   const [burst, setBurst] = useState(null);
 
-  mutedRef.current = muted;
+  flags.current = { isActive, muted };
+  onForceMuteRef.current = onForceMute;
+  onPlayStateRef.current = onPlayStateChange;
+  onHoldRef.current = onHoldChange;
 
-  // Only the active slide owns an iframe. Leaving the slide unmounts it,
-  // which silences the previous video immediately.
-  const src = useMemo(
-    () => (isActive ? buildEmbedSrc(short.videoId, mutedRef.current) : null),
-    [isActive, short.videoId]
-  );
+  const src = useMemo(() => (mounted ? buildEmbedSrc(reel.videoId) : null), [mounted, reel.videoId]);
 
   const post = useCallback((func, args = []) => {
     const frame = iframeRef.current;
@@ -720,26 +875,58 @@ function VideoLayer({ short, isActive, muted, onDoubleLike }) {
     }
   }, []);
 
-  // Reset when the slide stops being active.
+  const handshake = useCallback(() => {
+    const frame = iframeRef.current;
+    if (frame && frame.contentWindow) {
+      frame.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: reel.id, channel: 'widget' }), '*');
+    }
+  }, [reel.id]);
+
+  const reconcile = useCallback(() => {
+    const now = Date.now();
+    const { isActive: active, muted: wantMuted } = flags.current;
+    const state = stateRef.current;
+    const shouldMute = !active || wantMuted;
+
+    if (mutedInfoRef.current === shouldMute) {
+      unmuteTries.current = 0;
+    } else if (now - lastMuteCmd.current > 800) {
+      lastMuteCmd.current = now;
+      if (shouldMute) {
+        post('mute');
+      } else if (unmuteTries.current < 3) {
+        unmuteTries.current += 1;
+        post('unMute');
+      } else {
+        onForceMuteRef.current();
+      }
+    }
+
+    const wantPlay = active && !tapPausedRef.current && !holdPausedRef.current && !seekingRef.current && !document.hidden;
+    if (now - lastPlayCmd.current > 600) {
+      if (wantPlay && (state === 2 || state === 5 || state === -1 || state === 0)) {
+        lastPlayCmd.current = now;
+        post('playVideo');
+      } else if (!wantPlay && (state === 1 || state === 3)) {
+        lastPlayCmd.current = now;
+        post('pauseVideo');
+      }
+    }
+  }, [post]);
+
   useEffect(() => {
-    if (isActive) return;
-    statusRef.current = 'loading';
+    if (mounted) return;
+    stateRef.current = -1;
+    mutedInfoRef.current = true;
+    readyRef.current = false;
+    durationRef.current = 0;
     setStatus('loading');
     if (fillRef.current) fillRef.current.style.transform = 'scaleX(0)';
-  }, [isActive]);
+  }, [mounted]);
 
-  // Listen to the YouTube player (state + progress).
   useEffect(() => {
-    if (!isActive) return undefined;
+    if (!mounted) return undefined;
     let heard = false;
-
-    const applyState = (s) => {
-      const next = s === 1 ? 'playing' : s === 2 ? 'paused' : null;
-      if (next && statusRef.current !== next) {
-        statusRef.current = next;
-        setStatus(next);
-      }
-    };
 
     const onMessage = (e) => {
       const frame = iframeRef.current;
@@ -754,27 +941,38 @@ function VideoLayer({ short, isActive, muted, onDoubleLike }) {
       }
       if (!data) return;
       heard = true;
+      readyRef.current = true;
       const info = data.info;
-      if (typeof info === 'number' && data.event === 'onStateChange') applyState(info);
+      if (data.event === 'onStateChange' && typeof info === 'number') stateRef.current = info;
       if (info && typeof info === 'object') {
-        if (typeof info.playerState === 'number') applyState(info.playerState);
-        if (fillRef.current && info.duration > 0 && typeof info.currentTime === 'number') {
+        if (typeof info.playerState === 'number') stateRef.current = info.playerState;
+        if (typeof info.muted === 'boolean') mutedInfoRef.current = info.muted;
+        if (info.duration > 0) durationRef.current = info.duration;
+        if (
+          fillRef.current &&
+          flags.current.isActive &&
+          !seekingRef.current &&
+          info.duration > 0 &&
+          typeof info.currentTime === 'number'
+        ) {
           const ratio = Math.min(1, Math.max(0, info.currentTime / info.duration));
           fillRef.current.style.transform = `scaleX(${ratio})`;
         }
       }
+      if (stateRef.current === 1) {
+        setStatus('playing');
+        onPlayStateRef.current(true);
+      } else if (stateRef.current === 2) {
+        setStatus('paused');
+        onPlayStateRef.current(false);
+      }
+      reconcile();
     };
 
+    const onVisibility = () => reconcile();
+
     window.addEventListener('message', onMessage);
-    const handshake = () => {
-      const frame = iframeRef.current;
-      if (frame && frame.contentWindow) {
-        frame.contentWindow.postMessage(
-          JSON.stringify({ event: 'listening', id: short.id, channel: 'widget' }),
-          '*'
-        );
-      }
-    };
+    document.addEventListener('visibilitychange', onVisibility);
     const timer = setInterval(() => {
       if (heard) clearInterval(timer);
       else handshake();
@@ -782,42 +980,93 @@ function VideoLayer({ short, isActive, muted, onDoubleLike }) {
 
     return () => {
       window.removeEventListener('message', onMessage);
+      document.removeEventListener('visibilitychange', onVisibility);
       clearInterval(timer);
     };
-  }, [isActive, short.id]);
+  }, [mounted, handshake, reconcile]);
 
-  // Follow the global mute toggle without reloading the iframe.
   useEffect(() => {
-    if (isActive) post(muted ? 'mute' : 'unMute');
-  }, [muted, isActive, post]);
+    if (!isActive) {
+      post('mute');
+      post('pauseVideo');
+      mutedInfoRef.current = true;
+      tapPausedRef.current = false;
+      holdPausedRef.current = false;
+      unmuteTries.current = 0;
+      setUserPaused(false);
+      onPlayStateRef.current(false);
+      return;
+    }
+    if (readyRef.current) post('seekTo', [0, true]);
+    if (fillRef.current) fillRef.current.style.transform = 'scaleX(0)';
+    tapPausedRef.current = false;
+    holdPausedRef.current = false;
+    lastMuteCmd.current = 0;
+    lastPlayCmd.current = 0;
+    unmuteTries.current = 0;
+    setUserPaused(false);
+    reconcile();
+  }, [isActive, post, reconcile]);
 
-  // Pause when the tab is hidden, resume when it returns.
   useEffect(() => {
-    if (!isActive) return undefined;
-    let wasPlaying = false;
-    const onVisibility = () => {
-      if (document.hidden) {
-        wasPlaying = statusRef.current === 'playing';
-        if (wasPlaying) post('pauseVideo');
-      } else if (wasPlaying) {
-        post('playVideo');
-      }
-    };
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => document.removeEventListener('visibilitychange', onVisibility);
-  }, [isActive, post]);
+    unmuteTries.current = 0;
+    lastMuteCmd.current = 0;
+    reconcile();
+  }, [muted, reconcile]);
 
   useEffect(
     () => () => {
       clearTimeout(tapTimer.current);
+      clearTimeout(holdTimer.current);
       clearTimeout(burstTimer.current);
     },
     []
   );
 
-  const togglePlay = () => post(statusRef.current === 'playing' ? 'pauseVideo' : 'playVideo');
+  /* ---- gestures: single tap = pause/resume, double tap = like, hold = pause + hide UI ---- */
 
-  const handleTap = (e) => {
+  const beginHold = () => {
+    holdPausedRef.current = true;
+    onHoldRef.current(true);
+    reconcile();
+  };
+
+  const endHold = () => {
+    if (!holdPausedRef.current) return;
+    holdPausedRef.current = false;
+    onHoldRef.current(false);
+    reconcile();
+  };
+
+  const togglePlay = () => {
+    tapPausedRef.current = !tapPausedRef.current;
+    setUserPaused(tapPausedRef.current);
+    reconcile();
+  };
+
+  const handlePointerDown = (e) => {
+    if (!isActive) return;
+    startPos.current = { x: e.clientX, y: e.clientY };
+    clearTimeout(holdTimer.current);
+    holdTimer.current = setTimeout(beginHold, HOLD_MS);
+  };
+
+  const handlePointerMove = (e) => {
+    if (!startPos.current) return;
+    const dx = Math.abs(e.clientX - startPos.current.x);
+    const dy = Math.abs(e.clientY - startPos.current.y);
+    if (dx > 12 || dy > 12) clearTimeout(holdTimer.current);
+  };
+
+  const handlePointerUp = (e) => {
+    if (!isActive) return;
+    clearTimeout(holdTimer.current);
+    const wasHolding = holdPausedRef.current;
+    startPos.current = null;
+    if (wasHolding) {
+      endHold();
+      return;
+    }
     const now = Date.now();
     if (now - lastTap.current < 300) {
       clearTimeout(tapTimer.current);
@@ -825,7 +1074,7 @@ function VideoLayer({ short, isActive, muted, onDoubleLike }) {
       const rect = e.currentTarget.getBoundingClientRect();
       setBurst({ x: e.clientX - rect.left, y: e.clientY - rect.top, key: now });
       clearTimeout(burstTimer.current);
-      burstTimer.current = setTimeout(() => setBurst(null), 800);
+      burstTimer.current = setTimeout(() => setBurst(null), 900);
       onDoubleLike();
       return;
     }
@@ -840,45 +1089,90 @@ function VideoLayer({ short, isActive, muted, onDoubleLike }) {
     }
   };
 
+  /* ---- drag-to-seek progress bar ---- */
+
+  const seekFromEvent = (e) => {
+    const track = trackRef.current;
+    if (!track) return;
+    const rect = track.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    if (fillRef.current) fillRef.current.style.transform = `scaleX(${ratio})`;
+    return ratio;
+  };
+
+  const handleSeekDown = (e) => {
+    if (!isActive) return;
+    seekingRef.current = true;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    seekFromEvent(e);
+  };
+  const handleSeekMove = (e) => {
+    if (!seekingRef.current) return;
+    seekFromEvent(e);
+  };
+  const handleSeekUp = (e) => {
+    if (!seekingRef.current) return;
+    const ratio = seekFromEvent(e);
+    seekingRef.current = false;
+    if (durationRef.current > 0 && typeof ratio === 'number') post('seekTo', [ratio * durationRef.current, true]);
+  };
+
   return (
-    <div className="sf-video">
+    <div className="rf-video">
       {src && (
         <iframe
           ref={iframeRef}
-          className="sf-iframe"
+          className="rf-iframe"
           src={src}
-          title={short.title}
+          onLoad={handshake}
+          title={titleOf(reel)}
           allow="autoplay; encrypted-media; picture-in-picture"
           referrerPolicy="strict-origin-when-cross-origin"
         />
       )}
-      <img
-        className={`sf-poster${status === 'loading' ? '' : ' is-hidden'}`}
-        src={short.thumb}
-        alt=""
-        draggable="false"
-        loading={isActive ? 'eager' : 'lazy'}
-      />
+      <img className={`rf-poster${status === 'loading' ? '' : ' is-hidden'}`} src={reel.thumb} alt="" draggable="false" loading={mounted ? 'eager' : 'lazy'} />
       <div
-        className="sf-tap"
+        className="rf-tap"
         role="button"
         tabIndex={isActive ? 0 : -1}
-        aria-label={`Play or pause ${short.title}`}
-        onClick={handleTap}
+        aria-label={`Play or pause ${titleOf(reel)}`}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
         onKeyDown={handleKeyDown}
       />
-      {status === 'paused' && (
-        <div className="sf-paused" aria-hidden="true">
+      {isActive && userPaused && (
+        <div className="rf-paused" aria-hidden="true">
           <PlayIcon />
         </div>
       )}
       {burst && (
-        <span key={burst.key} className="sf-burst" style={{ left: burst.x, top: burst.y }} aria-hidden="true">
+        <span key={burst.key} className="rf-burst" style={{ left: burst.x, top: burst.y }} aria-hidden="true">
           <HeartIcon filled />
+          <i className="rf-particle p1" />
+          <i className="rf-particle p2" />
+          <i className="rf-particle p3" />
+          <i className="rf-particle p4" />
+          <i className="rf-particle p5" />
+          <i className="rf-particle p6" />
         </span>
       )}
-      <div className="sf-progress" aria-hidden="true">
-        <div ref={fillRef} className="sf-progress-fill" />
+      <div
+        ref={trackRef}
+        className="rf-progress"
+        role="slider"
+        aria-label="Seek"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        tabIndex={isActive ? 0 : -1}
+        onPointerDown={handleSeekDown}
+        onPointerMove={handleSeekMove}
+        onPointerUp={handleSeekUp}
+        onPointerCancel={handleSeekUp}
+      >
+        <div className="rf-progress-track" />
+        <div ref={fillRef} className="rf-progress-fill" />
       </div>
     </div>
   );
@@ -886,77 +1180,107 @@ function VideoLayer({ short, isActive, muted, onDoubleLike }) {
 
 /* ---------- one full-screen slide ---------- */
 
-const ShortSlide = React.memo(function ShortSlide({
-  short,
+const ReelSlide = React.memo(function ReelSlide({
+  reel,
   index,
   isActive,
+  mounted,
   muted,
-  subscribed,
+  uiHidden,
+  following,
+  bookmarked,
   onLike,
   onDoubleLike,
   onOpenComments,
   onOpenDetails,
+  onOpenChannel,
   onShare,
-  onToggleSubscribe,
+  onToggleFollow,
+  onToggleBookmark,
+  onForceMute,
+  onHoldChange,
 }) {
+  const [playing, setPlaying] = useState(false);
+
   return (
-    <section className="sf-slide" data-index={index} aria-label={short.title}>
-      <div className="sf-stage">
+    <section className="rf-slide" data-index={index} aria-label={titleOf(reel)}>
+      <div className="rf-stage">
+        <div className="rf-stage-glow" style={{ backgroundImage: `url(${JSON.stringify(reel.thumb)})` }} aria-hidden="true" />
         <VideoLayer
-          short={short}
+          reel={reel}
           isActive={isActive}
+          mounted={mounted}
           muted={muted}
-          onDoubleLike={() => onDoubleLike(short.id)}
+          onDoubleLike={() => onDoubleLike(reel.id)}
+          onForceMute={onForceMute}
+          onPlayStateChange={setPlaying}
+          onHoldChange={onHoldChange}
         />
-        <div className="sf-scrim sf-scrim--top" />
-        <div className="sf-scrim sf-scrim--bottom" />
+        <div className="rf-scrim rf-scrim--top" />
+        <div className="rf-scrim rf-scrim--bottom" />
 
-        <div className="sf-rail" role="group" aria-label="Actions">
-          <RailButton
-            label={short.liked ? 'Unlike' : 'Like'}
-            caption={formatCount(short.likes)}
-            active={short.liked}
-            tone="like"
-            onClick={() => onLike(short.id)}
-          >
-            <HeartIcon filled={short.liked} />
-          </RailButton>
-          <RailButton
-            label="Open comments"
-            caption={formatCount(short.comments)}
-            onClick={() => onOpenComments(short.id)}
-          >
-            <CommentIcon />
-          </RailButton>
-          <RailButton
-            label="Share on WhatsApp"
-            caption="Share"
-            tone="whatsapp"
-            onClick={() => onShare(short.id)}
-          >
-            <WhatsAppIcon />
-          </RailButton>
-          <RailButton label="Show details" caption="Details" onClick={() => onOpenDetails(short.id)}>
-            <InfoIcon />
-          </RailButton>
-        </div>
-
-        <div className="sf-meta">
-          <div className="sf-channel">
-            <Avatar name={short.channelName} src={short.channelLogo} />
-            <span className="sf-channel-name">{short.channelName}</span>
-            <button
-              type="button"
-              className={`sf-sub${subscribed ? ' is-on' : ''}`}
-              aria-pressed={subscribed}
-              onClick={() => onToggleSubscribe(short.channelName)}
-            >
-              {subscribed ? 'Subscribed' : 'Subscribe'}
+        <div className={`rf-hideable${uiHidden ? ' is-hidden' : ''}`}>
+          <div className="rf-rail" role="group" aria-label="Actions">
+            <RailButton label={reel.liked ? 'Unlike' : 'Like'} caption={formatCount(reel.likes)} active={reel.liked} tone="like" onClick={() => onLike(reel.id)}>
+              <HeartIcon filled={reel.liked} />
+            </RailButton>
+            <RailButton label="Open comments" caption={formatCount(reel.comments)} onClick={() => onOpenComments(reel.id)}>
+              <CommentIcon />
+            </RailButton>
+            <RailButton label="Bookmark" caption="Save" active={bookmarked} tone="bookmark" onClick={() => onToggleBookmark(reel.id)}>
+              <BookmarkIcon filled={bookmarked} />
+            </RailButton>
+            <RailButton label="Share" caption="Share" onClick={() => onShare(reel.id)}>
+              <ShareIcon />
+            </RailButton>
+            <RailButton label="Show details" caption="More" onClick={() => onOpenDetails(reel.id)}>
+              <InfoIcon />
+            </RailButton>
+            <button type="button" className="rf-disc-btn" onClick={() => onOpenDetails(reel.id)} aria-label="Sound details">
+              <SoundDisc src={reel.channelLogo} name={nameOf(reel)} spinning={isActive && playing} />
             </button>
           </div>
-          <button type="button" className="sf-title" onClick={() => onOpenDetails(short.id)}>
-            <span>{short.title}</span>
-          </button>
+
+          <div className="rf-meta">
+            <button type="button" className="rf-creator-pill" onClick={() => onOpenChannel(reel)} aria-label={`View ${nameOf(reel)} profile`}>
+              <Avatar name={nameOf(reel)} src={reel.channelLogo} />
+              <span className="rf-creator-name">
+                {nameOf(reel)}
+                {reel.verified && <VerifiedBadge />}
+              </span>
+              <span
+                role="button"
+                tabIndex={0}
+                className={`rf-follow rf-follow--sm${following ? ' is-on' : ''}`}
+                aria-pressed={following}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleFollow(reel.channelId || nameOf(reel));
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.stopPropagation();
+                    onToggleFollow(reel.channelId || nameOf(reel));
+                  }
+                }}
+              >
+                {following ? 'Following' : 'Follow'}
+              </span>
+            </button>
+
+            <div className="rf-sound-line">
+              <svg className="rf-sound-note" viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+                <path fill="currentColor" d="M9 18V5l12-2v13M9 18a3 3 0 1 1-3-3 3 3 0 0 1 3 3zm12-2a3 3 0 1 1-3-3 3 3 0 0 1 3 3z" />
+              </svg>
+              <div className="rf-marquee">
+                <span>{soundOf(reel)} &nbsp;&nbsp;•&nbsp;&nbsp; {soundOf(reel)}</span>
+              </div>
+            </div>
+
+            <button type="button" className="rf-title" onClick={() => onOpenDetails(reel.id)}>
+              <span>{titleOf(reel)}</span>
+            </button>
+          </div>
         </div>
       </div>
     </section>
@@ -968,32 +1292,33 @@ const ShortSlide = React.memo(function ShortSlide({
  * from the first line of module evaluation.
  * ------------------------------------------------------------------------- */
 
-export default function ShortsFeed() {
-  const [shorts, setShorts] = useState([]);
-  const [status, setStatus] = useState('loading'); // loading | ready | error
+export default function ReelsFeed() {
+  const [reels, setReels] = useState([]);
+  const [status, setStatus] = useState('loading');
   const [activeIndex, setActiveIndex] = useState(0);
   const [muted, setMuted] = useState(shouldStartMuted);
-  const [subs, setSubs] = useState(loadSubs);
-  const [sheet, setSheet] = useState(null); // { type: 'comments' | 'details', id }
+  const [uiHidden, setUiHidden] = useState(false);
+  const [follows, setFollows] = useState(() => readStore(SUBS_KEY));
+  const [bookmarks, setBookmarks] = useState(() => readStore(BOOKMARKS_KEY));
+  const [sheet, setSheet] = useState(null);
   const [toast, setToast] = useState('');
 
   const scrollerRef = useRef(null);
-  const shortsRef = useRef(shorts);
+  const reelsRef = useRef(reels);
   const activeRef = useRef(activeIndex);
   const pendingLikes = useRef(new Set());
   const toastTimer = useRef(null);
   const lastSheet = useRef(null);
 
-  shortsRef.current = shorts;
+  reelsRef.current = reels;
   activeRef.current = activeIndex;
 
-  /* page chrome: black canvas, no page scroll behind the feed */
   useEffect(() => {
-    document.documentElement.classList.add('sf-body');
-    document.body.classList.add('sf-body');
+    document.documentElement.classList.add('rf-body');
+    document.body.classList.add('rf-body');
     return () => {
-      document.documentElement.classList.remove('sf-body');
-      document.body.classList.remove('sf-body');
+      document.documentElement.classList.remove('rf-body');
+      document.body.classList.remove('rf-body');
     };
   }, []);
 
@@ -1005,12 +1330,11 @@ export default function ShortsFeed() {
     toastTimer.current = setTimeout(() => setToast(''), 2600);
   }, []);
 
-  /* data */
-  const loadShorts = useCallback(async (signal) => {
+  const loadReels = useCallback(async (signal) => {
     setStatus('loading');
     try {
       const payload = await api(API.list, { signal });
-      setShorts(unwrapList(payload).map(normalizeShort).filter(Boolean));
+      setReels(unwrapList(payload).map(normalizeReel).filter(Boolean));
       setStatus('ready');
     } catch (err) {
       if (err && err.name === 'AbortError') return;
@@ -1020,20 +1344,17 @@ export default function ShortsFeed() {
 
   useEffect(() => {
     const controller = new AbortController();
-    loadShorts(controller.signal);
+    loadReels(controller.signal);
     return () => controller.abort();
-  }, [loadShorts]);
+  }, [loadReels]);
 
-  const patchShort = useCallback((id, patch) => {
-    setShorts((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, ...(typeof patch === 'function' ? patch(s) : patch) } : s))
-    );
+  const patchReel = useCallback((id, patch) => {
+    setReels((prev) => prev.map((r) => (r.id === id ? { ...r, ...(typeof patch === 'function' ? patch(r) : patch) } : r)));
   }, []);
 
-  /* active slide detection: only the slide that is >= 65% visible plays */
   useEffect(() => {
     const root = scrollerRef.current;
-    if (!root || shorts.length === 0 || typeof IntersectionObserver === 'undefined') return undefined;
+    if (!root || reels.length === 0 || typeof IntersectionObserver === 'undefined') return undefined;
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
@@ -1046,9 +1367,8 @@ export default function ShortsFeed() {
     );
     root.querySelectorAll('[data-index]').forEach((node) => observer.observe(node));
     return () => observer.disconnect();
-  }, [shorts.length]);
+  }, [reels.length]);
 
-  /* navigation */
   const go = useCallback((delta) => {
     const root = scrollerRef.current;
     if (!root) return;
@@ -1078,166 +1398,191 @@ export default function ShortsFeed() {
     return () => window.removeEventListener('keydown', onKey);
   }, [sheet, go]);
 
-  /* actions */
   const toggleLike = useCallback(
     async (id, forceOn = false) => {
-      const current = shortsRef.current.find((s) => s.id === id);
+      const current = reelsRef.current.find((r) => r.id === id);
       if (!current || pendingLikes.current.has(id)) return;
       const next = forceOn ? true : !current.liked;
       if (next === current.liked) return;
       const delta = next ? 1 : -1;
       pendingLikes.current.add(id);
-      patchShort(id, (s) => ({ liked: next, likes: Math.max(0, s.likes + delta) }));
+      patchReel(id, (r) => ({ liked: next, likes: Math.max(0, r.likes + delta) }));
       try {
         await api(API.like(id), { method: 'POST', body: JSON.stringify({ liked: next }) });
       } catch (err) {
-        patchShort(id, (s) => ({ liked: !next, likes: Math.max(0, s.likes - delta) }));
-        showToast("Couldn't update your like. Try again.");
+        if (err && (err.status === 401 || err.status === 403)) {
+          patchReel(id, (r) => ({ liked: !next, likes: Math.max(0, r.likes - delta) }));
+          showToast('Log in to like Reels.');
+        } else {
+          console.warn(`[Reels] Like was not saved on the server (status ${err && err.status}); kept on this device.`, err);
+        }
       } finally {
         pendingLikes.current.delete(id);
       }
     },
-    [patchShort, showToast]
+    [patchReel, showToast]
   );
 
   const onLike = useCallback((id) => toggleLike(id, false), [toggleLike]);
   const onDoubleLike = useCallback((id) => toggleLike(id, true), [toggleLike]);
 
   const onShare = useCallback((id) => {
-    const s = shortsRef.current.find((x) => x.id === id);
-    if (!s) return;
-    const text = `${s.title}\nhttps://www.youtube.com/shorts/${s.videoId}`;
+    const r = reelsRef.current.find((x) => x.id === id);
+    if (!r) return;
+    const text = `${titleOf(r)}\nhttps://www.youtube.com/shorts/${r.videoId}`;
+    if (navigator.share) {
+      navigator.share({ title: titleOf(r), text, url: `https://www.youtube.com/shorts/${r.videoId}` }).catch(() => {});
+      return;
+    }
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
   }, []);
 
-  const onToggleSubscribe = useCallback((channelName) => {
-    setSubs((prev) => {
+  const onToggleFollow = useCallback((key) => {
+    setFollows((prev) => {
       const next = { ...prev };
-      if (next[channelName]) delete next[channelName];
-      else next[channelName] = true;
-      try {
-        window.localStorage.setItem(SUBS_KEY, JSON.stringify(next));
-      } catch (e) {
-        /* ignore storage errors */
-      }
+      if (next[key]) delete next[key];
+      else next[key] = true;
+      writeStore(SUBS_KEY, next);
       return next;
     });
   }, []);
 
-  const onCountDelta = useCallback(
-    (id, delta) => patchShort(id, (s) => ({ comments: Math.max(0, s.comments + delta) })),
-    [patchShort]
-  );
+  const onToggleBookmark = useCallback((id) => {
+    setBookmarks((prev) => {
+      const next = { ...prev };
+      if (next[id]) delete next[id];
+      else next[id] = true;
+      writeStore(BOOKMARKS_KEY, next);
+      return next;
+    });
+  }, []);
+
+  const onForceMute = useCallback(() => {
+    setMuted(true);
+    showToast('Tap the speaker to turn sound on.');
+  }, [showToast]);
+
+  const onCountDelta = useCallback((id, delta) => patchReel(id, (r) => ({ comments: Math.max(0, r.comments + delta) })), [patchReel]);
 
   const openComments = useCallback((id) => setSheet({ type: 'comments', id }), []);
   const openDetails = useCallback((id) => setSheet({ type: 'details', id }), []);
+  const openChannel = useCallback((reel) => {
+    setSheet({
+      type: 'channel',
+      channelId: reel.channelId,
+      channelName: reel.channelName,
+      channelLogo: reel.channelLogo,
+      channelHandle: reel.channelHandle,
+      verified: reel.verified,
+      subscribers: reel.subscribers,
+    });
+  }, []);
   const closeSheet = useCallback(() => setSheet(null), []);
 
-  /* keep the last sheet target around so content doesn't vanish mid slide-out */
-  if (sheet) lastSheet.current = sheet;
-  const shownId = (sheet || lastSheet.current || {}).id;
-  const sheetShort = shownId ? shorts.find((s) => s.id === shownId) || null : null;
+  const selectReelById = useCallback((id) => {
+    const idx = reelsRef.current.findIndex((r) => r.id === id);
+    if (idx !== -1) {
+      setActiveIndex(idx);
+      const root = scrollerRef.current;
+      if (root) {
+        const nodes = root.querySelectorAll('[data-index]');
+        if (nodes[idx]) nodes[idx].scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+  }, []);
 
-  const ready = status === 'ready' && shorts.length > 0;
-  const activeShort = shorts[activeIndex] || shorts[0];
+  if (sheet) lastSheet.current = sheet;
+  const sheetData = sheet || lastSheet.current || {};
+  const sheetReel = sheetData.id ? reels.find((r) => r.id === sheetData.id) || null : null;
+
+  const ready = status === 'ready' && reels.length > 0;
+  const activeReel = reels[activeIndex] || reels[0];
+  const sheetOpen = Boolean(sheet);
 
   return (
-    <main className="sf-root" aria-label="Shorts">
-      <div className="sf-chrome">
-        <div className="sf-chrome-left">
-          <button type="button" className="sf-glass-btn" onClick={goBack} aria-label="Go back">
+    <main className="rf-root" aria-label="Reels">
+      <div className={`rf-chrome${uiHidden ? ' is-hidden' : ''}`}>
+        <div className="rf-chrome-left">
+          <button type="button" className="rf-glass-btn" onClick={goBack} aria-label="Go back">
             <BackIcon />
           </button>
-          <span className="sf-chrome-title">Shorts</span>
+          <span className="rf-chrome-title">Reels</span>
         </div>
         {ready && (
-          <button
-            type="button"
-            className="sf-glass-btn"
-            onClick={() => setMuted((m) => !m)}
-            aria-label={muted ? 'Turn sound on' : 'Turn sound off'}
-            aria-pressed={!muted}
-          >
+          <button type="button" className="rf-glass-btn" onClick={() => setMuted((m) => !m)} aria-label={muted ? 'Turn sound on' : 'Turn sound off'} aria-pressed={!muted}>
             <VolumeIcon muted={muted} />
           </button>
         )}
       </div>
 
       {status === 'loading' && <Skeleton />}
-      {status === 'error' && (
-        <StateCard
-          title="Couldn't load Shorts"
-          body="Check your connection and try again."
-          actionLabel="Try again"
-          onAction={() => loadShorts()}
-        />
-      )}
-      {status === 'ready' && shorts.length === 0 && (
-        <StateCard title="No Shorts yet" body="New videos will show up here once they're published." />
-      )}
+      {status === 'error' && <StateCard title="Couldn't load Reels" body="Check your connection and try again." actionLabel="Try again" onAction={() => loadReels()} />}
+      {status === 'ready' && reels.length === 0 && <StateCard title="No Reels yet" body="New videos will show up here once they're published." />}
 
       {ready && (
         <>
-          <div
-            className="sf-ambient"
-            aria-hidden="true"
-            style={{ backgroundImage: `url(${JSON.stringify(activeShort.thumb)})` }}
-          />
-          <div className="sf-scroller" ref={scrollerRef}>
-            {shorts.map((s, i) => (
-              <ShortSlide
-                key={s.id}
-                short={s}
+          <div className="rf-ambient" aria-hidden="true" style={{ backgroundImage: `url(${JSON.stringify(activeReel.thumb)})` }} />
+          <div className="rf-scroller" ref={scrollerRef}>
+            {reels.map((r, i) => (
+              <ReelSlide
+                key={r.id}
+                reel={r}
                 index={i}
                 isActive={i === activeIndex}
+                mounted={i >= activeIndex - PRELOAD_BEHIND && i <= activeIndex + PRELOAD_AHEAD}
                 muted={muted}
-                subscribed={Boolean(subs[s.channelName])}
+                uiHidden={uiHidden && i === activeIndex}
+                following={Boolean(follows[r.channelId || r.channelName])}
+                bookmarked={Boolean(bookmarks[r.id])}
                 onLike={onLike}
                 onDoubleLike={onDoubleLike}
                 onOpenComments={openComments}
                 onOpenDetails={openDetails}
+                onOpenChannel={openChannel}
                 onShare={onShare}
-                onToggleSubscribe={onToggleSubscribe}
+                onToggleFollow={onToggleFollow}
+                onToggleBookmark={onToggleBookmark}
+                onForceMute={onForceMute}
+                onHoldChange={setUiHidden}
               />
             ))}
           </div>
 
-          <div className="sf-nav">
-            <button
-              type="button"
-              className="sf-glass-btn sf-glass-btn--lg"
-              onClick={() => go(-1)}
-              disabled={activeIndex === 0}
-              aria-label="Previous short"
-            >
+          <div className="rf-nav">
+            <button type="button" className="rf-glass-btn rf-glass-btn--lg" onClick={() => go(-1)} disabled={activeIndex === 0} aria-label="Previous reel">
               <ChevronIcon up />
             </button>
-            <button
-              type="button"
-              className="sf-glass-btn sf-glass-btn--lg"
-              onClick={() => go(1)}
-              disabled={activeIndex >= shorts.length - 1}
-              aria-label="Next short"
-            >
+            <button type="button" className="rf-glass-btn rf-glass-btn--lg" onClick={() => go(1)} disabled={activeIndex >= reels.length - 1} aria-label="Next reel">
               <ChevronIcon />
             </button>
           </div>
 
-          <CommentsSheet
-            short={sheetShort}
-            open={Boolean(sheet && sheet.type === 'comments')}
-            onClose={closeSheet}
-            onCountDelta={onCountDelta}
-          />
+          <CommentsSheet reel={sheetReel} open={sheetOpen && sheet.type === 'comments'} onClose={closeSheet} onCountDelta={onCountDelta} />
           <DetailsSheet
-            short={sheetShort}
-            open={Boolean(sheet && sheet.type === 'details')}
+            reel={sheetReel}
+            open={sheetOpen && sheet.type === 'details'}
             onClose={closeSheet}
+            onOpenChannel={openChannel}
+            following={sheetReel ? Boolean(follows[sheetReel.channelId || sheetReel.channelName]) : false}
+            onToggleFollow={onToggleFollow}
+          />
+          <ChannelProfileSheet
+            channelId={sheetData.channelId}
+            channelName={sheetData.channelName}
+            channelLogo={sheetData.channelLogo}
+            channelHandle={sheetData.channelHandle}
+            verified={sheetData.verified}
+            subscribers={sheetData.subscribers}
+            open={sheetOpen && sheet.type === 'channel'}
+            onClose={closeSheet}
+            following={Boolean(follows[sheetData.channelId || sheetData.channelName])}
+            onToggleFollow={onToggleFollow}
+            onSelectReel={selectReelById}
           />
         </>
       )}
 
-      <div className={`sf-toast${toast ? ' is-visible' : ''}`} role="status" aria-live="polite">
+      <div className={`rf-toast${toast ? ' is-visible' : ''}`} role="status" aria-live="polite">
         {toast}
       </div>
     </main>

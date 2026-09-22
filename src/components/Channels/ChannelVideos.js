@@ -149,8 +149,8 @@ function ChannelVideos() {
       });
 
       if (res.data.success && Array.isArray(res.data.data)) {
-        // Separate live/upcoming from regular videos
-        let regularVideos = res.data.data;
+        // Separate live/upcoming from regular videos & filter out any shorts as frontend safety check
+        let regularVideos = res.data.data.filter(v => !v.isShort && !v.is_short);
 
         // Live and Upcoming videos will now be directly in regularVideos with their correct titles/scheduled times
         // Filter out any video that has liveBroadcastContent as 'live' or 'upcoming' and sort them to the top.
@@ -276,7 +276,7 @@ function ChannelVideos() {
   }, [loadingMore, hasMore, selectedChannel, page, fetchChannelVideos]);
 
   const videosToDisplay = useMemo(() => {
-    let display = [...filteredVideos];
+    let display = [...filteredVideos].filter(v => !v.isShort && !v.is_short);
     if (liveVideoData) {
       display = display.filter(v => v.youtubeVideoId !== liveVideoData.youtubeVideoId);
       display.unshift(liveVideoData);
