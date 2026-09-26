@@ -207,7 +207,14 @@ body.rf-body {
   border: 1px solid var(--rf-glass-border);
   border-radius: 50%;
   pointer-events: none;
-  animation: rf-pop-in 0.32s var(--rf-spring);
+  animation: rf-pop-in 0.32s var(--rf-spring), rf-fade-out 0.4s ease 0.4s forwards;
+}
+
+@keyframes rf-fade-out {
+  to {
+    opacity: 0;
+    pointer-events: none;
+  }
 }
 
 /* --------------------------------------------------------------------------
@@ -322,10 +329,29 @@ body.rf-body {
   align-items: center;
   justify-content: space-between;
   width: var(--rf-stage-w);
-  padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 10px;
+  padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 12px;
+  margin-top: 8px;
   transform: translateX(-50%);
+  background: rgba(20, 20, 20, 0.45);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 28px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
   pointer-events: none;
   transition: opacity 0.28s ease, transform 0.28s ease;
+}
+
+.rf-root::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 120px;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.6) 0%, transparent 100%);
+  z-index: 7;
+  pointer-events: none;
 }
 
 .rf-chrome.is-hidden {

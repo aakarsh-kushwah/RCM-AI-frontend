@@ -9,14 +9,24 @@ import './ShortsFeed.css';
  * TDZ crash). Declared directly as the default export.
  *
  * Playback engine
- *   - The active slide, its 1 previous and its 2 next neighbours are mounted
+ *   - The active slide, its 1 previous and its 1 next neighbour are mounted
  *     ("preload window"), so the player already exists and is buffering by
- *     the time you swipe to it — no black flash, no reload delay.
+ *     the time you swipe to it — no black flash, no reload delay. Kept
+ *     deliberately small (2-3 iframes max) to limit CPU/GPU load and heat,
+ *     since every mounted YouTube iframe is a full embedded player.
  *   - Every mounted player starts muted. A reconcile loop is the single
  *     source of truth: not-active => muted + paused; active => playing and
  *     unmuted only if the global sound toggle is on. Leaving a slide fires
  *     mute+pause in the same tick the slide stops being active, so a swipe
  *     can never leave two videos audible at once.
+ *
+ * Pagination
+ *   - Starts at page 1 (10 items). As the user approaches the end of the
+ *     loaded list (5 items from the bottom), the next page is fetched
+ *     automatically via IntersectionObserver. `isFetchingRef` is a
+ *     synchronous lock so a fast flick can never fire two fetches for the
+ *     same page. `hasMore` stops requesting once the backend reports no
+ *     more pages (or returns a short page).
  * ------------------------------------------------------------------------- */
 
 /* ---------- configuration ---------- */
@@ -30,9 +40,14 @@ const API = {
 const SUBS_KEY = 'rcm_reels_follows';
 const BOOKMARKS_KEY = 'rcm_reels_bookmarks';
 const ACTIVE_THRESHOLD = 0.65;
+const ACTIVE_INDEX_DEBOUNCE_MS = 180; // lets the scroll-snap animation settle before we react
 const HOLD_MS = 220; // press-and-hold threshold before we pause + hide the UI
+const PAGE_SIZE = 10;
 const PRELOAD_BEHIND = 1;
-const PRELOAD_AHEAD = 2;
+const PRELOAD_AHEAD = 1;
+const PAGINATION_SENTINEL_OFFSET = 5; // fetch the next page once this many items remain unseen
+const TAP_PULSE_VISIBLE_MS = 400; // matches the "momentary indicator" requirement
+const TAP_PULSE_REMOVE_MS = 700; // unmount after the fade transition finishes
 
 /* ---------- network ---------- */
 
@@ -359,6 +374,18 @@ function PlayIcon() {
   return (
     <Icon size={30} fill="currentColor" stroke="none">
       <path d="M8 5.14v13.72a1 1 0 0 0 1.53.85l10.78-6.86a1 1 0 0 0 0-1.7L9.53 4.29A1 1 0 0 0 8 5.14z" />
+    </Icon>
+  );
+}
+
+// New: needed for the momentary tap-pulse indicator, which now shows a pause
+// glyph (not just play) so a tap-to-pause gives the same instant feedback a
+// tap-to-resume does, before fading out.
+function PauseIcon() {
+  return (
+    <Icon size={30} fill="currentColor" stroke="none">
+      <rect x="6" y="5" width="4" height="14" rx="1" />
+      <rect x="14" y="5" width="4" height="14" rx="1" />
     </Icon>
   );
 }
@@ -861,6 +888,13 @@ function VideoLayer({ reel, isActive, mounted, muted, onDoubleLike, onForceMute,
   const [userPaused, setUserPaused] = useState(false);
   const [burst, setBurst] = useState(null);
 
+  // Momentary tap-pulse indicator: shows briefly on ANY tap (pause or
+  // resume) and always fades itself out — it is never allowed to stay
+  // permanently stuck over the video like the old persistent icon did.
+  const [pulse, setPulse] = useState(null); // { icon: 'play' | 'pause', visible, key }
+  const pulseHideTimer = useRef(null);
+  const pulseRemoveTimer = useRef(null);
+
   flags.current = { isActive, muted };
   onForceMuteRef.current = onForceMute;
   onPlayStateRef.current = onPlayStateChange;
@@ -1019,6 +1053,8 @@ function VideoLayer({ reel, isActive, mounted, muted, onDoubleLike, onForceMute,
       clearTimeout(tapTimer.current);
       clearTimeout(holdTimer.current);
       clearTimeout(burstTimer.current);
+      clearTimeout(pulseHideTimer.current);
+      clearTimeout(pulseRemoveTimer.current);
     },
     []
   );
@@ -1038,9 +1074,25 @@ function VideoLayer({ reel, isActive, mounted, muted, onDoubleLike, onForceMute,
     reconcile();
   };
 
+  // Fires a brief tap-pulse icon that ALWAYS fades itself out after
+  // TAP_PULSE_VISIBLE_MS and unmounts after TAP_PULSE_REMOVE_MS — this is
+  // what stops the play/pause glyph from ever getting stuck on screen.
+  const firePulse = (icon) => {
+    clearTimeout(pulseHideTimer.current);
+    clearTimeout(pulseRemoveTimer.current);
+    setPulse({ icon, visible: true, key: Date.now() });
+    pulseHideTimer.current = setTimeout(() => {
+      setPulse((p) => (p ? { ...p, visible: false } : p));
+    }, TAP_PULSE_VISIBLE_MS);
+    pulseRemoveTimer.current = setTimeout(() => {
+      setPulse(null);
+    }, TAP_PULSE_REMOVE_MS);
+  };
+
   const togglePlay = () => {
     tapPausedRef.current = !tapPausedRef.current;
     setUserPaused(tapPausedRef.current);
+    firePulse(tapPausedRef.current ? 'pause' : 'play');
     reconcile();
   };
 
@@ -1130,7 +1182,25 @@ function VideoLayer({ reel, isActive, mounted, muted, onDoubleLike, onForceMute,
           referrerPolicy="strict-origin-when-cross-origin"
         />
       )}
-      <img className={`rf-poster${status === 'loading' ? '' : ' is-hidden'}`} src={reel.thumb} alt="" draggable="false" loading={mounted ? 'eager' : 'lazy'} />
+      {/*
+        Poster/thumbnail fallback — visibility is driven entirely by inline
+        style (not a CSS class) so it can never depend on an external
+        stylesheet rule being present/correct. This is the direct fix for
+        the black-screen glitch: whenever the iframe hasn't reported a
+        "playing" state yet, the thumbnail stays fully opaque and covers it.
+      */}
+      <img
+        className="rf-poster"
+        src={reel.thumb}
+        alt=""
+        draggable="false"
+        loading={mounted ? 'eager' : 'lazy'}
+        style={{
+          opacity: status === 'loading' ? 1 : 0,
+          transition: 'opacity 200ms ease',
+          pointerEvents: status === 'loading' ? 'auto' : 'none',
+        }}
+      />
       <div
         className="rf-tap"
         role="button"
@@ -1142,9 +1212,14 @@ function VideoLayer({ reel, isActive, mounted, muted, onDoubleLike, onForceMute,
         onPointerCancel={handlePointerUp}
         onKeyDown={handleKeyDown}
       />
-      {isActive && userPaused && (
-        <div className="rf-paused" aria-hidden="true">
-          <PlayIcon />
+      {isActive && pulse && (
+        <div
+          key={pulse.key}
+          className="rf-paused"
+          aria-hidden="true"
+          style={{ opacity: pulse.visible ? 1 : 0, transition: 'opacity 300ms ease' }}
+        >
+          {pulse.icon === 'pause' ? <PauseIcon /> : <PlayIcon />}
         </div>
       )}
       {burst && (
@@ -1303,15 +1378,24 @@ export default function ReelsFeed() {
   const [sheet, setSheet] = useState(null);
   const [toast, setToast] = useState('');
 
+  // --- pagination state ---
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+
   const scrollerRef = useRef(null);
   const reelsRef = useRef(reels);
   const activeRef = useRef(activeIndex);
   const pendingLikes = useRef(new Set());
   const toastTimer = useRef(null);
   const lastSheet = useRef(null);
+  const loadingMoreRef = useRef(false);
+  const isFetchingRef = useRef(false); // synchronous lock — prevents a fast flick firing two page fetches
+  const activeIndexDebounceTimer = useRef(null);
 
   reelsRef.current = reels;
   activeRef.current = activeIndex;
+  loadingMoreRef.current = loadingMore;
 
   useEffect(() => {
     document.documentElement.classList.add('rf-body');
@@ -1330,28 +1414,55 @@ export default function ReelsFeed() {
     toastTimer.current = setTimeout(() => setToast(''), 2600);
   }, []);
 
-  const loadReels = useCallback(async (signal) => {
-    setStatus('loading');
+  const loadReels = useCallback(async (pageNum, signal) => {
+    if (pageNum === 1) {
+      setStatus('loading');
+    } else {
+      loadingMoreRef.current = true;
+      setLoadingMore(true);
+    }
     try {
-      const payload = await api(API.list, { signal });
-      setReels(unwrapList(payload).map(normalizeReel).filter(Boolean));
+      const payload = await api(`${API.list}?page=${pageNum}&limit=${PAGE_SIZE}`, { signal });
+      const newItems = unwrapList(payload).map(normalizeReel).filter(Boolean);
+
+      setReels((prev) => (pageNum === 1 ? newItems : [...prev, ...newItems]));
+
+      const totalPages = payload && typeof payload === 'object' ? payload.totalPages : null;
+      if ((totalPages !== undefined && totalPages !== null && pageNum >= totalPages) || newItems.length < PAGE_SIZE) {
+        setHasMore(false);
+      } else {
+        setHasMore(true);
+      }
+
       setStatus('ready');
     } catch (err) {
       if (err && err.name === 'AbortError') return;
-      setStatus('error');
+      if (pageNum === 1) setStatus('error');
+    } finally {
+      if (pageNum > 1) {
+        loadingMoreRef.current = false;
+        setLoadingMore(false);
+      }
+      isFetchingRef.current = false;
     }
   }, []);
 
+  // Initial load + whenever `page` advances.
   useEffect(() => {
     const controller = new AbortController();
-    loadReels(controller.signal);
+    loadReels(page, controller.signal);
     return () => controller.abort();
-  }, [loadReels]);
+  }, [page, loadReels]);
 
   const patchReel = useCallback((id, patch) => {
     setReels((prev) => prev.map((r) => (r.id === id ? { ...r, ...(typeof patch === 'function' ? patch(r) : patch) } : r)));
   }, []);
 
+  // Debounced active-slide detection — waits for the scroll-snap animation
+  // to settle (ACTIVE_INDEX_DEBOUNCE_MS) before committing the new
+  // activeIndex, so a snap-in-progress can't trigger a state update that
+  // fights the browser's own snap animation (the cause of the bounce /
+  // audio-stutter-loop glitch).
   useEffect(() => {
     const root = scrollerRef.current;
     if (!root || reels.length === 0 || typeof IntersectionObserver === 'undefined') return undefined;
@@ -1359,15 +1470,54 @@ export default function ReelsFeed() {
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting && entry.intersectionRatio >= ACTIVE_THRESHOLD) {
-            setActiveIndex(Number(entry.target.dataset.index));
+            const idx = Number(entry.target.dataset.index);
+            clearTimeout(activeIndexDebounceTimer.current);
+            activeIndexDebounceTimer.current = setTimeout(() => {
+              setActiveIndex(idx);
+            }, ACTIVE_INDEX_DEBOUNCE_MS);
           }
         });
       },
       { root, threshold: ACTIVE_THRESHOLD }
     );
     root.querySelectorAll('[data-index]').forEach((node) => observer.observe(node));
-    return () => observer.disconnect();
+    return () => {
+      clearTimeout(activeIndexDebounceTimer.current);
+      observer.disconnect();
+    };
   }, [reels.length]);
+
+  // Infinite-scroll pagination — fetches the next page once the sentinel
+  // (PAGINATION_SENTINEL_OFFSET items from the end) becomes visible.
+  // isFetchingRef is checked synchronously inside the callback so a burst
+  // of intersection events can never queue more than one fetch.
+  useEffect(() => {
+    const root = scrollerRef.current;
+    if (!root || reels.length === 0 || !hasMore || loadingMore || isFetchingRef.current || typeof IntersectionObserver === 'undefined') {
+      return undefined;
+    }
+
+    const sentinelIndex = Math.max(0, reels.length - PAGINATION_SENTINEL_OFFSET);
+    const sentinelNode = root.querySelector(`[data-index="${sentinelIndex}"]`);
+    if (!sentinelNode) return undefined;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && hasMore && !loadingMoreRef.current && !isFetchingRef.current) {
+            isFetchingRef.current = true;
+            loadingMoreRef.current = true;
+            setLoadingMore(true);
+            setPage((p) => p + 1);
+          }
+        });
+      },
+      { root, threshold: 0.1 }
+    );
+
+    observer.observe(sentinelNode);
+    return () => observer.disconnect();
+  }, [reels.length, hasMore, loadingMore]);
 
   const go = useCallback((delta) => {
     const root = scrollerRef.current;
@@ -1491,6 +1641,12 @@ export default function ReelsFeed() {
     }
   }, []);
 
+  const retryInitialLoad = useCallback(() => {
+    setPage(1);
+    setHasMore(true);
+    loadReels(1);
+  }, [loadReels]);
+
   if (sheet) lastSheet.current = sheet;
   const sheetData = sheet || lastSheet.current || {};
   const sheetReel = sheetData.id ? reels.find((r) => r.id === sheetData.id) || null : null;
@@ -1501,7 +1657,18 @@ export default function ReelsFeed() {
 
   return (
     <main className="rf-root" aria-label="Reels">
-      <div className={`rf-chrome${uiHidden ? ' is-hidden' : ''}`}>
+      {/*
+        Top header — a gradient scrim is applied directly via inline style
+        (independent of the external stylesheet) so the "Reels" label and
+        back/volume buttons always stay legible over whatever the active
+        video is showing underneath, instead of visually colliding with it.
+      */}
+      <div
+        className={`rf-chrome${uiHidden ? ' is-hidden' : ''}`}
+        style={{
+          background: 'linear-gradient(to bottom, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.28) 65%, rgba(0,0,0,0) 100%)',
+        }}
+      >
         <div className="rf-chrome-left">
           <button type="button" className="rf-glass-btn" onClick={goBack} aria-label="Go back">
             <BackIcon />
@@ -1516,7 +1683,7 @@ export default function ReelsFeed() {
       </div>
 
       {status === 'loading' && <Skeleton />}
-      {status === 'error' && <StateCard title="Couldn't load Reels" body="Check your connection and try again." actionLabel="Try again" onAction={() => loadReels()} />}
+      {status === 'error' && <StateCard title="Couldn't load Reels" body="Check your connection and try again." actionLabel="Try again" onAction={retryInitialLoad} />}
       {status === 'ready' && reels.length === 0 && <StateCard title="No Reels yet" body="New videos will show up here once they're published." />}
 
       {ready && (
