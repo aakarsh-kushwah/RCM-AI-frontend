@@ -1,0 +1,402 @@
+/* ==========================================================================
+   ChannelShorts.css  -  Apple-style glass UI
+   Everything is scoped under .cs-root so it never leaks into / gets beaten by
+   the shared feed styles. Only elements rendered by ChannelShorts.jsx are styled
+   (chrome, action rail, progress, toast, heart burst). Video geometry
+   (.rf-slide / .rf-stage / .rf-scroller / players) is left to the shared feed CSS.
+   ========================================================================== */
+
+.cs-root {
+  --cs-h: 100vh;
+  --cs-col: min(100%, calc(var(--cs-h) * 9 / 16)); /* width of the 9:16 video column */
+  --cs-glass: rgba(40, 40, 44, 0.46);
+  --cs-glass-strong: rgba(28, 28, 30, 0.72);
+  --cs-stroke: rgba(255, 255, 255, 0.16);
+  --cs-text: #fff;
+  --cs-red: #ff375f;
+  --cs-yellow: #ffd60a;
+  --cs-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --cs-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Inter', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  color: var(--cs-text);
+}
+
+@supports (height: 100dvh) {
+  .cs-root {
+    --cs-h: 100dvh;
+  }
+}
+
+.cs-root .rf-tap {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* ---------- glass material ---------- */
+.cs-glass,
+.cs-pill,
+.cs-act-icon,
+.cs-toast {
+  background: var(--cs-glass);
+  border: 0.5px solid var(--cs-stroke);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.28), inset 0 0.5px 0 rgba(255, 255, 255, 0.18);
+}
+
+@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .cs-glass,
+  .cs-pill,
+  .cs-act-icon,
+  .cs-toast {
+    -webkit-backdrop-filter: saturate(180%) blur(22px);
+    backdrop-filter: saturate(180%) blur(22px);
+  }
+}
+
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .cs-glass,
+  .cs-pill,
+  .cs-act-icon,
+  .cs-toast {
+    background: var(--cs-glass-strong);
+  }
+}
+
+/* ---------- top chrome ---------- */
+.cs-chrome {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  z-index: 20;
+  width: var(--cs-col);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: max(10px, env(safe-area-inset-top)) 12px 10px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  transition: opacity 0.28s var(--cs-ease), transform 0.4s var(--cs-ease);
+}
+
+.cs-chrome > * {
+  pointer-events: auto;
+}
+
+.cs-chrome.is-hidden {
+  opacity: 0;
+  transform: translate(-50%, -10px);
+  pointer-events: none;
+}
+
+.cs-glass {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 50%;
+  color: var(--cs-text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.35s var(--cs-spring), background 0.2s;
+}
+
+.cs-glass svg {
+  width: 20px;
+  height: 20px;
+}
+
+.cs-glass:active {
+  transform: scale(0.88);
+}
+
+.cs-pill {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 40px;
+  box-sizing: border-box;
+  padding: 4px 6px 4px 4px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cs-pill-avatar {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: block;
+}
+
+.cs-pill-avatar > * {
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.cs-pill-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-left: 6px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  line-height: 1.15;
+}
+
+.cs-pill-text strong {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cs-pill-text small {
+  font-size: 11px;
+  font-weight: 500;
+  opacity: 0.7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cs-follow {
+  flex: 0 0 auto;
+  height: 28px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 14px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #000;
+  background: #fff;
+  cursor: pointer;
+  transition: transform 0.35s var(--cs-spring), background 0.25s, color 0.25s;
+}
+
+.cs-follow:active {
+  transform: scale(0.92);
+}
+
+.cs-follow.is-on {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.22);
+}
+
+/* ---------- action rail (right) ---------- */
+.cs-hideable {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  z-index: 5;
+  width: var(--cs-col);
+  transform: translateX(-50%);
+  pointer-events: none;
+  transition: opacity 0.28s var(--cs-ease);
+}
+
+.cs-hideable.is-hidden {
+  opacity: 0;
+}
+
+.cs-rail {
+  position: absolute;
+  right: max(10px, env(safe-area-inset-right));
+  bottom: calc(env(safe-area-inset-bottom) + 40px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.cs-act {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--cs-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.cs-act-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.4s var(--cs-spring), color 0.2s;
+}
+
+.cs-act-icon svg {
+  width: 26px;
+  height: 26px;
+}
+
+.cs-act:active .cs-act-icon {
+  transform: scale(0.86);
+}
+
+.cs-act-cap {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.55);
+}
+
+.cs-act--like.is-on .cs-act-icon {
+  color: var(--cs-red);
+  animation: cs-pop 0.5s var(--cs-spring);
+}
+
+.cs-act--save.is-on .cs-act-icon {
+  color: var(--cs-yellow);
+  animation: cs-pop 0.5s var(--cs-spring);
+}
+
+@keyframes cs-pop {
+  0% { transform: scale(0.7); }
+  55% { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+
+/* ---------- progress / seek (bottom) ---------- */
+.cs-progress {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  z-index: 20;
+  width: var(--cs-col);
+  height: 30px;
+  box-sizing: border-box;
+  padding: 0 0 max(8px, env(safe-area-inset-bottom));
+  display: flex;
+  align-items: flex-end;
+  transform: translateX(-50%);
+  touch-action: none;
+  cursor: pointer;
+  transition: opacity 0.28s var(--cs-ease);
+}
+
+.cs-progress.is-hidden {
+  opacity: 0;
+}
+
+.cs-progress-track {
+  width: 100%;
+  height: 3px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.28);
+  transition: height 0.25s var(--cs-ease);
+}
+
+.cs-progress:hover .cs-progress-track,
+.cs-progress:active .cs-progress-track,
+.cs-root.is-paused .cs-progress-track {
+  height: 6px; /* grows when paused: the only "paused" cue, no icon on the video */
+}
+
+.cs-progress-fill {
+  width: 100%;
+  height: 100%;
+  background: #fff;
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+  transition: transform 0.25s linear;
+  will-change: transform;
+}
+
+/* ---------- double-tap heart ---------- */
+.cs-burst {
+  position: fixed;
+  z-index: 40;
+  color: var(--cs-red);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  filter: drop-shadow(0 8px 28px rgba(255, 55, 95, 0.55));
+  animation: cs-burst 0.9s var(--cs-ease) forwards;
+}
+
+.cs-burst svg {
+  width: 88px;
+  height: 88px;
+  fill: currentColor;
+}
+
+@keyframes cs-burst {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.3); }
+  20% { opacity: 1; transform: translate(-50%, -50%) scale(1.18); }
+  40% { transform: translate(-50%, -50%) scale(0.96); }
+  100% { opacity: 0; transform: translate(-50%, -66%) scale(1.05); }
+}
+
+/* ---------- toast ---------- */
+.cs-toast {
+  position: absolute;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom) + 56px);
+  z-index: 50;
+  max-width: min(86%, 420px);
+  box-sizing: border-box;
+  padding: 11px 18px;
+  border-radius: 22px;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  text-align: center;
+  transform: translateX(-50%);
+  animation: cs-toast-in 0.45s var(--cs-spring);
+}
+
+@keyframes cs-toast-in {
+  from { opacity: 0; transform: translate(-50%, 14px) scale(0.94); }
+  to { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}
+
+/* ---------- responsive tweaks ---------- */
+@media (max-width: 380px) {
+  .cs-pill-text small { display: none; }
+  .cs-act-icon { width: 44px; height: 44px; }
+  .cs-rail { gap: 12px; }
+}
+
+@media (max-height: 520px) and (orientation: landscape) {
+  .cs-rail { bottom: calc(env(safe-area-inset-bottom) + 34px); gap: 8px; }
+  .cs-act-icon { width: 40px; height: 40px; }
+  .cs-act-icon svg { width: 22px; height: 22px; }
+  .cs-act-cap { display: none; }
+}
+
+@media (min-width: 900px) {
+  .cs-chrome { padding-top: 18px; }
+  .cs-glass:hover,
+  .cs-act:hover .cs-act-icon { background: rgba(70, 70, 76, 0.6); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cs-root *,
+  .cs-root *::before,
+  .cs-root *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

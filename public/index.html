@@ -2,8 +2,6 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 
     <title>Direct Selling AI</title>
@@ -26,18 +24,30 @@
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
 
     <!-- Performance -->
-    <link rel="preconnect" href="https://rcm-ai-backend.onrender.com" />
+    <!--
+      API origin comes from the same REACT_APP_API_URL the app itself uses
+      (Create React App substitutes it at build time), so this can never point
+      at a stale host. `crossorigin` is required: the app talks to the API with
+      fetch() (a CORS request) and a preconnect without it is never reused.
+    -->
+    <link rel="preconnect" href="%REACT_APP_API_URL%" crossorigin />
+    <!-- Cheap DNS warm-up for the Shorts/Reels feed (YouTube player, thumbnails, channel logos). -->
+    <link rel="dns-prefetch" href="https://www.youtube.com" />
+    <link rel="dns-prefetch" href="https://i.ytimg.com" />
+    <link rel="dns-prefetch" href="https://yt3.ggpht.com" />
   </head>
 
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
 
-    <!-- Razorpay -->
-    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <!--
+      Razorpay checkout.js is intentionally NOT loaded here.
+      PaymentPage.js loads it on demand (only when the payment page opens), so
+      it no longer downloads on every route (including /shorts).
+    -->
 
-    <!-- Optional -->
+    <!-- Optional: particles.js (see notes: load only where it is used, or remove) -->
     <script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script>
-
   </body>
 </html>

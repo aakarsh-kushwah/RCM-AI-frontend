@@ -1,7 +1,12 @@
 /* ==========================================================================
-   ReelsFeed — Apple-grade vertical video feed
-   Everything is scoped under .rf-root / .rf-body so nothing leaks into the
-   rest of the app.
+   ReelsFeed v2 - Instagram-style vertical feed
+   Scoped under .rf-root / .rf-body so nothing leaks into the rest of the app.
+
+   Stacking inside .rf-scroller (no slide creates its own stacking context):
+     0 poster   1 player pool   2 scrims   3 tap layer   4 rail + caption
+   Performance rules baked in:
+     - NO backdrop-filter / blur on anything that sits over a playing video
+     - NO contain/transform/isolation on .rf-slide (it would break the layers)
    ========================================================================== */
 
 html.rf-body,
@@ -13,17 +18,15 @@ body.rf-body {
 
 .rf-root {
   --rf-h: 100vh;
-  --rf-stage-w: min(100vw, calc(100vh * 9 / 16));
+  --rf-stage-w: min(100vw, calc(var(--rf-h) * 9 / 16));
 
-  /* Apple system palette */
   --rf-accent: #0a84ff;
-  --rf-like: #ff375f;
+  --rf-like: #ff3040;
   --rf-bookmark: #ffd60a;
-  --rf-glass: rgba(255, 255, 255, 0.1);
-  --rf-glass-strong: rgba(255, 255, 255, 0.18);
-  --rf-glass-border: rgba(255, 255, 255, 0.16);
-  --rf-hairline: rgba(255, 255, 255, 0.12);
-  --rf-muted: rgba(255, 255, 255, 0.6);
+  --rf-glass: rgba(255, 255, 255, 0.12);
+  --rf-glass-strong: rgba(255, 255, 255, 0.2);
+  --rf-glass-border: rgba(255, 255, 255, 0.18);
+  --rf-muted: rgba(255, 255, 255, 0.62);
   --rf-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --rf-ease: cubic-bezier(0.32, 0.72, 0, 1);
 
@@ -32,17 +35,16 @@ body.rf-body {
   z-index: 1000;
   width: 100%;
   height: var(--rf-h);
-  background: #000;
+  overflow: hidden;
   color: #fff;
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Inter', 'Noto Sans Devanagari',
-    system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Noto Sans Devanagari', system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   font-size: 15px;
   line-height: 1.4;
   letter-spacing: -0.01em;
+  background: #000;
   -webkit-font-smoothing: antialiased;
   -webkit-text-size-adjust: 100%;
   isolation: isolate;
-  overflow: hidden;
 }
 
 @supports (height: 100dvh) {
@@ -62,6 +64,10 @@ body.rf-body {
   font-family: inherit;
 }
 
+.rf-root button {
+  -webkit-tap-highlight-color: transparent;
+}
+
 .rf-root :focus-visible {
   outline: 2px solid #fff;
   outline-offset: 2px;
@@ -72,7 +78,7 @@ body.rf-body {
    -------------------------------------------------------------------------- */
 
 .rf-scroller {
-  position: relative;
+  position: relative; /* containing block for the player pool */
   z-index: 1;
   height: var(--rf-h);
   overflow-x: hidden;
@@ -103,24 +109,11 @@ body.rf-body {
   background: #000;
 }
 
-/* cinematic centered card on large screens, Apple TV / iPadOS style */
 @media (min-width: 900px) {
   .rf-stage {
     border-radius: 22px;
-    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 40px 140px rgba(0, 0, 0, 0.85), 0 10px 40px rgba(0, 0, 0, 0.6);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 30px 100px rgba(0, 0, 0, 0.8);
   }
-}
-
-.rf-stage-glow {
-  position: absolute;
-  inset: -6%;
-  z-index: 0;
-  background-position: center;
-  background-size: cover;
-  filter: blur(50px) saturate(1.7) brightness(0.55);
-  opacity: 0.9;
-  transform: scale(1.08);
-  pointer-events: none;
 }
 
 .rf-ambient {
@@ -130,11 +123,10 @@ body.rf-body {
   display: none;
   background-position: center;
   background-size: cover;
-  filter: blur(110px) saturate(1.6) brightness(0.6);
-  opacity: 0.5;
-  transform: scale(1.35);
+  filter: blur(36px) saturate(1.4) brightness(0.55);
+  opacity: 0.55;
+  transform: scale(1.15);
   pointer-events: none;
-  transition: opacity 0.6s ease;
 }
 
 @media (min-width: 900px) {
@@ -144,40 +136,70 @@ body.rf-body {
 }
 
 /* --------------------------------------------------------------------------
-   Video layer
+   Player pool (3 persistent YouTube players, positioned over their slide)
    -------------------------------------------------------------------------- */
 
-.rf-video {
+.rf-pool {
   position: absolute;
-  inset: 0;
-  background: #000;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  width: 100%;
+  height: 0;
+  pointer-events: none;
 }
 
-.rf-iframe {
+.rf-slot {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: var(--rf-stage-w);
+  height: var(--rf-h);
+  margin-left: calc(var(--rf-stage-w) / -2);
+  overflow: hidden;
+  visibility: hidden;
+  background: #000;
+  opacity: 0; /* poster is visible until the player really painted a frame */
+  pointer-events: none;
+  will-change: transform;
+}
+
+.rf-slot.is-shown {
+  opacity: 1;
+  transition: opacity 0.15s ease; /* fade in only; hiding is instant */
+}
+
+.rf-slot iframe {
   position: absolute;
   inset: 0;
-  z-index: 1;
   width: 100%;
   height: 100%;
   border: 0;
   background: #000;
 }
 
-.rf-poster {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  background: #000;
-  transition: opacity 0.4s ease;
-  pointer-events: none;
-  user-select: none;
+@media (min-width: 900px) {
+  .rf-slot {
+    border-radius: 22px;
+  }
 }
 
-.rf-poster.is-hidden {
-  opacity: 0;
+/* Poster has the same geometry as a contained 9:16 video, so the swap from
+   poster to player has no visual jump. hqdefault is 4:3 with baked side bars:
+   cover crops it to the centre 9:16 strip = the actual video. */
+.rf-poster {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  z-index: 0;
+  width: 100%;
+  max-height: 100%;
+  aspect-ratio: 9 / 16;
+  object-fit: cover;
+  background: #000;
+  transform: translateY(-50%);
+  pointer-events: none;
+  user-select: none;
 }
 
 .rf-tap {
@@ -185,51 +207,527 @@ body.rf-body {
   inset: 0;
   z-index: 3;
   cursor: pointer;
-  touch-action: pan-y;
-  -webkit-tap-highlight-color: transparent;
+  touch-action: pan-y; /* vertical swipe scrolls the feed, the rest is ours */
+  -webkit-touch-callout: none;
+  user-select: none;
 }
 
-.rf-paused {
+/* --------------------------------------------------------------------------
+   Scrims (light, Instagram-like)
+   -------------------------------------------------------------------------- */
+
+.rf-scrim {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  z-index: 4;
-  display: grid;
-  place-items: center;
-  width: 78px;
-  height: 78px;
-  margin: -39px 0 0 -39px;
-  padding-left: 4px;
-  color: #fff;
-  background: rgba(0, 0, 0, 0.4);
-  -webkit-backdrop-filter: blur(20px) saturate(1.8);
-  backdrop-filter: blur(20px) saturate(1.8);
-  border: 1px solid var(--rf-glass-border);
-  border-radius: 50%;
+  right: 0;
+  left: 0;
+  z-index: 2;
   pointer-events: none;
-  animation: rf-pop-in 0.32s var(--rf-spring), rf-fade-out 0.4s ease 0.4s forwards;
 }
 
-@keyframes rf-fade-out {
-  to {
-    opacity: 0;
-    pointer-events: none;
+.rf-scrim--top {
+  top: 0;
+  height: 16%;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.5), transparent);
+}
+
+.rf-scrim--bottom {
+  bottom: 0;
+  height: 38%;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0.3) 55%, transparent);
+}
+
+/* Hold-to-hide: rail + caption fade together */
+.rf-hideable {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+.rf-hideable.is-hidden {
+  opacity: 0;
+}
+
+.rf-rail,
+.rf-meta {
+  pointer-events: auto;
+}
+
+.rf-hideable.is-hidden .rf-rail,
+.rf-hideable.is-hidden .rf-meta {
+  pointer-events: none;
+}
+
+/* --------------------------------------------------------------------------
+   Top chrome
+   -------------------------------------------------------------------------- */
+
+.rf-chrome {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: var(--rf-stage-w);
+  padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 10px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+.rf-chrome.is-hidden {
+  opacity: 0;
+}
+
+.rf-chrome > *,
+.rf-chrome-left > * {
+  pointer-events: auto;
+}
+
+.rf-chrome-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.rf-chrome-title {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.55);
+}
+
+.rf-glass-btn {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  color: #fff;
+  cursor: pointer;
+  background: rgba(30, 30, 34, 0.45);
+  border: 0;
+  border-radius: 50%;
+  transition: background 0.18s ease, transform 0.15s var(--rf-spring), opacity 0.15s ease;
+}
+
+.rf-glass-btn:hover:not(:disabled) {
+  background: rgba(60, 60, 66, 0.6);
+}
+
+.rf-glass-btn:active:not(:disabled) {
+  transform: scale(0.88);
+}
+
+.rf-glass-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.rf-glass-btn--lg {
+  width: 48px;
+  height: 48px;
+  background: var(--rf-glass);
+  border: 1px solid var(--rf-glass-border);
+}
+
+.rf-nav {
+  display: none;
+}
+
+@media (min-width: 900px) {
+  .rf-nav {
+    position: fixed;
+    top: 50%;
+    left: calc(50% + var(--rf-stage-w) / 2 + 30px);
+    z-index: 8;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    transform: translateY(-50%);
   }
 }
 
 /* --------------------------------------------------------------------------
-   Double-tap heart burst with particle effect
+   Right action rail (no glass panel: icons with a soft shadow, like Reels)
    -------------------------------------------------------------------------- */
 
-.rf-burst {
+.rf-rail {
   position: absolute;
-  z-index: 7;
+  right: 6px;
+  bottom: calc(22px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.rf-rail-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 52px;
+  padding: 8px 0 6px;
+  color: #fff;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 16px;
+  transition: transform 0.15s var(--rf-spring);
+}
+
+.rf-rail-btn:active {
+  transform: scale(0.86);
+}
+
+.rf-rail-icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+}
+
+.rf-rail-icon svg {
+  width: 27px;
+  height: 27px;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.55));
+}
+
+.rf-rail-caption {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.65);
+}
+
+.rf-rail-btn--like.is-active {
+  color: var(--rf-like);
+}
+
+.rf-rail-btn--bookmark.is-active {
+  color: var(--rf-bookmark);
+}
+
+.rf-rail-btn.is-active .rf-rail-icon svg {
+  animation: rf-heart-pop 0.45s var(--rf-spring);
+}
+
+/* channel thumbnail at the base of the rail (rounded square, like Instagram's audio tile) */
+.rf-disc-btn {
+  padding: 8px 0 0;
+  cursor: pointer;
+  background: none;
+  border: 0;
+}
+
+.rf-disc {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  overflow: hidden;
+  background: #1c1c1e;
+  border: 2px solid #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+.rf-disc-art.rf-avatar {
+  width: 100%;
+  height: 100%;
+  font-size: 12px;
+  border: 0;
+  border-radius: 0;
+}
+
+/* --------------------------------------------------------------------------
+   Creator row, caption, sound line (bottom left)
+   -------------------------------------------------------------------------- */
+
+.rf-meta {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: calc(100% - 72px);
+  padding: 0 8px calc(22px + env(safe-area-inset-bottom, 0px)) 14px;
+}
+
+.rf-creator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 100%;
+  margin: 0 0 10px;
+}
+
+.rf-creator-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 0;
+  color: #fff;
+  cursor: pointer;
+  background: none;
+  border: 0;
+}
+
+.rf-avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  object-fit: cover;
+  border: 1.5px solid rgba(255, 255, 255, 0.7);
+  border-radius: 50%;
+}
+
+.rf-avatar--sm {
+  border: 0;
+}
+
+.rf-creator-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
+}
+
+.rf-verified {
+  flex: none;
+}
+
+.rf-follow {
+  flex: none;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  color: #fff;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  border-radius: 10px;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.15s var(--rf-spring);
+}
+
+.rf-follow:active {
+  transform: scale(0.93);
+}
+
+.rf-follow.is-on {
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+/* details / channel sheets use the solid pill version */
+.rf-d-header .rf-follow,
+.rf-cp-top .rf-follow {
+  padding: 9px 20px;
+  color: #000;
+  background: #fff;
+  border-color: transparent;
+  border-radius: 999px;
+}
+
+.rf-d-header .rf-follow.is-on,
+.rf-cp-top .rf-follow.is-on {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.rf-caption {
+  display: block;
+  max-width: 100%;
+  padding: 0;
+  margin: 0 0 8px;
+  font-size: 14.5px;
+  font-weight: 400;
+  line-height: 1.38;
+  color: #fff;
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.65);
+}
+
+.rf-caption-title {
+  display: -webkit-box;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.rf-caption-more {
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.rf-caption.is-open {
+  max-height: 34dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  scrollbar-width: none;
+}
+
+.rf-caption.is-open::-webkit-scrollbar {
+  display: none;
+}
+
+.rf-caption.is-open .rf-caption-title {
+  display: block;
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+  font-weight: 600;
+}
+
+.rf-caption-desc {
+  display: block;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.rf-sound-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: min(100%, 240px);
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.9);
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 5%, #000 90%, transparent);
+  mask-image: linear-gradient(to right, transparent, #000 5%, #000 90%, transparent);
+}
+
+.rf-sound-note {
+  flex: none;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.5));
+}
+
+.rf-marquee {
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.rf-marquee span {
+  display: inline-block;
+  padding-left: 100%;
+  font-size: 12.5px;
+  font-weight: 500;
+  text-shadow: 0 1px 5px rgba(0, 0, 0, 0.6);
+  animation: rf-marquee 9s linear infinite;
+}
+
+.rf-slide:not(.is-active) .rf-marquee span {
+  animation: none;
+}
+
+/* --------------------------------------------------------------------------
+   Progress bar (one, fixed, for the active reel)
+   -------------------------------------------------------------------------- */
+
+.rf-progress {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  z-index: 9;
+  display: flex;
+  align-items: flex-end;
+  width: var(--rf-stage-w);
+  height: 18px;
+  cursor: pointer;
+  touch-action: none;
+  transform: translateX(-50%);
+  transition: opacity 0.25s ease;
+}
+
+.rf-progress.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.rf-progress-track,
+.rf-progress-fill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  transition: height 0.15s ease;
+}
+
+.rf-progress-track {
+  right: 0;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.rf-progress-fill {
+  width: 100%;
+  background: #fff;
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 0.25s linear, height 0.15s ease;
+}
+
+.rf-progress:hover .rf-progress-track,
+.rf-progress:hover .rf-progress-fill,
+.rf-progress:active .rf-progress-track,
+.rf-progress:active .rf-progress-fill {
+  height: 5px;
+}
+
+/* --------------------------------------------------------------------------
+   Tap feedback: sound pulse + double-tap heart
+   -------------------------------------------------------------------------- */
+
+.rf-pulse {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 9;
+  display: grid;
+  place-items: center;
+  width: 76px;
+  height: 76px;
+  margin: -38px 0 0 -38px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 50%;
+  pointer-events: none;
+  animation: rf-pulse 0.75s ease forwards;
+}
+
+.rf-burst {
+  position: fixed;
+  z-index: 9;
   width: 110px;
   height: 110px;
   margin: -55px 0 0 -55px;
   color: var(--rf-like);
   pointer-events: none;
-  filter: drop-shadow(0 8px 24px rgba(255, 55, 95, 0.55));
+  filter: drop-shadow(0 8px 24px rgba(255, 48, 64, 0.5));
   animation: rf-burst 0.85s var(--rf-spring) forwards;
 }
 
@@ -244,7 +742,7 @@ body.rf-body {
   left: 50%;
   width: 9px;
   height: 9px;
-  background: linear-gradient(135deg, #ff9a9e, #ff375f 60%, #ff6b9d);
+  background: linear-gradient(135deg, #ff9a9e, #ff3040 60%, #ff6b9d);
   border-radius: 50%;
   opacity: 0;
   animation: rf-particle 0.75s ease-out forwards;
@@ -282,509 +780,7 @@ body.rf-body {
 }
 
 /* --------------------------------------------------------------------------
-   Scrims
-   -------------------------------------------------------------------------- */
-
-.rf-scrim {
-  position: absolute;
-  right: 0;
-  left: 0;
-  z-index: 4;
-  pointer-events: none;
-}
-
-.rf-scrim--top {
-  top: 0;
-  height: 22%;
-  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.68) 0%, rgba(0, 0, 0, 0.38) 42%, rgba(0, 0, 0, 0.12) 78%, transparent 100%);
-}
-
-.rf-scrim--bottom {
-  bottom: 0;
-  height: 50%;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.68) 28%, rgba(0, 0, 0, 0.32) 60%, transparent 100%);
-}
-
-/* Hold-to-hide UI: rail + meta fade and disengage together */
-.rf-hideable {
-  transition: opacity 0.28s ease, transform 0.28s ease;
-}
-
-.rf-hideable.is-hidden {
-  opacity: 0;
-  transform: scale(0.98);
-  pointer-events: none;
-}
-
-/* --------------------------------------------------------------------------
-   Top chrome
-   -------------------------------------------------------------------------- */
-
-.rf-chrome {
-  position: fixed;
-  top: 0;
-  left: 50%;
-  z-index: 8;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: var(--rf-stage-w);
-  padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 12px;
-  margin-top: 8px;
-  transform: translateX(-50%);
-  background: rgba(20, 20, 20, 0.45);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 28px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
-  pointer-events: none;
-  transition: opacity 0.28s ease, transform 0.28s ease;
-}
-
-.rf-root::before {
-  content: '';
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 120px;
-  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.6) 0%, transparent 100%);
-  z-index: 7;
-  pointer-events: none;
-}
-
-.rf-chrome.is-hidden {
-  opacity: 0;
-  transform: translateX(-50%) translateY(-8px);
-}
-
-.rf-chrome > *,
-.rf-chrome-left > * {
-  pointer-events: auto;
-}
-
-.rf-chrome-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  pointer-events: none;
-}
-
-.rf-chrome-title {
-  font-size: 19px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.5);
-}
-
-.rf-glass-btn {
-  display: grid;
-  flex: none;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  padding: 0;
-  color: #fff;
-  cursor: pointer;
-  background: var(--rf-glass);
-  border: 1px solid var(--rf-glass-border);
-  border-radius: 50%;
-  -webkit-backdrop-filter: blur(20px) saturate(1.8);
-  backdrop-filter: blur(20px) saturate(1.8);
-  -webkit-tap-highlight-color: transparent;
-  transition: background 0.18s ease, transform 0.15s var(--rf-spring), opacity 0.15s ease;
-}
-
-.rf-glass-btn:hover:not(:disabled) {
-  background: var(--rf-glass-strong);
-}
-
-.rf-glass-btn:active:not(:disabled) {
-  transform: scale(0.88);
-}
-
-.rf-glass-btn:disabled {
-  opacity: 0.3;
-  cursor: default;
-}
-
-.rf-glass-btn--lg {
-  width: 48px;
-  height: 48px;
-}
-
-.rf-nav {
-  display: none;
-}
-
-@media (min-width: 900px) {
-  .rf-nav {
-    position: fixed;
-    top: 50%;
-    left: calc(50% + var(--rf-stage-w) / 2 + 30px);
-    z-index: 8;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    transform: translateY(-50%);
-  }
-}
-
-/* --------------------------------------------------------------------------
-   Right action rail — glass pill
-   -------------------------------------------------------------------------- */
-
-.rf-rail {
-  position: absolute;
-  right: 10px;
-  bottom: calc(30px + env(safe-area-inset-bottom, 0px));
-  z-index: 6;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  padding: 10px 3px;
-  background: var(--rf-glass);
-  border: 1px solid var(--rf-glass-border);
-  border-radius: 30px;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.2);
-  -webkit-backdrop-filter: blur(26px) saturate(1.9);
-  backdrop-filter: blur(26px) saturate(1.9);
-}
-
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .rf-rail,
-  .rf-glass-btn,
-  .rf-paused,
-  .rf-creator-pill {
-    background: rgba(28, 28, 30, 0.82);
-  }
-}
-
-.rf-rail-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  width: 54px;
-  padding: 8px 0 6px;
-  color: #fff;
-  cursor: pointer;
-  background: transparent;
-  border: 0;
-  border-radius: 22px;
-  -webkit-tap-highlight-color: transparent;
-  transition: background 0.15s ease, transform 0.15s var(--rf-spring);
-}
-
-.rf-rail-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.rf-rail-btn:active {
-  transform: scale(0.88);
-}
-
-.rf-rail-icon {
-  display: grid;
-  place-items: center;
-  width: 27px;
-  height: 27px;
-}
-
-.rf-rail-icon svg {
-  width: 26px;
-  height: 26px;
-  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.45));
-}
-
-.rf-rail-caption {
-  font-size: 11.5px;
-  font-weight: 600;
-  line-height: 1;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
-}
-
-.rf-rail-btn--like.is-active {
-  color: var(--rf-like);
-}
-
-.rf-rail-btn--like.is-active .rf-rail-icon svg {
-  animation: rf-heart-pop 0.5s var(--rf-spring);
-}
-
-.rf-rail-btn--bookmark.is-active {
-  color: var(--rf-bookmark);
-}
-
-.rf-rail-btn--bookmark.is-active .rf-rail-icon svg {
-  animation: rf-heart-pop 0.5s var(--rf-spring);
-}
-
-/* rotating sound disc, anchored at the base of the rail */
-.rf-disc-btn {
-  padding: 10px 0 2px;
-  margin-top: 2px;
-  cursor: pointer;
-  background: none;
-  border: 0;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.rf-disc {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  background: radial-gradient(circle at 34% 30%, #3a3a3c, #0c0c0e 70%);
-  border: 3px solid #1c1c1e;
-  border-radius: 50%;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 6px 18px rgba(0, 0, 0, 0.55);
-  animation: rf-spin 4.2s linear infinite;
-  animation-play-state: paused;
-}
-
-.rf-disc.is-spinning {
-  animation-play-state: running;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.16), 0 0 22px 3px rgba(10, 132, 255, 0.45), 0 6px 18px rgba(0, 0, 0, 0.55);
-}
-
-.rf-disc-ring {
-  position: absolute;
-  inset: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 50%;
-}
-
-.rf-disc-art.rf-avatar {
-  width: 17px;
-  height: 17px;
-  font-size: 8px;
-  border: 0;
-}
-
-/* --------------------------------------------------------------------------
-   Creator pill + marquee + title (bottom left)
-   -------------------------------------------------------------------------- */
-
-.rf-meta {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  z-index: 6;
-  width: calc(100% - 84px);
-  padding: 0 8px calc(26px + env(safe-area-inset-bottom, 0px)) 16px;
-}
-
-.rf-creator-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  max-width: 100%;
-  padding: 5px 6px 5px 5px;
-  margin: 0 0 10px;
-  cursor: pointer;
-  background: var(--rf-glass);
-  border: 1px solid var(--rf-glass-border);
-  border-radius: 999px;
-  -webkit-backdrop-filter: blur(20px) saturate(1.8);
-  backdrop-filter: blur(20px) saturate(1.8);
-  -webkit-tap-highlight-color: transparent;
-  transition: background 0.15s ease, transform 0.12s ease;
-}
-
-.rf-creator-pill:active {
-  transform: scale(0.97);
-}
-
-.rf-avatar {
-  display: grid;
-  flex: none;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  font-size: 14px;
-  font-weight: 700;
-  color: #fff;
-  object-fit: cover;
-  border: 1.5px solid rgba(255, 255, 255, 0.65);
-  border-radius: 50%;
-}
-
-.rf-avatar--sm {
-  width: 34px;
-  height: 34px;
-  font-size: 14px;
-  border: 0;
-}
-
-.rf-creator-name {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  overflow: hidden;
-  font-size: 14.5px;
-  font-weight: 700;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5);
-}
-
-.rf-verified {
-  flex: none;
-}
-
-.rf-follow {
-  flex: none;
-  padding: 8px 16px;
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1;
-  color: #000;
-  cursor: pointer;
-  background: #fff;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  -webkit-tap-highlight-color: transparent;
-  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.15s var(--rf-spring), box-shadow 0.3s ease;
-}
-
-.rf-follow:active {
-  transform: scale(0.93);
-}
-
-.rf-follow.is-on {
-  color: #fff;
-  background: var(--rf-glass-strong);
-  border-color: rgba(255, 255, 255, 0.3);
-  box-shadow: none;
-  animation: none;
-  -webkit-backdrop-filter: blur(16px);
-  backdrop-filter: blur(16px);
-}
-
-.rf-follow--sm {
-  display: inline-flex;
-  align-items: center;
-  padding: 7px 13px;
-  margin-left: 2px;
-  font-size: 12.5px;
-  animation: rf-follow-glow 2.6s ease-in-out infinite;
-}
-
-.rf-follow--sm.is-on {
-  animation: none;
-}
-
-.rf-sound-line {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  max-width: min(100%, 260px);
-  margin: 0 0 8px 2px;
-  overflow: hidden;
-  color: rgba(255, 255, 255, 0.88);
-  -webkit-mask-image: linear-gradient(to right, transparent, #000 6%, #000 88%, transparent);
-  mask-image: linear-gradient(to right, transparent, #000 6%, #000 88%, transparent);
-}
-
-.rf-sound-note {
-  flex: none;
-  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.5));
-}
-
-.rf-marquee {
-  overflow: hidden;
-  white-space: nowrap;
-}
-
-.rf-marquee span {
-  display: inline-block;
-  padding-left: 100%;
-  font-size: 12.5px;
-  font-weight: 500;
-  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.55);
-  animation: rf-marquee 9s linear infinite;
-}
-
-.rf-title {
-  display: block;
-  max-width: 100%;
-  padding: 0;
-  margin: 0;
-  font-size: 15px;
-  font-weight: 500;
-  line-height: 1.38;
-  color: #fff;
-  text-align: left;
-  cursor: pointer;
-  background: none;
-  border: 0;
-  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.6);
-  -webkit-tap-highlight-color: transparent;
-}
-
-.rf-title span {
-  display: -webkit-box;
-  overflow: hidden;
-  overflow-wrap: anywhere;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-
-/* --------------------------------------------------------------------------
-   Drag-to-seek progress bar
-   -------------------------------------------------------------------------- */
-
-.rf-progress {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  z-index: 6;
-  display: flex;
-  align-items: center;
-  height: 22px;
-  touch-action: none;
-  cursor: pointer;
-}
-
-.rf-progress-track {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  height: 3px;
-  background: rgba(255, 255, 255, 0.22);
-  transition: height 0.15s ease;
-}
-
-.rf-progress-fill {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  height: 3px;
-  background: linear-gradient(90deg, var(--rf-accent), #64d2ff);
-  transform: scaleX(0);
-  transform-origin: left center;
-  transition: transform 0.25s linear, height 0.15s ease;
-}
-
-.rf-progress:hover .rf-progress-track,
-.rf-progress:active .rf-progress-track {
-  height: 5px;
-}
-
-.rf-progress:hover .rf-progress-fill,
-.rf-progress:active .rf-progress-fill {
-  height: 5px;
-}
-
-/* --------------------------------------------------------------------------
-   Bottom sheets
+   Bottom sheets (solid surface: no live blur over the playing video)
    -------------------------------------------------------------------------- */
 
 .rf-sheet-root {
@@ -827,13 +823,11 @@ body.rf-body {
   height: 65vh;
   height: 65dvh;
   overflow: hidden;
-  background: rgba(22, 22, 25, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: #1c1c1f;
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-bottom: 0;
-  border-radius: 28px 28px 0 0;
-  box-shadow: 0 -26px 80px rgba(0, 0, 0, 0.6);
-  -webkit-backdrop-filter: blur(34px) saturate(1.7);
-  backdrop-filter: blur(34px) saturate(1.7);
+  border-radius: 24px 24px 0 0;
+  box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.6);
   transform: translateY(100%);
   transition: transform 0.42s var(--rf-ease);
 }
@@ -994,7 +988,7 @@ body.rf-body {
 
 .rf-compose-wrap {
   flex: none;
-  background: rgba(14, 14, 16, 0.72);
+  background: #151517;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
@@ -1017,7 +1011,7 @@ body.rf-body {
   min-width: 0;
   height: 44px;
   padding: 0 16px;
-  font-size: 16px;
+  font-size: 16px; /* 16px stops iOS from zooming the page on focus */
   color: #fff;
   background: rgba(255, 255, 255, 0.09);
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -1081,6 +1075,7 @@ body.rf-body {
   gap: 10px;
   min-width: 0;
   padding: 0;
+  color: #fff;
   text-align: left;
   cursor: pointer;
   background: none;
@@ -1262,11 +1257,6 @@ body.rf-body {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform 0.25s ease;
-}
-
-.rf-cp-thumb:hover img {
-  transform: scale(1.05);
 }
 
 .rf-cp-views {
@@ -1277,10 +1267,8 @@ body.rf-body {
   font-size: 10.5px;
   font-weight: 700;
   color: #fff;
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(0, 0, 0, 0.6);
   border-radius: 999px;
-  -webkit-backdrop-filter: blur(6px);
-  backdrop-filter: blur(6px);
 }
 
 /* --------------------------------------------------------------------------
@@ -1416,7 +1404,7 @@ body.rf-body {
   font-size: 14px;
   font-weight: 600;
   text-align: center;
-  background: rgba(36, 36, 40, 0.92);
+  background: rgba(36, 36, 40, 0.95);
   border: 1px solid var(--rf-glass-border);
   border-radius: 999px;
   opacity: 0;
@@ -1434,14 +1422,22 @@ body.rf-body {
    Motion
    -------------------------------------------------------------------------- */
 
-@keyframes rf-pop-in {
-  from {
+@keyframes rf-pulse {
+  0% {
     opacity: 0;
-    transform: scale(0.8);
+    transform: scale(0.7);
   }
-  to {
+  20% {
     opacity: 1;
     transform: scale(1);
+  }
+  70% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.05);
   }
 }
 
@@ -1487,31 +1483,12 @@ body.rf-body {
   }
 }
 
-@keyframes rf-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 @keyframes rf-marquee {
   from {
     transform: translateX(0);
   }
   to {
     transform: translateX(-50%);
-  }
-}
-
-@keyframes rf-follow-glow {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.5);
-  }
-  50% {
-    box-shadow: 0 0 0 5px rgba(255, 255, 255, 0);
   }
 }
 
@@ -1535,45 +1512,29 @@ body.rf-body {
 }
 
 /* --------------------------------------------------------------------------
-   Responsive breakpoints — phones, foldables, tablets, desktop
+   Responsive
    -------------------------------------------------------------------------- */
 
-/* small phones */
 @media (max-width: 359px) {
   .rf-rail {
-    right: 6px;
-    gap: 0;
+    right: 2px;
   }
   .rf-rail-btn {
     width: 46px;
   }
   .rf-meta {
-    width: calc(100% - 66px);
+    width: calc(100% - 60px);
   }
 }
 
-/* unfolded foldables / large phones landscape */
 @media (min-width: 600px) and (max-width: 899px) {
   .rf-root {
-    --rf-stage-w: min(70vw, calc(100vh * 9 / 16));
-  }
-}
-
-/* tablets and up: cinematic card, ambient background, floating nav */
-@media (min-width: 900px) {
-  .rf-root {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .rf-scroller {
-    display: flex;
-    align-items: center;
+    --rf-stage-w: min(70vw, calc(var(--rf-h) * 9 / 16));
   }
 }
 
 @media (min-width: 1200px) {
   .rf-root {
-    --rf-stage-w: min(32vw, calc(100vh * 9 / 16));
+    --rf-stage-w: min(32vw, calc(var(--rf-h) * 9 / 16));
   }
 }

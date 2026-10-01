@@ -18,6 +18,7 @@ import usePushNotification from './hooks/usePushNotification';
 import ScrollToTop from './utils/ScrollToTop';
 
 const ShortsFeed = lazy(() => import('./components/Shorts/ShortsFeed'));
+const ChannelShorts = lazy(() => import('./components/Shorts/ChannelShorts'));
 
 // ==========================================
 // ⚡ PERFORMANCE: LAZY LOADING PAGES
@@ -248,6 +249,10 @@ function App() {
 
                     <Route path="/shorts" element={
                         <UserProtectedRoute><ShortsFeed pageTitle="Shorts" /></UserProtectedRoute>
+                    } />
+
+                    <Route path="/shorts/channel/:channelId" element={
+                        <UserProtectedRoute><ChannelShorts /></UserProtectedRoute>
                     } />
 
                     {/* ⚠️ 404 HANDLER */}

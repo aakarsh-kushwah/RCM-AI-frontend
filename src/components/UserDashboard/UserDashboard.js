@@ -243,7 +243,7 @@ const UserDashboard = () => {
             <button className="rcmud-app-card" onClick={() => navigate('/shorts')}>
               <div className="rcmud-app-header">
                 <span className="rcmud-app-icon red-pink-gradient"><Film size={22} /></span>
-                <span className="rcmud-app-badge">🔥 340+</span>
+
               </div>
               <div className="rcmud-app-body">
                 <span className="rcmud-app-title">RCM Shorts</span>
