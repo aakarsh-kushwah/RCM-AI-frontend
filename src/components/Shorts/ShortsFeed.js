@@ -2,36 +2,43 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import './ShortsFeed.css';
 
 /* ---------------------------------------------------------------------------
- * ReelsFeed (v2) - Instagram-style vertical feed for YouTube Shorts
+ * ReelsFeed (v4) - unified 9:16 vertical feed for YouTube Shorts + Instagram Reels
  *
- * Playback engine: a POOL of 3 persistent YouTube IFrame API players.
- *   - Players are created ONCE and re-used with loadVideoById(). A swipe never
- *     boots a new iframe (that was the 300-800ms delay before).
- *   - Players live in a layer INSIDE the scroller and are positioned over the
- *     slide they belong to, so they scroll together with the slides.
- *   - The active reel + the next 2 (or prev + next when scrolling up) are
- *     loaded muted. As soon as a preloaded player shows its first frame it is
- *     paused at 0:00. Swipe = playVideo() only. Instant.
- *   - Slides are lightweight snap points (poster + UI). Poster is visible
- *     until the player has really painted a frame, so there is no black flash.
+ * YouTube : persistent POOL of 3 IFrame API players (unchanged engine).
+ *           Players are re-used with loadVideoById(), a swipe never boots an iframe.
+ * Instagram: always a native HTML5 <video> (directVideo, or the ig-stream proxy).
+ *           The active slide and its neighbours (paused + preloaded) render it, so
+ *           both platforms look identical. A reel whose video fails is skipped.
+ *           The embed iframe is off by default (ALLOW_EMBED_FALLBACK) and, when
+ *           enabled, is sandboxed, cropped and has pointer-events: none.
  *
- * Gestures (Instagram): tap = mute/unmute, double tap = like, hold = pause and
- * hide UI, swipe = next/prev. Swipe never counts as a tap (pointercancel safe).
+ * Gestures (both platforms):
+ *   single tap  = sound ON + play  <->  pause + mute (one toggle, both together)
+ *   double tap  = like + heart burst
+ *   hold        = pause + hide UI, release = resume
+ *   swipe       = next / previous reel
  *
- * Robustness: request timeouts, load-more with cooldown (no retry storm),
- * dedupe by id, blocked/private video auto-skip, error boundary, no state
- * update after unmount.
+ * normalizeReel keeps Instagram items and parses shortcode, directVideo,
+ * embedUrl and the profile (username / avatar / name).
  * ------------------------------------------------------------------------- */
 
 /* ---------- configuration ---------- */
 
 const API_BASE = (process.env.REACT_APP_API_URL || '').replace(/\/+$/, '');
 const API = {
-  list: '/api/shorts',
+  list: '/api/shorts/feed',
   like: (id) => `/api/shorts/${encodeURIComponent(id)}/like`,
   comments: (id) => `/api/shorts/${encodeURIComponent(id)}/comments`,
+  seen: '/api/shorts/seen',
   unavailable: (id) => `/api/shorts/${encodeURIComponent(id)}/unavailable`, // optional backend hook
+  igStream: (code) => `/api/shorts/ig-stream/${encodeURIComponent(code)}`, // MP4 proxy for Instagram reels
 };
+
+// Instagram items without a direct video URL stream through the proxy above.
+const USE_IG_STREAM_PROXY = true;
+// Third-party Instagram embeds show white cards, login prompts and "broken link" screens.
+// Set ALLOW_EMBED_FALLBACK = true so reels don't get deleted from the feed while streaming.
+const ALLOW_EMBED_FALLBACK = true;
 const SUBS_KEY = 'rcm_reels_follows';
 const BOOKMARKS_KEY = 'rcm_reels_bookmarks';
 
@@ -43,10 +50,13 @@ const PAGE_SIZE = 10;
 const PREFETCH_REMAINING = 5; // load next page when this many reels remain
 const POOL_SIZE = 3;
 const RENDER_WINDOW = 2; // slides farther than this render only an empty snap point
+const VIDEO_WINDOW = 1; // native <video> elements exist only this close to the active slide
 const FETCH_TIMEOUT_MS = 15000;
 const RETRY_COOLDOWN_MS = 4000;
 const WATCHDOG_STUCK_MS = 7000;
 const PRELOAD_SETTLE_MS = 150; // neighbours are only preloaded once the user stops flicking
+const SEEN_FLUSH_MS = 3000;
+const SEEN_FLUSH_COUNT = 10;
 
 /* ---------- network ---------- */
 
@@ -129,10 +139,21 @@ function writeStore(key, value) {
 /* ---------- data normalisation ---------- */
 
 const YT_ID = /^[A-Za-z0-9_-]{11}$/;
+const IG_URL = /instagram\.com\/(?:[\w.]+\/)?(?:reel|reels|p|tv)\/([A-Za-z0-9_-]+)/;
+const NOT_DIRECT = /^https?:\/\/(?:[\w-]+\.)?(?:youtube\.com|youtu\.be|instagram\.com)\//i;
 
 function num(value) {
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/** First value that is not undefined / null / empty string. */
+function pick(...values) {
+  for (let i = 0; i < values.length; i += 1) {
+    const v = values[i];
+    if (v !== undefined && v !== null && v !== '') return v;
+  }
+  return undefined;
 }
 
 function extractVideoId(short) {
@@ -147,6 +168,27 @@ function extractVideoId(short) {
   return null;
 }
 
+/** A directly playable media URL (mp4 / CDN). Never a YouTube or Instagram page URL. */
+function extractDirectVideo(short) {
+  const ig = short.instagram || {};
+  const value = pick(
+    short.directVideo,
+    short.direct_video,
+    short.directVideoUrl,
+    short.direct_video_url,
+    ig.directVideo,
+    ig.videoUrl,
+    short.videoUrl,
+    short.video_url,
+    short.mediaUrl,
+    short.media_url,
+    short.playbackUrl,
+    short.playback_url
+  );
+  if (typeof value !== 'string' || !/^https?:\/\//i.test(value) || NOT_DIRECT.test(value)) return '';
+  return value;
+}
+
 function extractHashtags(short) {
   const found = new Map();
   const add = (tag) => {
@@ -155,7 +197,7 @@ function extractHashtags(short) {
   };
   const explicit = short.hashtags ?? short.tags ?? [];
   (Array.isArray(explicit) ? explicit : String(explicit).split(/[,\s]+/)).forEach(add);
-  (String(short.description ?? '').match(/#[^\s#]+/g) || []).forEach(add);
+  (String(short.description ?? short.caption ?? '').match(/#[^\s#]+/g) || []).forEach(add);
   return Array.from(found.values());
 }
 
@@ -163,32 +205,78 @@ const posterFor = (videoId) => `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
 
 export function normalizeReel(short) {
   if (!short || typeof short !== 'object') return null;
-  const videoId = extractVideoId(short);
-  if (!videoId) return null;
+  const ig = short.instagram && typeof short.instagram === 'object' ? short.instagram : {};
+  const urlField = [short.url, short.link, short.permalink, ig.url].find((u) => typeof u === 'string' && IG_URL.test(u));
+  const isInstagram =
+    short.platform === 'instagram' ||
+    short.platform === 2 ||
+    String(short.id).startsWith('ig_') ||
+    Boolean(short.shortcode || ig.shortcode || urlField);
+
+  const shortcode = String(
+    pick(short.shortcode, ig.shortcode, urlField && urlField.match(IG_URL)[1], isInstagram ? String(short.id).replace(/^ig_/, '') : '') || ''
+  );
+  const videoId = isInstagram ? '' : extractVideoId(short) || '';
+  const directRaw = extractDirectVideo(short);
+  const proxied = USE_IG_STREAM_PROXY && isInstagram && !directRaw && shortcode ? `${API_BASE}${API.igStream(shortcode)}` : '';
+  const directVideo = videoId ? '' : directRaw || proxied;
+  const embedUrl = String(pick(short.embedUrl, short.embed_url, ig.embedUrl, shortcode ? `https://www.instagram.com/reel/${shortcode}/embed/` : '') || '');
+  if (!videoId && !directVideo && !(ALLOW_EMBED_FALLBACK && isInstagram && embedUrl)) return null;
+
   const channelObj = short.channel || {};
+  const profile = short.profile || short.owner || ig.profile || ig.owner || {};
+  const username = String(
+    pick(short.username, short.ownerUsername, short.owner_username, ig.username, profile.username, isInstagram ? channelObj.handle : '') || ''
+  ).replace(/^@+/, '');
+  const fullName = pick(short.fullName, short.full_name, profile.fullName, profile.full_name, profile.name);
+  const igUrl = String(pick(urlField, shortcode ? `https://www.instagram.com/reel/${shortcode}/` : '') || '');
+
+  const channelName = isInstagram
+    ? pick(fullName, username, short.channelName, short.channel_name, channelObj.name) || 'Instagram'
+    : short.channelName ?? short.channel_name ?? short.channelTitle ?? channelObj.name ?? 'Channel';
+  const channelHandle = isInstagram ? (username ? `@${username}` : '') : channelObj.handle ?? short.channelHandle ?? '';
+  const thumb =
+    pick(short.thumbnail, short.thumbnailUrl, short.thumbnail_url, short.displayUrl, short.display_url, short.poster, ig.thumbnail) ||
+    (videoId ? posterFor(videoId) : '');
+
   return {
-    id: String(short._id ?? short.id ?? videoId),
+    id: String(short._id ?? short.id ?? videoId ?? shortcode),
+    platform: videoId ? 'youtube' : isInstagram ? 'instagram' : 'video',
     videoId,
-    title: short.title || 'Untitled reel',
-    description: String(short.description ?? ''),
-    thumb: short.thumbnail ?? short.thumbnailUrl ?? short.thumbnail_url ?? posterFor(videoId),
+    shortcode,
+    directVideo,
+    embedUrl,
+    instagram: isInstagram ? { shortcode, embedUrl, url: igUrl, username, directVideo } : null,
+    shareUrl: isInstagram ? igUrl || embedUrl : videoId ? `https://www.youtube.com/shorts/${videoId}` : directVideo,
+    profileUrl: username ? `https://www.instagram.com/${username}/` : igUrl,
+    title: short.title || short.caption || 'Untitled reel',
+    description: String(short.description ?? (short.title ? short.caption : '') ?? ''),
+    thumb,
     channelId: String(short.channelId ?? short.channel_id ?? channelObj.id ?? ''),
-    channelName: short.channelName ?? short.channel_name ?? short.channelTitle ?? channelObj.name ?? 'Channel',
+    channelName,
     channelLogo:
-      short.channelLogo ??
-      short.channel_logo ??
-      short.channelAvatar ??
-      channelObj.logo ??
-      channelObj.avatar ??
-      channelObj.logoUrl ??
-      '',
-    channelHandle: channelObj.handle ?? short.channelHandle ?? '',
-    verified: Boolean(short.channelVerified ?? channelObj.verified ?? short.verified ?? false),
-    subscribers: num(channelObj.subscriberCount ?? channelObj.subscribers ?? 0),
-    likes: num(short.likesCount ?? short.likes_count ?? 0),
-    comments: num(short.commentsCount ?? short.comments_count ?? 0),
-    views: num(short.viewCount ?? short.view_count ?? short.views ?? 0),
-    date: short.publishedAt ?? short.published_at ?? short.createdAt ?? short.created_at ?? null,
+      pick(
+        short.channelLogo,
+        short.channel_logo,
+        short.channelAvatar,
+        short.profilePicUrl,
+        short.profile_pic_url,
+        short.ownerProfilePic,
+        profile.profilePicUrl,
+        profile.avatar,
+        profile.picture,
+        ig.profilePic,
+        channelObj.logo,
+        channelObj.avatar,
+        channelObj.logoUrl
+      ) || '',
+    channelHandle,
+    verified: Boolean(short.channelVerified ?? channelObj.verified ?? profile.verified ?? profile.isVerified ?? short.verified ?? false),
+    subscribers: num(pick(channelObj.subscriberCount, channelObj.subscribers, profile.followersCount, profile.followers, short.followersCount, 0)),
+    likes: num(pick(short.likesCount, short.likes_count, short.likeCount, 0)),
+    comments: num(pick(short.commentsCount, short.comments_count, short.commentCount, 0)),
+    views: num(pick(short.viewCount, short.view_count, short.views, short.playCount, short.videoPlayCount, 0)),
+    date: pick(short.publishedAt, short.published_at, short.takenAt, short.timestamp, short.createdAt, short.created_at) ?? null,
     hashtags: extractHashtags(short),
     liked: Boolean(short.isLiked ?? short.liked ?? short.likedByMe ?? false),
   };
@@ -231,7 +319,7 @@ export function formatCount(value) {
 
 export function formatDate(value) {
   if (!value) return 'Unknown';
-  const d = new Date(value);
+  const d = new Date(typeof value === 'number' && value < 1e12 ? value * 1000 : value);
   if (Number.isNaN(d.getTime())) return 'Unknown';
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 }
@@ -311,6 +399,30 @@ function isLiteConnection() {
   }
 }
 
+/* ---------- extra styles (injected once, so the existing CSS file needs no change) ---------- */
+
+const EXTRA_CSS = `
+.rf-root .rf-caption-title{-webkit-line-clamp:1;line-clamp:1}
+.rf-root .rf-disc{border-radius:50%;animation:rf-disc-spin 6s linear infinite}
+.rf-root .rf-disc-art.rf-avatar{border-radius:50%}
+.rf-root .rf-slide:not(.is-active) .rf-disc{animation-play-state:paused}
+.rf-root .rf-ig-video,.rf-root .rf-ig-embed,.rf-root .rf-ig-embed iframe{pointer-events:none}
+.rf-root .rf-tap{z-index:2}
+@keyframes rf-disc-spin{to{transform:rotate(360deg)}}
+`;
+
+function ensureExtraStyles() {
+  try {
+    if (document.getElementById('rf-extra-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'rf-extra-styles';
+    style.textContent = EXTRA_CSS;
+    document.head.appendChild(style);
+  } catch (e) {
+    /* non-critical */
+  }
+}
+
 /* ---------- YouTube IFrame API loader ---------- */
 
 let ytPromise = null;
@@ -348,8 +460,8 @@ export function ensureYT() {
 }
 
 /* ---------------------------------------------------------------------------
- * Player pool engine (plain functions, state lives in a ctx object so React
- * re-renders can never disturb playback).
+ * Player pool engine (YouTube only). Plain functions, state lives in a ctx
+ * object so React re-renders can never disturb playback.
  * ------------------------------------------------------------------------- */
 
 function createCtx() {
@@ -579,6 +691,7 @@ function assignSlot(ctx, slot, reel) {
   // If the player is not ready yet, onSlotReady loads slot.videoId.
 }
 
+/** Only YouTube reels (with a videoId) are ever handed to the pool. */
 function wantedIndexes(ctx) {
   const { reels, activeIndex } = ctx.props;
   const list = [activeIndex];
@@ -587,7 +700,7 @@ function wantedIndexes(ctx) {
     else if (ctx.dir >= 0) list.push(activeIndex + 1, activeIndex + 2);
     else list.push(activeIndex - 1, activeIndex + 1);
   }
-  return list.filter((i) => i >= 0 && i < reels.length);
+  return list.filter((i) => i >= 0 && i < reels.length && reels[i].videoId);
 }
 
 function syncPool(ctx, settled = false) {
@@ -602,6 +715,7 @@ function syncPool(ctx, settled = false) {
   }
   const idxOf = new Map();
   reels.forEach((r, i) => idxOf.set(r.id, i));
+  const activeId = reels[activeIndex] ? reels[activeIndex].id : null;
   const wantIds = wantedIndexes(ctx).map((i) => reels[i].id);
   const wantSet = new Set(wantIds);
 
@@ -612,9 +726,9 @@ function syncPool(ctx, settled = false) {
   // The active reel is assigned immediately. Neighbours wait until scrolling
   // has settled, so a fast flick never spawns loads for reels it flies past.
   let deferred = false;
-  wantIds.forEach((id, n) => {
+  wantIds.forEach((id) => {
     if (ctx.slots.some((s) => s.reelId === id)) return;
-    if (n > 0 && !settled) {
+    if (id !== activeId && !settled) {
       deferred = true;
       return;
     }
@@ -820,6 +934,23 @@ function VolumeIcon({ muted, size = 24 }) {
           <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
         </>
       )}
+    </Icon>
+  );
+}
+
+function PauseIcon({ size = 24 }) {
+  return (
+    <Icon size={size} fill="currentColor" stroke="none">
+      <rect x="6" y="4.5" width="4" height="15" rx="1.2" />
+      <rect x="14" y="4.5" width="4" height="15" rx="1.2" />
+    </Icon>
+  );
+}
+
+function PlayIcon({ size = 24 }) {
+  return (
+    <Icon size={size} fill="currentColor" stroke="none">
+      <path d="M7 4.6v14.8a1 1 0 0 0 1.5.86l12-7.4a1 1 0 0 0 0-1.72l-12-7.4A1 1 0 0 0 7 4.6z" />
     </Icon>
   );
 }
@@ -1268,7 +1399,7 @@ function ChannelProfileSheet({ channelId, channelName, channelLogo, channelHandl
                 tabIndex={0}
                 aria-label={titleOf(r)}
               >
-                <img src={r.thumb} alt="" loading="lazy" />
+                {r.thumb ? <img src={r.thumb} alt="" loading="lazy" /> : null}
                 <span className="rf-cp-views">{formatCount(r.views)} views</span>
               </div>
             ))}
@@ -1279,16 +1410,146 @@ function ChannelProfileSheet({ channelId, channelName, channelLogo, channelHandl
   );
 }
 
-/* ---------- one full-screen slide (poster + UI only; video is in the pool) ---------- */
+/* ---------- Instagram media (native <video> + cropped embed fallback) ---------- */
+
+const MEDIA_LAYER = { position: 'absolute', inset: 0, zIndex: 1, overflow: 'hidden', background: '#000', pointerEvents: 'none' };
+
+/**
+ * Native HTML5 video for items that carry a direct media URL. Plays instantly
+ * when its slide becomes active, pauses + rewinds when it leaves, and follows
+ * the global mute / pause state. Neighbours (+/-1) preload paused.
+ */
+function NativeVideo({ reel, isActive, near, muted, paused, onRegister, onForceMute, onFail }) {
+  const ref = useRef(null);
+  const wasActive = useRef(false);
+  const [shown, setShown] = useState(false);
+
+  const setRef = useCallback(
+    (node) => {
+      ref.current = node;
+      onRegister(reel.id, node);
+    },
+    [onRegister, reel.id]
+  );
+
+  useEffect(() => {
+    const v = ref.current;
+    if (!v) return;
+    v.muted = muted;
+    if (isActive) {
+      if (paused || document.hidden) {
+        v.pause();
+      } else {
+        const p = v.play();
+        if (p && typeof p.catch === 'function') {
+          p.catch(() => {
+            // Sound without a user gesture is blocked by the browser: fall back to muted playback.
+            if (!v.muted) onForceMute();
+          });
+        }
+      }
+    } else {
+      v.pause();
+      if (wasActive.current) {
+        try {
+          v.currentTime = 0;
+        } catch (e) {
+          /* not seekable yet */
+        }
+      }
+    }
+    wasActive.current = isActive;
+  }, [isActive, paused, muted, onForceMute, near]);
+
+  useEffect(() => {
+    if (!isActive) return undefined;
+    const onVis = () => {
+      const v = ref.current;
+      if (!v) return;
+      if (document.hidden) v.pause();
+      else if (!paused) {
+        const p = v.play();
+        if (p && typeof p.catch === 'function') p.catch(() => {});
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [isActive, paused]);
+
+  if (!near) return null;
+  const videoSrc = reel.directVideo || (reel.platform === 'instagram' && reel.shortcode ? `${API_BASE}${API.igStream(reel.shortcode)}` : '');
+  return (
+    <video
+      ref={setRef}
+      className="rf-ig-video"
+      src={videoSrc}
+      poster={reel.thumb || undefined}
+      playsInline
+      loop
+      muted={muted}
+      autoPlay={isActive}
+      preload={isActive ? 'auto' : 'metadata'}
+      disablePictureInPicture
+      controlsList="nodownload noplaybackrate noremoteplayback"
+      onLoadedData={() => setShown(true)}
+      onPlaying={() => setShown(true)}
+      onError={onFail}
+      style={{
+        position: 'absolute',
+        inset: 0,
+        zIndex: 1,
+        width: '100%',
+        height: '100%',
+        objectFit: 'cover',
+        background: '#000',
+        pointerEvents: 'none !important', // taps are handled by the tap layer above
+        opacity: shown ? 1 : 0,
+        transition: 'opacity 0.15s ease',
+      }}
+    />
+  );
+}
+
+/** Last resort when there is no direct video: Instagram's embed, shifted + oversized so its header/footer are cropped away. */
+function CroppedEmbed({ reel }) {
+  return (
+    <div style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'hidden', background: '#000', pointerEvents: 'none' }}>
+      <iframe
+        src={reel.embedUrl}
+        title={titleOf(reel)}
+        tabIndex={-1}
+        aria-hidden="true"
+        scrolling="no"
+        style={{
+          position: 'absolute',
+          top: '-25%',
+          left: '-10%',
+          width: '120%',
+          height: '150%',
+          border: 'none',
+          pointerEvents: 'none !important',
+        }}
+      />
+    </div>
+  );
+}
+
+/* ---------- one full-screen slide (poster + UI; YouTube video lives in the pool) ---------- */
 
 const ReelSlide = React.memo(function ReelSlide({
   reel,
   index,
   light,
   isActive,
+  nearVideo,
+  muted,
+  paused,
   uiHidden,
   following,
   bookmarked,
+  registerVideo,
+  onForceMute,
+  onBad,
   onLike,
   onOpenComments,
   onOpenDetails,
@@ -1302,9 +1563,15 @@ const ReelSlide = React.memo(function ReelSlide({
   onTapCancel,
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [videoFailed, setVideoFailed] = useState(false);
   useEffect(() => {
     if (!isActive) setExpanded(false);
   }, [isActive]);
+  const failVideo = useCallback(() => {
+    // NEVER call onBad(reel.id) here!
+    // Fall back smoothly to CroppedEmbed instead of deleting the reel from state
+    setVideoFailed(true);
+  }, []);
 
   // Far-away slides are empty snap points: same height, no images, no UI.
   if (light) {
@@ -1315,29 +1582,50 @@ const ReelSlide = React.memo(function ReelSlide({
     );
   }
 
+  const hasNative = Boolean(reel.directVideo) && !videoFailed;
+  const showEmbed = !reel.videoId && (!hasNative || videoFailed) && Boolean(reel.embedUrl || reel.shortcode) && isActive;
   const hasMoreCaption = Boolean(reel.description) || reel.title.length > 70;
 
   return (
     <section className={`rf-slide${isActive ? ' is-active' : ''}`} data-index={index} aria-label={titleOf(reel)}>
       <div className="rf-stage">
-        <img
-          className="rf-poster"
-          src={reel.thumb}
-          alt=""
-          draggable="false"
-          decoding="async"
-          onError={(e) => {
-            const img = e.currentTarget;
-            const fallback = posterFor(reel.videoId);
-            if (img.src !== fallback && !img.dataset.fb) {
-              img.dataset.fb = '1';
-              img.src = fallback;
-            }
-          }}
-        />
+        {reel.thumb ? (
+          <img
+            className="rf-poster"
+            src={reel.thumb}
+            alt=""
+            draggable="false"
+            decoding="async"
+            onError={(e) => {
+              if (!reel.videoId) return;
+              const img = e.currentTarget;
+              const fallback = posterFor(reel.videoId);
+              if (img.src !== fallback && !img.dataset.fb) {
+                img.dataset.fb = '1';
+                img.src = fallback;
+              }
+            }}
+          />
+        ) : null}
+
+        {hasNative && (
+          <NativeVideo
+            reel={reel}
+            isActive={isActive}
+            near={nearVideo}
+            muted={muted}
+            paused={paused}
+            onRegister={registerVideo}
+            onForceMute={onForceMute}
+            onFail={failVideo}
+          />
+        )}
+        {showEmbed && <CroppedEmbed reel={reel} />}
+
         <div className="rf-scrim rf-scrim--top" />
         <div className="rf-scrim rf-scrim--bottom" />
 
+        {/* One tap layer for every platform. Media layers have pointer-events: none, so all touches land here. */}
         {isActive && (
           <div
             className="rf-tap"
@@ -1346,6 +1634,7 @@ const ReelSlide = React.memo(function ReelSlide({
             onPointerUp={onTapUp}
             onPointerCancel={onTapCancel}
             onContextMenu={(e) => e.preventDefault()}
+            style={{ zIndex: 2, position: 'absolute', inset: 0 }}
           />
         )}
 
@@ -1400,7 +1689,7 @@ const ReelSlide = React.memo(function ReelSlide({
             >
               <span className="rf-caption-title">{titleOf(reel)}</span>
               {expanded && reel.description ? <span className="rf-caption-desc">{reel.description}</span> : null}
-              {!expanded && hasMoreCaption ? <span className="rf-caption-more">more</span> : null}
+              {!expanded && hasMoreCaption ? <span className="rf-caption-more">…more</span> : null}
             </button>
 
             <div className="rf-sound-line">
@@ -1476,9 +1765,11 @@ function ReelsFeedInner() {
   const fillRef = useRef(null);
   const trackRef = useRef(null);
   const poolApiRef = useRef(null);
+  const videoElsRef = useRef(new Map());
   const reelsRef = useRef(reels);
   const activeRef = useRef(activeIndex);
   const mutedRef = useRef(muted);
+  const userPausedRef = useRef(userPaused);
   const aliveRef = useRef(true);
   const pendingLikes = useRef(new Set());
   const reportedRef = useRef(new Set());
@@ -1493,12 +1784,46 @@ function ReelsFeedInner() {
   const hasMoreRef = useRef(true);
   const cooldownRef = useRef(0);
 
+  // seen-event batching
+  const seenSentRef = useRef(new Set());
+  const seenQueueRef = useRef([]);
+  const seenTimerRef = useRef(null);
+
   // gesture bookkeeping
   const g = useRef({ id: null, x: 0, y: 0, moved: false, holding: false, lastTap: 0, tapTimer: null, holdTimer: null }).current;
 
   reelsRef.current = reels;
   activeRef.current = activeIndex;
   mutedRef.current = muted;
+  userPausedRef.current = userPaused;
+
+  /* ---------- seen batching (every 3s or 10 events) ---------- */
+
+  const flushSeen = useCallback(() => {
+    clearTimeout(seenTimerRef.current);
+    seenTimerRef.current = null;
+    const events = seenQueueRef.current.splice(0, 50);
+    if (events.length === 0) return;
+    api(API.seen, { method: 'POST', body: JSON.stringify({ events }) }).catch(() => {
+      /* seen tracking is best-effort */
+    });
+    if (seenQueueRef.current.length > 0) seenTimerRef.current = setTimeout(flushSeen, SEEN_FLUSH_MS);
+  }, []);
+
+  const queueSeen = useCallback(
+    (reel) => {
+      const key = `${reel.platform}:${reel.id}`;
+      if (seenSentRef.current.has(key)) return;
+      seenSentRef.current.add(key);
+      seenQueueRef.current.push({
+        contentId: String(reel.id).replace(/^ig_/, ''),
+        platform: reel.platform === 'instagram' ? 2 : 1,
+      });
+      if (seenQueueRef.current.length >= SEEN_FLUSH_COUNT) flushSeen();
+      else if (!seenTimerRef.current) seenTimerRef.current = setTimeout(flushSeen, SEEN_FLUSH_MS);
+    },
+    [flushSeen]
+  );
 
   useEffect(() => {
     aliveRef.current = true;
@@ -1507,10 +1832,17 @@ function ReelsFeedInner() {
     addPreconnect('https://www.youtube.com');
     addPreconnect('https://i.ytimg.com');
     addPreconnect('https://www.google.com');
+    ensureExtraStyles();
     ensureYT(); // start downloading the player API before the first reel needs it
+    const onHide = () => {
+      if (document.hidden) flushSeen();
+    };
+    document.addEventListener('visibilitychange', onHide);
     const t = timers.current;
     return () => {
       aliveRef.current = false;
+      document.removeEventListener('visibilitychange', onHide);
+      flushSeen();
       document.documentElement.classList.remove('rf-body');
       document.body.classList.remove('rf-body');
       clearTimeout(t.toast);
@@ -1520,7 +1852,7 @@ function ReelsFeedInner() {
       clearTimeout(g.tapTimer);
       clearTimeout(g.holdTimer);
     };
-  }, [g]);
+  }, [g, flushSeen]);
 
   const showToast = useCallback((message) => {
     setToast(message);
@@ -1530,70 +1862,70 @@ function ReelsFeedInner() {
 
   /* ---------- data loading ---------- */
 
-  const loadPage = useCallback(
-    async (initial) => {
-      if (fetchingRef.current) return;
-      if (!initial && (!hasMoreRef.current || Date.now() < cooldownRef.current)) return;
-      fetchingRef.current = true;
+  const loadPage = useCallback(async (initial) => {
+    if (fetchingRef.current) return;
+    if (!initial && (!hasMoreRef.current || Date.now() < cooldownRef.current)) return;
+    fetchingRef.current = true;
+    if (initial) {
+      pageRef.current = 0;
+      cursorRef.current = null;
+      hasMoreRef.current = true;
+      setStatus('loading');
+    }
+    const pageNum = initial ? 1 : pageRef.current + 1;
+    const params = new URLSearchParams({ limit: String(PAGE_SIZE) });
+    if (!initial && cursorRef.current) params.set('cursor', String(cursorRef.current));
+    else params.set('page', String(pageNum));
+
+    try {
+      const payload = await api(`${API.list}?${params.toString()}`);
+      if (!aliveRef.current) return;
+      const rawItems = unwrapList(payload);
+      const items = rawItems.map(normalizeReel).filter(Boolean);
+
+      setReels((prev) => {
+        if (initial) return items;
+        const seen = new Set(prev.map((r) => r.id));
+        return [...prev, ...items.filter((r) => !seen.has(r.id))];
+      });
       if (initial) {
-        pageRef.current = 0;
-        cursorRef.current = null;
-        hasMoreRef.current = true;
-        setStatus('loading');
-      }
-      const pageNum = initial ? 1 : pageRef.current + 1;
-      const params = new URLSearchParams({ limit: String(PAGE_SIZE) });
-      if (!initial && cursorRef.current) params.set('cursor', String(cursorRef.current));
-      else params.set('page', String(pageNum));
-
-      try {
-        const payload = await api(`${API.list}?${params.toString()}`);
-        if (!aliveRef.current) return;
-        const rawItems = unwrapList(payload);
-        const items = rawItems.map(normalizeReel).filter(Boolean);
-
-        setReels((prev) => {
-          if (initial) return items;
-          const seen = new Set(prev.map((r) => r.id));
-          return [...prev, ...items.filter((r) => !seen.has(r.id))];
-        });
-        if (initial) items.slice(0, 3).forEach((r) => {
+        items.slice(0, 3).forEach((r) => {
+          if (!r.thumb) return;
           const im = new Image();
           im.src = r.thumb;
         });
-
-        pageRef.current = pageNum;
-        const meta = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
-        if (meta.nextCursor !== undefined) {
-          cursorRef.current = meta.nextCursor || null;
-          hasMoreRef.current = Boolean(meta.nextCursor);
-        } else if (meta.totalPages != null && Number.isFinite(Number(meta.totalPages))) {
-          hasMoreRef.current = pageNum < Number(meta.totalPages);
-        } else if (typeof meta.hasMore === 'boolean') {
-          hasMoreRef.current = meta.hasMore;
-        } else {
-          hasMoreRef.current = rawItems.length >= PAGE_SIZE;
-        }
-        cooldownRef.current = 0;
-        if (initial) setStatus('ready');
-      } catch (err) {
-        if (!aliveRef.current) return;
-        if (initial) {
-          setStatus('error');
-        } else {
-          // Do NOT skip the page: pageRef is only advanced on success.
-          cooldownRef.current = Date.now() + RETRY_COOLDOWN_MS;
-          clearTimeout(timers.current.retry);
-          timers.current.retry = setTimeout(() => {
-            if (aliveRef.current && activeRef.current >= reelsRef.current.length - PREFETCH_REMAINING) loadPage(false);
-          }, RETRY_COOLDOWN_MS + 50);
-        }
-      } finally {
-        fetchingRef.current = false;
       }
-    },
-    []
-  );
+
+      pageRef.current = pageNum;
+      const meta = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
+      if (meta.nextCursor !== undefined) {
+        cursorRef.current = meta.nextCursor || null;
+        hasMoreRef.current = Boolean(meta.nextCursor);
+      } else if (meta.totalPages != null && Number.isFinite(Number(meta.totalPages))) {
+        hasMoreRef.current = pageNum < Number(meta.totalPages);
+      } else if (typeof meta.hasMore === 'boolean') {
+        hasMoreRef.current = meta.hasMore;
+      } else {
+        hasMoreRef.current = rawItems.length >= PAGE_SIZE;
+      }
+      cooldownRef.current = 0;
+      if (initial) setStatus('ready');
+    } catch (err) {
+      if (!aliveRef.current) return;
+      if (initial) {
+        setStatus('error');
+      } else {
+        // Do NOT skip the page: pageRef is only advanced on success.
+        cooldownRef.current = Date.now() + RETRY_COOLDOWN_MS;
+        clearTimeout(timers.current.retry);
+        timers.current.retry = setTimeout(() => {
+          if (aliveRef.current && activeRef.current >= reelsRef.current.length - PREFETCH_REMAINING) loadPage(false);
+        }, RETRY_COOLDOWN_MS + 50);
+      }
+    } finally {
+      fetchingRef.current = false;
+    }
+  }, []);
 
   useEffect(() => {
     loadPage(true);
@@ -1620,6 +1952,11 @@ function ReelsFeedInner() {
       reportedRef.current.add(id);
       api(API.unavailable(id), { method: 'POST', body: JSON.stringify({ reason: 'unavailable' }) }).catch(() => {});
     }
+  }, []);
+
+  const registerVideo = useCallback((id, el) => {
+    if (el) videoElsRef.current.set(id, el);
+    else videoElsRef.current.delete(id);
   }, []);
 
   /* ---------- active slide detection (no debounce) ---------- */
@@ -1661,12 +1998,22 @@ function ReelsFeedInner() {
     }
   }, [activeIndex]);
 
-  // Progress bar (reads the pool, 4x per second, no React renders).
+  // Seen tracking for the active reel (batched).
+  useEffect(() => {
+    const current = reels[activeIndex];
+    if (current) queueSeen(current);
+  }, [activeIndex, reels, queueSeen]);
+
+  // Progress bar (reads the active <video> or the pool, 4x per second, no React renders).
   useEffect(() => {
     if (status !== 'ready') return undefined;
     const timer = setInterval(() => {
       if (seekingRef.current || document.hidden) return;
-      const p = poolApiRef.current ? poolApiRef.current.getProgress() : null;
+      const current = reelsRef.current[activeRef.current];
+      const el = current ? videoElsRef.current.get(current.id) : null;
+      let p = null;
+      if (el) p = el.duration > 0 ? el.currentTime / el.duration : null;
+      else if (poolApiRef.current) p = poolApiRef.current.getProgress();
       if (p !== null && fillRef.current) fillRef.current.style.transform = `scaleX(${Math.min(1, Math.max(0, p))})`;
     }, 250);
     return () => clearInterval(timer);
@@ -1699,18 +2046,40 @@ function ReelsFeedInner() {
 
   /* ---------- actions ---------- */
 
+  const showPulse = useCallback((kind) => {
+    setPulse({ kind, key: Date.now() });
+    clearTimeout(timers.current.pulse);
+    timers.current.pulse = setTimeout(() => setPulse(null), 800);
+  }, []);
+
+  // Speaker button / "m" key: sound only.
   const toggleMute = useCallback(
     (withPulse) => {
       const next = !mutedRef.current;
       setMuted(next);
-      if (withPulse) {
-        setPulse({ muted: next, key: Date.now() });
-        clearTimeout(timers.current.pulse);
-        timers.current.pulse = setTimeout(() => setPulse(null), 800);
-      }
+      if (withPulse) showPulse(next ? 'muted' : 'sound');
     },
-    []
+    [showPulse]
   );
+
+  // Single tap on the video: sound + play together, or pause + mute together.
+  const onSingleTap = useCallback(() => {
+    if (userPausedRef.current) {
+      // paused -> play with sound
+      setUserPaused(false);
+      setMuted(false);
+      showPulse('play');
+    } else if (mutedRef.current) {
+      // playing muted -> sound on
+      setMuted(false);
+      showPulse('sound');
+    } else {
+      // playing with sound -> pause + mute
+      setUserPaused(true);
+      setMuted(true);
+      showPulse('pause');
+    }
+  }, [showPulse]);
 
   const toggleLike = useCallback(
     async (id, forceOn = false) => {
@@ -1739,7 +2108,7 @@ function ReelsFeedInner() {
   const onShare = useCallback((id) => {
     const r = reelsRef.current.find((x) => x.id === id);
     if (!r) return;
-    const url = `https://www.youtube.com/shorts/${r.videoId}`;
+    const url = r.shareUrl || (r.videoId ? `https://www.youtube.com/shorts/${r.videoId}` : window.location.href);
     const text = `${titleOf(r)}\n${url}`;
     if (navigator.share) {
       navigator.share({ title: titleOf(r), text, url }).catch(() => {});
@@ -1777,9 +2146,24 @@ function ReelsFeedInner() {
 
   const onCountDelta = useCallback((id, delta) => patchReel(id, (r) => ({ comments: Math.max(0, r.comments + delta) })), [patchReel]);
 
-  const openComments = useCallback((id) => setSheet({ type: 'comments', id }), []);
+  const openComments = useCallback(
+    (id) => {
+      const r = reelsRef.current.find((x) => x.id === id);
+      if (r && r.platform === 'instagram') {
+        showToast('Comments are not available for Instagram reels.');
+        return;
+      }
+      setSheet({ type: 'comments', id });
+    },
+    [showToast]
+  );
   const openDetails = useCallback((id) => setSheet({ type: 'details', id }), []);
   const openChannel = useCallback((reel) => {
+    if (reel && reel.platform === 'instagram') {
+      const url = reel.profileUrl || reel.shareUrl;
+      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+      return;
+    }
     if (reel && reel.channelId) {
       window.location.assign(`/shorts/channel/${reel.channelId}`);
       return;
@@ -1796,7 +2180,7 @@ function ReelsFeedInner() {
   }, []);
   const closeSheet = useCallback(() => setSheet(null), []);
 
-  /* ---------- gestures: tap = sound, double tap = like, hold = pause ---------- */
+  /* ---------- gestures: tap = sound + play/pause, double tap = like, hold = pause ---------- */
 
   const endHold = useCallback(() => {
     if (g.holding) {
@@ -1860,10 +2244,10 @@ function ReelsFeedInner() {
       clearTimeout(g.tapTimer);
       g.tapTimer = setTimeout(() => {
         g.lastTap = 0;
-        toggleMute(true);
+        onSingleTap();
       }, DOUBLE_TAP_MS);
     },
-    [g, endHold, toggleLike, toggleMute]
+    [g, endHold, toggleLike, onSingleTap]
   );
 
   // The browser takes over for scrolling -> pointercancel. Never a tap.
@@ -1893,7 +2277,14 @@ function ReelsFeedInner() {
   const onSeekUp = (e) => {
     if (!seekingRef.current) return;
     seekingRef.current = false;
-    if (poolApiRef.current) poolApiRef.current.seekTo(ratioFromEvent(e));
+    const ratio = ratioFromEvent(e);
+    const current = reelsRef.current[activeRef.current];
+    const el = current ? videoElsRef.current.get(current.id) : null;
+    if (el) {
+      if (el.duration > 0) el.currentTime = ratio * el.duration;
+    } else if (poolApiRef.current) {
+      poolApiRef.current.seekTo(ratio);
+    }
   };
   const onSeekCancel = () => {
     seekingRef.current = false;
@@ -1936,6 +2327,7 @@ function ReelsFeedInner() {
   const ready = status === 'ready' && reels.length > 0;
   const activeReel = reels[activeIndex] || reels[0];
   const sheetOpen = Boolean(sheet);
+  const pausedNow = holding || userPaused;
 
   return (
     <main className="rf-root" aria-label="Reels">
@@ -1959,13 +2351,15 @@ function ReelsFeedInner() {
 
       {ready && (
         <>
-          <div className="rf-ambient" aria-hidden="true" style={{ backgroundImage: `url(${JSON.stringify(activeReel.thumb)})` }} />
+          {activeReel.thumb ? (
+            <div className="rf-ambient" aria-hidden="true" style={{ backgroundImage: `url(${JSON.stringify(activeReel.thumb)})` }} />
+          ) : null}
           <div className="rf-scroller" ref={scrollerRef}>
             <PlayerPool
               reels={reels}
               activeIndex={activeIndex}
               muted={muted}
-              paused={holding || userPaused}
+              paused={pausedNow}
               onBad={onBadReel}
               onForceMute={onForceMute}
               onPlayerFail={onPlayerFail}
@@ -1978,9 +2372,15 @@ function ReelsFeedInner() {
                 index={i}
                 light={Math.abs(i - activeIndex) > RENDER_WINDOW}
                 isActive={i === activeIndex}
+                nearVideo={Math.abs(i - activeIndex) <= VIDEO_WINDOW}
+                muted={muted}
+                paused={pausedNow}
                 uiHidden={holding && i === activeIndex}
                 following={Boolean(follows[r.channelId || r.channelName])}
                 bookmarked={Boolean(bookmarks[r.id])}
+                registerVideo={registerVideo}
+                onForceMute={onForceMute}
+                onBad={onBadReel}
                 onLike={onLike}
                 onOpenComments={openComments}
                 onOpenDetails={openDetails}
@@ -2024,7 +2424,9 @@ function ReelsFeedInner() {
 
           {pulse && (
             <div key={pulse.key} className="rf-pulse" aria-hidden="true">
-              <VolumeIcon muted={pulse.muted} size={34} />
+              {pulse.kind === 'pause' && <PauseIcon size={34} />}
+              {pulse.kind === 'play' && <PlayIcon size={34} />}
+              {(pulse.kind === 'sound' || pulse.kind === 'muted') && <VolumeIcon muted={pulse.kind === 'muted'} size={34} />}
             </div>
           )}
           {burst && (
@@ -2087,6 +2489,8 @@ export {
   MoreIcon,
   BackIcon,
   VolumeIcon,
+  PauseIcon,
+  PlayIcon,
   CloseIcon,
   SendIcon,
   ChevronIcon,
@@ -2100,4 +2504,6 @@ export {
   DetailsSheet,
   ChannelProfileSheet,
   PlayerPool,
+  NativeVideo,
+  CroppedEmbed,
 };

@@ -37,8 +37,9 @@ const refreshAccessToken = async () => {
     isRefreshing = true;
     try {
         const res = await axios.post(`${API_URL}/api/auth/refresh`, {}, { withCredentials: true });
-        const newToken = res?.data?.accessToken;
+        const newToken = res?.data?.token || res?.data?.accessToken;
         if (newToken) {
+            localStorage.setItem('auth_token', newToken);
             localStorage.setItem('accessToken', newToken);
             if (globalSetAccessToken) {
                 globalSetAccessToken(newToken);
@@ -50,6 +51,7 @@ const refreshAccessToken = async () => {
     } catch (refreshError) {
         isRefreshing = false;
         onRefreshFailure(refreshError);
+        localStorage.removeItem('auth_token');
         localStorage.removeItem('accessToken');
         localStorage.removeItem('user');
         localStorage.removeItem('refreshToken');
@@ -73,7 +75,7 @@ const parseJwt = (token) => {
 };
 
 axios.interceptors.request.use((config) => {
-    const token = localStorage.getItem('accessToken');
+    const token = localStorage.getItem('auth_token') || localStorage.getItem('accessToken');
     if (token) {
         config.headers = config.headers || {};
         config.headers.Authorization = `Bearer ${token}`;
@@ -163,6 +165,7 @@ export const AuthProvider = ({ children }) => {
 
     const login = (userData, newAccessToken, newRefreshToken) => {
         const userWithApproval = { ...userData, isApproved: userData.isApproved || false };
+        localStorage.setItem('auth_token', newAccessToken);
         localStorage.setItem('accessToken', newAccessToken);
         // refreshToken is now stored in HttpOnly cookie by backend, removed from localStorage entirely
         localStorage.setItem('user', JSON.stringify(userWithApproval));
@@ -178,6 +181,7 @@ export const AuthProvider = ({ children }) => {
         }
 
         // Clear local storage and state
+        localStorage.removeItem('auth_token');
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
         localStorage.removeItem('user');
