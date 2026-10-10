@@ -1,4 +1,4 @@
-// src/context/AuthContext.js
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import axios from 'axios';
 import { googleLogout } from '@react-oauth/google';
@@ -10,60 +10,17 @@ const API_URL = process.env.REACT_APP_API_URL;
 axios.defaults.withCredentials = true;
 
 let isRefreshing = false;
-let refreshWaiters = [];
-let globalSetAccessToken = null;
+let failedQueue = [];
 
-const onRefreshSuccess = (newToken) => {
-    refreshWaiters.forEach(cb => cb(newToken));
-    refreshWaiters = [];
-};
-
-const onRefreshFailure = (err) => {
-    refreshWaiters.forEach(cb => cb(null, err));
-    refreshWaiters = [];
-};
-
-// Shared single-flight refresh helper function to prevent race conditions & token rotation reuse alerts
-const refreshAccessToken = async () => {
-    if (isRefreshing) {
-        return new Promise((resolve, reject) => {
-            refreshWaiters.push((token, err) => {
-                if (err) return reject(err);
-                resolve(token);
-            });
-        });
-    }
-
-    isRefreshing = true;
-    try {
-        const res = await axios.post(`${API_URL}/api/auth/refresh`, {}, { withCredentials: true });
-        const newToken = res?.data?.token || res?.data?.accessToken;
-        if (newToken) {
-            localStorage.setItem('auth_token', newToken);
-            localStorage.setItem('accessToken', newToken);
-            if (globalSetAccessToken) {
-                globalSetAccessToken(newToken);
-            }
+const processQueue = (error, token = null) => {
+    failedQueue.forEach(prom => {
+        if (error) {
+            prom.reject(error);
+        } else {
+            prom.resolve(token);
         }
-        isRefreshing = false;
-        onRefreshSuccess(newToken);
-        return newToken;
-    } catch (refreshError) {
-        isRefreshing = false;
-        onRefreshFailure(refreshError);
-        localStorage.removeItem('auth_token');
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('user');
-        localStorage.removeItem('refreshToken');
-        if (globalSetAccessToken) {
-            globalSetAccessToken(null);
-        }
-        // Defensive self-heal redirect on refresh failure
-        if (window.location.pathname !== '/login') {
-            window.location.href = '/login';
-        }
-        throw refreshError;
-    }
+    });
+    failedQueue = [];
 };
 
 const parseJwt = (token) => {
@@ -86,25 +43,66 @@ axios.interceptors.request.use((config) => {
 axios.interceptors.response.use(
     (response) => response,
     async (error) => {
-        const originalRequest = error?.config;
-        if (
-            error?.response?.status === 401 &&
-            originalRequest &&
-            !originalRequest.__retry &&
-            !String(originalRequest.url || '').includes('/api/auth/refresh') &&
-            !String(originalRequest.url || '').includes('/api/auth/google') &&
-            !String(originalRequest.url || '').includes('/api/auth/login')
-        ) {
-            originalRequest.__retry = true;
+        const originalRequest = error.config;
+        const isAuthError = error.response && (error.response.status === 401 || (error.response.status === 403 && (error.response.data?.message?.includes("expired") || error.response.data?.err === "jwt expired")));
+
+        if (isAuthError && !originalRequest._retry) {
+            if (originalRequest.url.includes("/api/auth/refresh")) {
+                // Refresh itself failed; only clear tokens if refresh token is genuinely invalid
+                localStorage.removeItem('auth_token');
+                localStorage.removeItem('accessToken');
+                localStorage.removeItem('user');
+                // Redirect to login if refresh fails
+                if (window.location.pathname !== '/login') {
+                    window.location.href = '/login';
+                }
+                return Promise.reject(error);
+            }
+
+            if (isRefreshing) {
+                return new Promise((resolve, reject) => {
+                    failedQueue.push({ resolve, reject });
+                }).then((token) => {
+                    originalRequest.headers["Authorization"] = `Bearer ${token}`;
+                    return axios(originalRequest);
+                }).catch(err => Promise.reject(err));
+            }
+
+            originalRequest._retry = true;
+            isRefreshing = true;
 
             try {
-                const newToken = await refreshAccessToken();
-                if (newToken) {
-                    originalRequest.headers.Authorization = `Bearer ${newToken}`;
+                const res = await axios.post(`${API_URL}/api/auth/refresh`);
+                const newAccessToken = res.data?.accessToken || res.data?.token;
+
+                if (newAccessToken) {
+                    localStorage.setItem("accessToken", newAccessToken);
+                    localStorage.setItem("auth_token", newAccessToken);
+                    axios.defaults.headers.common["Authorization"] = `Bearer ${newAccessToken}`;
+                    originalRequest.headers["Authorization"] = `Bearer ${newAccessToken}`;
+                    processQueue(null, newAccessToken);
+                    return axios(originalRequest);
+                } else {
+                    processQueue(new Error("Refresh token failed to provide new access token"), null);
+                    localStorage.removeItem('auth_token');
+                    localStorage.removeItem('accessToken');
+                    localStorage.removeItem('user');
+                    if (window.location.pathname !== '/login') {
+                        window.location.href = '/login';
+                    }
+                    return Promise.reject(error);
                 }
-                return axios(originalRequest);
-            } catch (refreshError) {
-                return Promise.reject(refreshError);
+            } catch (refreshErr) {
+                processQueue(refreshErr, null);
+                localStorage.removeItem('auth_token');
+                localStorage.removeItem('accessToken');
+                localStorage.removeItem('user');
+                if (window.location.pathname !== '/login') {
+                    window.location.href = '/login';
+                }
+                return Promise.reject(refreshErr);
+            } finally {
+                isRefreshing = false;
             }
         }
         return Promise.reject(error);
@@ -138,7 +136,6 @@ export const AuthProvider = ({ children }) => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        globalSetAccessToken = setAccessToken;
 
         // Lightweight keep-alive trigger on app mount / open to slide refresh window
         const keepAliveSession = async () => {
@@ -153,9 +150,9 @@ export const AuthProvider = ({ children }) => {
                 // Only refresh if token is expired or close to expiry
                 if (!decodedToken || decodedToken.exp < (currentTime + expiryThreshold)) {
                     try {
-                        await refreshAccessToken();
+                        await axios.post(`${API_URL}/api/auth/refresh`);
                     } catch (e) {
-                        // Errors are handled by refreshAccessToken's internal self-heal
+                        // Errors are handled by the interceptor's internal self-heal and redirect
                     }
                 }
             }
