@@ -236,7 +236,13 @@ function ChannelShorts() {
   const [reels, setReels] = useState([]);
   const [status, setStatus] = useState('loading');
   const [activeIndex, setActiveIndex] = useState(0);
-  const [muted, setMuted] = useState(shouldStartMuted);
+  const [muted, setMuted] = useState(() => {
+    try {
+      return JSON.parse(window.localStorage.getItem('shorts_muted') || 'false');
+    } catch (e) {
+      return shouldStartMuted; 
+    }
+  });
   const [holding, setHolding] = useState(false);
   const [userPaused, setUserPaused] = useState(false);
   const [pageHidden, setPageHidden] = useState(false);
@@ -308,15 +314,6 @@ function ChannelShorts() {
     const onVis = () => setPageHidden(document.visibilityState !== 'visible');
     document.addEventListener('visibilitychange', onVis);
     return () => document.removeEventListener('visibilitychange', onVis);
-  }, []);
-
-  /* the first real tap/click lets the browser play with sound (autoplay policy) */
-  useEffect(() => {
-    const unlock = () => {
-      if (mutedRef.current && !userMutedRef.current) setMuted(false);
-    };
-    window.addEventListener('pointerup', unlock, true);
-    return () => window.removeEventListener('pointerup', unlock, true);
   }, []);
 
   /* ---------- channel header info ---------- */
@@ -504,6 +501,7 @@ function ChannelShorts() {
     const next = !mutedRef.current;
     userMutedRef.current = next;
     setMuted(next);
+    window.localStorage.setItem('shorts_muted', JSON.stringify(next)); // Persist mute state
   }, []);
 
   const toggleLike = useCallback(

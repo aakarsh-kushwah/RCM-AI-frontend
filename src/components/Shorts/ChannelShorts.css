@@ -126,6 +126,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  z-index: 10; /* Added z-index for distinct layering */
 }
 
 .cs-pill-avatar {
@@ -152,6 +153,9 @@
   flex-direction: column;
   justify-content: center;
   line-height: 1.15;
+  gap: 4px; /* Equivalent to TailwindCSS gap-1 (1 unit = 4px) */
+  max-width: 75%; /* Limit width to prevent overlap */
+  z-index: 10; /* Ensure text is above other elements if any overlap occurs */
 }
 
 .cs-pill-text strong {

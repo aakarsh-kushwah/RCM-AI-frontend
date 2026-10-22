@@ -180,7 +180,9 @@
 
 .rcmud-main { display: flex; flex-direction: column; min-width: 0; }
 
-.rcmud-topbar { display: none; }
+.rcmud-topbar {
+  display: none; /* Hidden by default on desktop, shown by media query */
+}
 
 .rcmud-content {
   padding: 24px 44px 32px;
@@ -528,6 +530,70 @@
 
   .rcmud-topbar-right { display: flex; align-items: center; gap: 10px; margin-left: auto; }
 
+  /* Notification Bell Toggle Styles */
+  .rcmud-bell-toggle {
+    transition: transform 0.1s ease, box-shadow 0.1s ease;
+  }
+
+  .rcmud-bell-toggle:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px rgba(16, 24, 40, 0.1);
+  }
+
+  .rcmud-bell-toggle:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 5px rgba(16, 24, 40, 0.08);
+  }
+
+  .rcmud-bell-toggle:focus-visible {
+    outline: 2px solid var(--u-primary);
+    outline-offset: 2px;
+    border-radius: 10px;
+  }
+
+  .rcmud-notification-bell {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 100%;
+    height: 100%;
+  }
+
+  .rcmud-notification-bell--loading .rcmud-loading-spinner {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .rcmud-notification-bell--on .rcmud-dot {
+    position: absolute;
+    top: 6px; right: 7px;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #0e9f8e; /* Teal for ON */
+    border: 1.5px solid var(--u-surface);
+  }
+
+  .rcmud-notification-bell--off .rcmud-dot {
+    display: none;
+  }
+
+  .rcmud-notification-bell--blocked {
+    color: #cc0000; /* Red for blocked */
+    cursor: not-allowed;
+  }
+  .rcmud-notification-bell--blocked .rcmud-dot {
+    display: none;
+  }
+
   .rcmud-icon-btn {
     position: relative;
     border: none;
@@ -538,6 +604,7 @@
     border-radius: 10px;
     display: grid;
     place-items: center;
+    cursor: pointer;
   }
   .rcmud-dot {
     position: absolute;

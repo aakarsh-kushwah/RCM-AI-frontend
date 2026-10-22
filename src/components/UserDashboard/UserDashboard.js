@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  Zap, Star, TrendingUp, LogOut, ChevronRight, ExternalLink, ArrowUpRight, Sparkles, Bell, X, Film
+  Zap, Star, TrendingUp, LogOut, ChevronRight, ExternalLink, ArrowUpRight, Sparkles, Bell, X, Film, BellOff
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import usePushNotification from '../../hooks/usePushNotification';
 import './UserDashboard.css';
 
 // Team Dekho — the in-house WebRTC meeting platform (~90% cheaper than Zoom,
@@ -28,6 +29,7 @@ const UserDashboard = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
+  const { supported, permission, enabled, loading, enable, disable } = usePushNotification();
 
   const [scrolled, setScrolled] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -81,6 +83,49 @@ const UserDashboard = () => {
   };
 
   const isItemActive = (item) => location.pathname === item.path;
+
+  const handleNotificationToggle = async () => {
+    if (loading) return; // Prevent interaction while loading
+    if (permission === 'denied') {
+      // Optionally, guide user to browser settings
+      return;
+    }
+    if (enabled) {
+      await disable();
+    } else {
+      await enable();
+    }
+  };
+
+  const renderBellIcon = () => {
+    if (loading) {
+      return (
+        <div className="rcmud-notification-bell rcmud-notification-bell--loading">
+          <Bell size={19} strokeWidth={1.8} />
+          <span className="rcmud-loading-spinner" />
+        </div>
+      );
+    } else if (permission === 'denied') {
+      return (
+        <div className="rcmud-notification-bell rcmud-notification-bell--blocked" title="Notifications are blocked in your browser settings">
+          <BellOff size={19} strokeWidth={1.8} />
+        </div>
+      );
+    } else if (enabled) {
+      return (
+        <div className="rcmud-notification-bell rcmud-notification-bell--on">
+          <Bell size={19} strokeWidth={1.8} />
+          <i className="rcmud-dot" />
+        </div>
+      );
+    } else {
+      return (
+        <div className="rcmud-notification-bell rcmud-notification-bell--off">
+          <Bell size={19} strokeWidth={1.8} />
+        </div>
+      );
+    }
+  };
 
   return (
     <div className="rcmud-shell">
@@ -139,6 +184,19 @@ const UserDashboard = () => {
           </div>
 
           <div className="rcmud-topbar-right">
+            {supported && (
+                <button
+                    className="rcmud-icon-btn rcmud-bell-toggle"
+                    onClick={handleNotificationToggle}
+                    aria-label={enabled ? "Disable notifications" : "Enable notifications"}
+                    aria-pressed={enabled}
+                    disabled={permission === 'denied' || loading}
+                    title={permission === 'denied' ? "Notifications are blocked in your browser settings" : (enabled ? "Notifications ON" : "Notifications OFF")}
+                >
+                    {renderBellIcon()}
+                </button>
+            )}
+
             <div className="rcmud-profile" ref={notifRef}>
               <button
                 className="rcmud-icon-btn"
@@ -291,7 +349,7 @@ const UserDashboard = () => {
                 <span className="rcmud-app-badge is-amber">Analytics</span>
               </div>
               <div className="rcmud-app-body">
-                <span className="rcmud-app-title">Growth &amp; PV</span>
+                <span className="rcmud-app-title">Growth & PV</span>
                 <span className="rcmud-app-sub">Full breakdown of this month's numbers</span>
               </div>
               <div className="rcmud-app-footer">

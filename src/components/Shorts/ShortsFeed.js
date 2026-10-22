@@ -2,24 +2,27 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import './ShortsFeed.css';
 
 /* ---------------------------------------------------------------------------
- * ReelsFeed (v4) - unified 9:16 vertical feed for YouTube Shorts + Instagram Reels
+ * ReelsFeed (v6) - unified 9:16 vertical feed for YouTube Shorts + Instagram Reels
  *
- * YouTube : persistent POOL of 3 IFrame API players (unchanged engine).
- *           Players are re-used with loadVideoById(), a swipe never boots an iframe.
- * Instagram: always a native HTML5 <video> (directVideo, or the ig-stream proxy).
- *           The active slide and its neighbours (paused + preloaded) render it, so
- *           both platforms look identical. A reel whose video fails is skipped.
- *           The embed iframe is off by default (ALLOW_EMBED_FALLBACK) and, when
- *           enabled, is sandboxed, cropped and has pointer-events: none.
+ * v6 changes
+ *  - Top bar: Back arrow only. The top-right speaker button and the "Reels"
+ *    title are gone. The centre play/pause pulse is gone.
+ *  - Single tap: playing -> pause + mute, paused -> play + unmute.
+ *    (Exception: if the browser blocked sound on autoplay, the first tap turns
+ *    sound on instead of pausing, otherwise sound could never be enabled.)
+ *  - Double tap: heart burst + like.
+ *  - Rapid-swipe protection: the UI follows the scroll position immediately, but
+ *    playback (YouTube loadVideoById, <video> mount/src, seen pings) follows a
+ *    SETTLED index. During a flick only the settled slide is loaded.
+ *  - Inactive slides render no metadata at all (no double usernames).
+ *  - Bottom-left block: avatar + @handle + verified + Follow pill, 2-line caption
+ *    (tap for ...more), audio ticker. No white box.
+ *  - A reel whose video fails is never removed or skipped: poster stays, with
+ *    Retry / Open original.
  *
- * Gestures (both platforms):
- *   single tap  = sound ON + play  <->  pause + mute (one toggle, both together)
- *   double tap  = like + heart burst
- *   hold        = pause + hide UI, release = resume
- *   swipe       = next / previous reel
- *
- * normalizeReel keeps Instagram items and parses shortcode, directVideo,
- * embedUrl and the profile (username / avatar / name).
+ * YouTube  : persistent POOL of 3 IFrame API players, re-used with loadVideoById().
+ * Instagram: native HTML5 <video playsInline loop preload="auto"> (direct URL or
+ *            the /api/shorts/ig-stream/:shortcode 302 endpoint).
  * ------------------------------------------------------------------------- */
 
 /* ---------- configuration ---------- */
@@ -30,33 +33,35 @@ const API = {
   like: (id) => `/api/shorts/${encodeURIComponent(id)}/like`,
   comments: (id) => `/api/shorts/${encodeURIComponent(id)}/comments`,
   seen: '/api/shorts/seen',
-  unavailable: (id) => `/api/shorts/${encodeURIComponent(id)}/unavailable`, // optional backend hook
-  igStream: (code) => `/api/shorts/ig-stream/${encodeURIComponent(code)}`, // MP4 proxy for Instagram reels
+  igStream: (code) => `/api/shorts/ig-stream/${encodeURIComponent(code)}`,
 };
 
-// Instagram items without a direct video URL stream through the proxy above.
 const USE_IG_STREAM_PROXY = true;
-// Third-party Instagram embeds show white cards, login prompts and "broken link" screens.
-// Set ALLOW_EMBED_FALLBACK = true so reels don't get deleted from the feed while streaming.
-const ALLOW_EMBED_FALLBACK = true;
+// Third-party Instagram embeds show login prompts / broken screens: keep off.
+const ALLOW_EMBED_FALLBACK = false;
 const SUBS_KEY = 'rcm_reels_follows';
 const BOOKMARKS_KEY = 'rcm_reels_bookmarks';
+const MUTE_KEY = 'shorts_muted';
 
-const ACTIVE_THRESHOLD = 0.5; // slide becomes active when 50% visible (no debounce)
+const ACTIVE_THRESHOLD = 0.6;
 const HOLD_MS = 220;
 const DOUBLE_TAP_MS = 260;
 const MOVE_SLOP = 10;
 const PAGE_SIZE = 10;
-const PREFETCH_REMAINING = 5; // load next page when this many reels remain
+const PREFETCH_REMAINING = 5;
 const POOL_SIZE = 3;
-const RENDER_WINDOW = 2; // slides farther than this render only an empty snap point
-const VIDEO_WINDOW = 1; // native <video> elements exist only this close to the active slide
+const RENDER_WINDOW = 2;
+const VIDEO_WINDOW = 1;
 const FETCH_TIMEOUT_MS = 15000;
 const RETRY_COOLDOWN_MS = 4000;
 const WATCHDOG_STUCK_MS = 7000;
-const PRELOAD_SETTLE_MS = 150; // neighbours are only preloaded once the user stops flicking
+const PRELOAD_SETTLE_MS = 150;
 const SEEN_FLUSH_MS = 3000;
 const SEEN_FLUSH_COUNT = 10;
+const DEFAULT_429_BACKOFF_MS = 15000;
+// Rapid-swipe protection: changes closer together than RAPID_MS are debounced by SETTLE_MS.
+const RAPID_MS = 180;
+const SETTLE_MS = 110;
 
 /* ---------- network ---------- */
 
@@ -88,6 +93,10 @@ async function api(path, options = {}) {
     if (!res.ok) {
       const err = new Error(`Request failed with status ${res.status} (${path})`);
       err.status = res.status;
+      if (res.status === 429) {
+        const secs = Number(res.headers.get('retry-after'));
+        err.retryAfterMs = Number.isFinite(secs) && secs > 0 ? Math.min(secs, 120) * 1000 : DEFAULT_429_BACKOFF_MS;
+      }
       throw err;
     }
     if (res.status === 204) return null;
@@ -131,6 +140,14 @@ function readStore(key) {
 function writeStore(key, value) {
   try {
     window.localStorage.setItem(key, JSON.stringify(value));
+  } catch (e) {
+    /* storage unavailable */
+  }
+}
+
+function persistMuted(muted) {
+  try {
+    window.localStorage.setItem(MUTE_KEY, muted ? 'true' : 'false');
   } catch (e) {
     /* storage unavailable */
   }
@@ -301,6 +318,7 @@ function normalizeComment(c, i = 0) {
 export const titleOf = (r) => r.title || 'Untitled reel';
 export const nameOf = (r) => r.channelName || 'Channel';
 export const soundOf = (r) => `${nameOf(r)} · Original audio`;
+const handleOf = (r) => r.channelHandle || nameOf(r);
 
 /* ---------- formatting ---------- */
 
@@ -354,9 +372,16 @@ function initialOf(name) {
 
 /* ---------- misc helpers ---------- */
 
+/**
+ * Start unmuted only when the user chose sound earlier AND the browser will allow
+ * unmuted autoplay (the user has already interacted with the page). Otherwise start
+ * muted; the stored preference is kept and applies as soon as playback is allowed.
+ */
 export function shouldStartMuted() {
   try {
-    return !(navigator.userActivation && navigator.userActivation.hasBeenActive);
+    const pref = window.localStorage.getItem(MUTE_KEY);
+    if (pref === 'false' || (navigator.userActivation && navigator.userActivation.hasBeenActive)) return false;
+    return true; // default to muted if no explicit preference or user not active
   } catch (e) {
     return true;
   }
@@ -399,28 +424,10 @@ function isLiteConnection() {
   }
 }
 
-/* ---------- extra styles (injected once, so the existing CSS file needs no change) ---------- */
-
-const EXTRA_CSS = `
-.rf-root .rf-caption-title{-webkit-line-clamp:1;line-clamp:1}
-.rf-root .rf-disc{border-radius:50%;animation:rf-disc-spin 6s linear infinite}
-.rf-root .rf-disc-art.rf-avatar{border-radius:50%}
-.rf-root .rf-slide:not(.is-active) .rf-disc{animation-play-state:paused}
-.rf-root .rf-ig-video,.rf-root .rf-ig-embed,.rf-root .rf-ig-embed iframe{pointer-events:none}
-.rf-root .rf-tap{z-index:2}
-@keyframes rf-disc-spin{to{transform:rotate(360deg)}}
-`;
-
-function ensureExtraStyles() {
-  try {
-    if (document.getElementById('rf-extra-styles')) return;
-    const style = document.createElement('style');
-    style.id = 'rf-extra-styles';
-    style.textContent = EXTRA_CSS;
-    document.head.appendChild(style);
-  } catch (e) {
-    /* non-critical */
-  }
+/** Cache-busting only for our own proxy URL (signed CDN URLs must stay untouched). */
+function withRetryParam(url, n) {
+  if (!n || !url || url.indexOf('/ig-stream/') === -1) return url;
+  return `${url}${url.indexOf('?') === -1 ? '?' : '&'}r=${n}`;
 }
 
 /* ---------- YouTube IFrame API loader ---------- */
@@ -462,6 +469,7 @@ export function ensureYT() {
 /* ---------------------------------------------------------------------------
  * Player pool engine (YouTube only). Plain functions, state lives in a ctx
  * object so React re-renders can never disturb playback.
+ * `props.activeIndex` here is the SETTLED play index, not the raw scroll index.
  * ------------------------------------------------------------------------- */
 
 function createCtx() {
@@ -573,14 +581,11 @@ function onSlotState(ctx, slot, e) {
   if (s === 1) {
     if (!slot.firstFrame) {
       slot.firstFrame = true;
-      // Preloaded neighbour: park it on its first frame. No seekTo here: a seek
-      // forces a re-buffer, which is exactly the black screen + spinner.
+      // Preloaded neighbour: park it on its first frame (no seek = no re-buffer).
       if (!active) call(slot, 'pauseVideo');
     }
     revealSlot(slot);
   } else if (s === 3) {
-    // Buffering at the very start: hide the player so the poster shows instead
-    // of a black frame with YouTube's spinner.
     const t = call(slot, 'getCurrentTime');
     if (slot.el && !(t > 0.5)) slot.el.classList.remove('is-shown');
   } else if (s === 0 && active) {
@@ -597,6 +602,7 @@ function onSlotError(ctx, slot, e) {
     call(slot, 'loadVideoById', { videoId: slot.videoId, startSeconds: 0 });
     return;
   }
+  // Mark only. The feed keeps the reel and shows the poster + "open original".
   if (slot.reelId && ctx.cb.onBad) ctx.cb.onBad(slot.reelId, code);
 }
 
@@ -637,7 +643,7 @@ function applySlot(ctx, slot) {
       let stillMuted = false;
       try {
         stillMuted = Boolean(slot.player.isMuted && slot.player.isMuted());
-      } catch (e) {
+      } catch (err) {
         stillMuted = false;
       }
       if (stillMuted) {
@@ -723,8 +729,8 @@ function syncPool(ctx, settled = false) {
     if (s.reelId && (!wantSet.has(s.reelId) || !idxOf.has(s.reelId))) releaseSlot(s);
   });
 
-  // The active reel is assigned immediately. Neighbours wait until scrolling
-  // has settled, so a fast flick never spawns loads for reels it flies past.
+  // The active (settled) reel is assigned immediately. Neighbours wait until the
+  // pool has been quiet for PRELOAD_SETTLE_MS, so a flick never spawns extra loads.
   let deferred = false;
   wantIds.forEach((id) => {
     if (ctx.slots.some((s) => s.reelId === id)) return;
@@ -1412,16 +1418,18 @@ function ChannelProfileSheet({ channelId, channelName, channelLogo, channelHandl
 
 /* ---------- Instagram media (native <video> + cropped embed fallback) ---------- */
 
-const MEDIA_LAYER = { position: 'absolute', inset: 0, zIndex: 1, overflow: 'hidden', background: '#000', pointerEvents: 'none' };
+const MEDIA_LAYER = { position: 'absolute', inset: 0, zIndex: 2, overflow: 'hidden', background: '#000', pointerEvents: 'none' };
 
 /**
- * Native HTML5 video for items that carry a direct media URL. Plays instantly
- * when its slide becomes active, pauses + rewinds when it leaves, and follows
- * the global mute / pause state. Neighbours (+/-1) preload paused.
+ * Native HTML5 video. Plays when its slide is the SETTLED play slide, pauses +
+ * rewinds when it leaves, follows the global mute / pause state. Only the settled
+ * slide and its +/-1 neighbours are mounted, so a fast flick never opens a socket
+ * for a reel it flies past. A playback error is only REPORTED upward (onFail):
+ * this component never removes anything and never retries on its own.
  */
-function NativeVideo({ reel, isActive, near, muted, paused, onRegister, onForceMute, onFail }) {
+function NativeVideo({ reel, src, isPlaying, near, muted, paused, onRegister, onForceMute, onFail }) {
   const ref = useRef(null);
-  const wasActive = useRef(false);
+  const wasPlaying = useRef(false);
   const [shown, setShown] = useState(false);
 
   const setRef = useCallback(
@@ -1436,7 +1444,7 @@ function NativeVideo({ reel, isActive, near, muted, paused, onRegister, onForceM
     const v = ref.current;
     if (!v) return;
     v.muted = muted;
-    if (isActive) {
+    if (isPlaying) {
       if (paused || document.hidden) {
         v.pause();
       } else {
@@ -1450,7 +1458,7 @@ function NativeVideo({ reel, isActive, near, muted, paused, onRegister, onForceM
       }
     } else {
       v.pause();
-      if (wasActive.current) {
+      if (wasPlaying.current) {
         try {
           v.currentTime = 0;
         } catch (e) {
@@ -1458,11 +1466,11 @@ function NativeVideo({ reel, isActive, near, muted, paused, onRegister, onForceM
         }
       }
     }
-    wasActive.current = isActive;
-  }, [isActive, paused, muted, onForceMute, near]);
+    wasPlaying.current = isPlaying;
+  }, [isPlaying, paused, muted, onForceMute, near]);
 
   useEffect(() => {
-    if (!isActive) return undefined;
+    if (!isPlaying) return undefined;
     const onVis = () => {
       const v = ref.current;
       if (!v) return;
@@ -1474,60 +1482,55 @@ function NativeVideo({ reel, isActive, near, muted, paused, onRegister, onForceM
     };
     document.addEventListener('visibilitychange', onVis);
     return () => document.removeEventListener('visibilitychange', onVis);
-  }, [isActive, paused]);
+  }, [isPlaying, paused]);
 
   if (!near) return null;
-  const videoSrc = reel.directVideo || (reel.platform === 'instagram' && reel.shortcode ? `${API_BASE}${API.igStream(reel.shortcode)}` : '');
   return (
     <video
       ref={setRef}
       className="rf-ig-video"
-      src={videoSrc}
+      src={src}
       poster={reel.thumb || undefined}
       playsInline
       loop
       muted={muted}
-      autoPlay={isActive}
-      preload={isActive ? 'auto' : 'metadata'}
+      autoPlay={isPlaying}
+      preload={isPlaying ? 'auto' : 'metadata'}
       disablePictureInPicture
       controlsList="nodownload noplaybackrate noremoteplayback"
       onLoadedData={() => setShown(true)}
       onPlaying={() => setShown(true)}
-      onError={onFail}
-      style={{
-        position: 'absolute',
-        inset: 0,
-        zIndex: 1,
-        width: '100%',
-        height: '100%',
-        objectFit: 'cover',
-        background: '#000',
-        pointerEvents: 'none !important', // taps are handled by the tap layer above
-        opacity: shown ? 1 : 0,
-        transition: 'opacity 0.15s ease',
+      onError={(e) => {
+        const err = e.currentTarget && e.currentTarget.error;
+        if (err && err.code === 1) return; // MEDIA_ERR_ABORTED: user navigated away, not a failure
+        onFail();
       }}
+      style={{ opacity: shown ? 1 : 0, transition: 'opacity 0.15s ease' }}
     />
   );
 }
 
-/** Last resort when there is no direct video: Instagram's embed, shifted + oversized so its header/footer are cropped away. */
+/** Last resort (disabled by default): Instagram embed, shifted + oversized so header/footer are cropped. */
 function CroppedEmbed({ reel }) {
   return (
-    <div style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'hidden', background: '#000', pointerEvents: 'none' }}>
+    <div className="rf-ig-embed" style={MEDIA_LAYER}>
       <iframe
         src={reel.embedUrl}
         title={titleOf(reel)}
+        allow="autoplay; encrypted-media"
+        sandbox="allow-scripts allow-same-origin"
         tabIndex={-1}
         aria-hidden="true"
         scrolling="no"
         style={{
           position: 'absolute',
-          top: '-25%',
-          left: '-10%',
-          width: '120%',
-          height: '150%',
-          border: 'none',
-          pointerEvents: 'none !important',
+          top: -64,
+          left: 0,
+          width: '100%',
+          height: 'calc(100% + 64px + 150px)',
+          border: 0,
+          background: '#000',
+          pointerEvents: 'none',
         }}
       />
     </div>
@@ -1541,15 +1544,16 @@ const ReelSlide = React.memo(function ReelSlide({
   index,
   light,
   isActive,
+  isPlaying,
   nearVideo,
   muted,
   paused,
   uiHidden,
   following,
   bookmarked,
+  failed,
   registerVideo,
   onForceMute,
-  onBad,
   onLike,
   onOpenComments,
   onOpenDetails,
@@ -1564,14 +1568,28 @@ const ReelSlide = React.memo(function ReelSlide({
 }) {
   const [expanded, setExpanded] = useState(false);
   const [videoFailed, setVideoFailed] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
+  const autoRetried = useRef(false);
+
   useEffect(() => {
     if (!isActive) setExpanded(false);
   }, [isActive]);
-  const failVideo = useCallback(() => {
-    // NEVER call onBad(reel.id) here!
-    // Fall back smoothly to CroppedEmbed instead of deleting the reel from state
-    setVideoFailed(true);
+
+  // Playback error: remember it, keep the reel, show the poster. Nothing else.
+  const failVideo = useCallback(() => setVideoFailed(true), []);
+  const retryVideo = useCallback(() => {
+    setRetryKey((k) => k + 1);
+    setVideoFailed(false);
   }, []);
+
+  // A first failure gets exactly ONE silent retry once the user is on it.
+  // After that only the manual button retries.
+  useEffect(() => {
+    if (isActive && videoFailed && !autoRetried.current) {
+      autoRetried.current = true;
+      retryVideo();
+    }
+  }, [isActive, videoFailed, retryVideo]);
 
   // Far-away slides are empty snap points: same height, no images, no UI.
   if (light) {
@@ -1583,8 +1601,11 @@ const ReelSlide = React.memo(function ReelSlide({
   }
 
   const hasNative = Boolean(reel.directVideo) && !videoFailed;
-  const showEmbed = !reel.videoId && (!hasNative || videoFailed) && Boolean(reel.embedUrl || reel.shortcode) && isActive;
+  const showEmbed = ALLOW_EMBED_FALLBACK && !reel.videoId && !hasNative && Boolean(reel.embedUrl) && isPlaying;
   const hasMoreCaption = Boolean(reel.description) || reel.title.length > 70;
+  const unavailable = Boolean(failed) || videoFailed;
+  const externalUrl = reel.shareUrl || '';
+  const videoSrc = withRetryParam(reel.directVideo, retryKey);
 
   return (
     <section className={`rf-slide${isActive ? ' is-active' : ''}`} data-index={index} aria-label={titleOf(reel)}>
@@ -1610,8 +1631,10 @@ const ReelSlide = React.memo(function ReelSlide({
 
         {hasNative && (
           <NativeVideo
+            key={retryKey}
             reel={reel}
-            isActive={isActive}
+            src={videoSrc}
+            isPlaying={isPlaying}
             near={nearVideo}
             muted={muted}
             paused={paused}
@@ -1625,7 +1648,7 @@ const ReelSlide = React.memo(function ReelSlide({
         <div className="rf-scrim rf-scrim--top" />
         <div className="rf-scrim rf-scrim--bottom" />
 
-        {/* One tap layer for every platform. Media layers have pointer-events: none, so all touches land here. */}
+        {/* One gesture layer for every platform. Media layers have pointer-events: none. */}
         {isActive && (
           <div
             className="rf-tap"
@@ -1634,76 +1657,93 @@ const ReelSlide = React.memo(function ReelSlide({
             onPointerUp={onTapUp}
             onPointerCancel={onTapCancel}
             onContextMenu={(e) => e.preventDefault()}
-            style={{ zIndex: 2, position: 'absolute', inset: 0 }}
           />
         )}
 
-        <div className={`rf-hideable${uiHidden ? ' is-hidden' : ''}`}>
-          <div className="rf-rail" role="group" aria-label="Actions">
-            <RailButton label={reel.liked ? 'Unlike' : 'Like'} caption={formatCount(reel.likes)} active={reel.liked} tone="like" onClick={() => onLike(reel.id)}>
-              <HeartIcon filled={reel.liked} />
-            </RailButton>
-            <RailButton label="Open comments" caption={formatCount(reel.comments)} onClick={() => onOpenComments(reel.id)}>
-              <CommentIcon />
-            </RailButton>
-            <RailButton label="Share" caption="Share" onClick={() => onShare(reel.id)}>
-              <ShareIcon />
-            </RailButton>
-            <RailButton label="Save" caption="Save" active={bookmarked} tone="bookmark" onClick={() => onToggleBookmark(reel.id)}>
-              <BookmarkIcon filled={bookmarked} />
-            </RailButton>
-            <RailButton label="Show details" onClick={() => onOpenDetails(reel.id)}>
-              <MoreIcon />
-            </RailButton>
-            <button type="button" className="rf-disc-btn" onClick={() => onOpenChannel(reel)} aria-label={`${nameOf(reel)} channel`}>
-              <span className="rf-disc">
-                <Avatar name={nameOf(reel)} src={reel.channelLogo} className="rf-disc-art" />
-              </span>
-            </button>
+        {isActive && unavailable && (
+          <div className="rf-fail rf-ui-layer" role="status">
+            <p>This video isn&apos;t playing right now.</p>
+            <div className="rf-fail-actions">
+              {reel.directVideo ? (
+                <button type="button" className="rf-fail-btn" onClick={retryVideo}>
+                  Retry
+                </button>
+              ) : null}
+              {externalUrl ? (
+                <a className="rf-fail-btn rf-fail-btn--ghost" href={externalUrl} target="_blank" rel="noopener noreferrer">
+                  Open original
+                </a>
+              ) : null}
+            </div>
           </div>
+        )}
 
-          <div className="rf-meta">
-            <div className="rf-creator">
-              <button type="button" className="rf-creator-main" onClick={() => onOpenChannel(reel)} aria-label={`View ${nameOf(reel)} profile`}>
-                <Avatar name={nameOf(reel)} src={reel.channelLogo} />
-                <span className="rf-creator-name">
-                  {nameOf(reel)}
-                  {reel.verified && <VerifiedBadge />}
+        {/* Inactive slides render NO metadata at all (CSS also purges them as a second line of defence). */}
+        {isActive && (
+          <div className={`rf-hideable rf-ui-layer${uiHidden ? ' is-hidden' : ''}`}>
+            <div className="rf-rail" role="group" aria-label="Actions">
+              <RailButton label={reel.liked ? 'Unlike' : 'Like'} caption={formatCount(reel.likes)} active={reel.liked} tone="like" onClick={() => onLike(reel.id)}>
+                <HeartIcon filled={reel.liked} />
+              </RailButton>
+              <RailButton label="Open comments" caption={formatCount(reel.comments)} onClick={() => onOpenComments(reel.id)}>
+                <CommentIcon />
+              </RailButton>
+              <RailButton label="Share" caption="Share" onClick={() => onShare(reel.id)}>
+                <ShareIcon />
+              </RailButton>
+              <RailButton label="Save" caption="Save" active={bookmarked} tone="bookmark" onClick={() => onToggleBookmark(reel.id)}>
+                <BookmarkIcon filled={bookmarked} />
+              </RailButton>
+              <button type="button" className="rf-disc-btn" onClick={() => onOpenChannel(reel)} aria-label={`${nameOf(reel)} channel`}>
+                <span className="rf-disc">
+                  <Avatar name={nameOf(reel)} src={reel.channelLogo} className="rf-disc-art" />
                 </span>
-              </button>
-              <button
-                type="button"
-                className={`rf-follow rf-follow--sm${following ? ' is-on' : ''}`}
-                aria-pressed={following}
-                onClick={() => onToggleFollow(reel.channelId || nameOf(reel))}
-              >
-                {following ? 'Following' : 'Follow'}
               </button>
             </div>
 
-            <button
-              type="button"
-              className={`rf-caption${expanded ? ' is-open' : ''}`}
-              onClick={() => (hasMoreCaption ? setExpanded((v) => !v) : onOpenDetails(reel.id))}
-              aria-expanded={hasMoreCaption ? expanded : undefined}
-            >
-              <span className="rf-caption-title">{titleOf(reel)}</span>
-              {expanded && reel.description ? <span className="rf-caption-desc">{reel.description}</span> : null}
-              {!expanded && hasMoreCaption ? <span className="rf-caption-more">…more</span> : null}
-            </button>
+            <div className="rf-meta">
+              <div className="rf-clean-meta">
+                {/* Row 1: 32px avatar, verified badge, @handle, Follow pill */}
+                <div className="rf-creator">
+                  <button type="button" className="rf-creator-main" onClick={() => onOpenChannel(reel)} aria-label={`View ${nameOf(reel)} profile`}>
+                    <Avatar name={nameOf(reel)} src={reel.channelLogo} />
+                    <span className="rf-creator-name">{handleOf(reel)}</span>
+                    {reel.verified && <VerifiedBadge />}
+                  </button>
+                  <button
+                    type="button"
+                    className={`rf-follow${following ? ' is-on' : ''}`}
+                    aria-pressed={following}
+                    onClick={() => onToggleFollow(reel.channelId || nameOf(reel))}
+                  >
+                    {following ? 'Following' : 'Follow'}
+                  </button>
+                </div>
 
-            <div className="rf-sound-line">
-              <svg className="rf-sound-note" viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">
-                <path fill="currentColor" d="M9 18V5l12-2v13M9 18a3 3 0 1 1-3-3 3 3 0 0 1 3 3zm12-2a3 3 0 1 1-3-3 3 3 0 0 1 3 3z" />
-              </svg>
-              <div className="rf-marquee">
-                <span>
-                  {soundOf(reel)} &nbsp;&nbsp;•&nbsp;&nbsp; {soundOf(reel)}
-                </span>
+                {/* Row 2: transparent 2-line caption, tap for ...more */}
+                <button
+                  type="button"
+                  className={`rf-caption${expanded ? ' is-open' : ''}`}
+                  onClick={() => (hasMoreCaption ? setExpanded((v) => !v) : onOpenDetails(reel.id))}
+                  aria-expanded={hasMoreCaption ? expanded : undefined}
+                >
+                  <span className="rf-caption-text">{titleOf(reel)}</span>
+                  {expanded && reel.description ? <span className="rf-caption-desc">{reel.description}</span> : null}
+                  {!expanded && hasMoreCaption ? <span className="rf-caption-more">...more</span> : null}
+                </button>
+
+                {/* Row 3: audio ticker */}
+                <div className="rf-sound-line">
+                  <div className="rf-marquee">
+                    <span>
+                      {`🎵 Original audio • ${nameOf(reel)}`}&nbsp;&nbsp;&nbsp;&nbsp;{`🎵 Original audio • ${nameOf(reel)}`}
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
     </section>
   );
@@ -1748,17 +1788,27 @@ class FeedErrorBoundary extends React.Component {
  * ------------------------------------------------------------------------- */
 
 function ReelsFeedInner() {
-  const [reels, setReels] = useState([]);
-  const [status, setStatus] = useState('loading');
+  const [reels, setReels] = useState(() => {
+    try {
+      const cached = window.sessionStorage.getItem('rcm_shorts_cache');
+      return cached ? JSON.parse(cached) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+  const [status, setStatus] = useState(() => (reels.length > 0 ? 'ready' : 'loading'));
+  // activeIndex: follows the scroll position immediately (drives UI + gesture layer).
+  // playIndex:   the SETTLED index (drives YouTube loads, <video> mounting, seen pings).
   const [activeIndex, setActiveIndex] = useState(0);
+  const [playIndex, setPlayIndex] = useState(0);
   const [muted, setMuted] = useState(shouldStartMuted);
   const [holding, setHolding] = useState(false);
   const [userPaused, setUserPaused] = useState(false);
   const [follows, setFollows] = useState(() => readStore(SUBS_KEY));
   const [bookmarks, setBookmarks] = useState(() => readStore(BOOKMARKS_KEY));
+  const [failedMap, setFailedMap] = useState({});
   const [sheet, setSheet] = useState(null);
   const [toast, setToast] = useState('');
-  const [pulse, setPulse] = useState(null);
   const [burst, setBurst] = useState(null);
 
   const scrollerRef = useRef(null);
@@ -1768,14 +1818,18 @@ function ReelsFeedInner() {
   const videoElsRef = useRef(new Map());
   const reelsRef = useRef(reels);
   const activeRef = useRef(activeIndex);
+  const playRef = useRef(playIndex);
   const mutedRef = useRef(muted);
   const userPausedRef = useRef(userPaused);
+  // true while the browser (not the user) is the reason we are muted
+  const soundBlockedRef = useRef(shouldStartMuted());
   const aliveRef = useRef(true);
   const pendingLikes = useRef(new Set());
-  const reportedRef = useRef(new Set());
   const lastSheet = useRef(null);
   const seekingRef = useRef(false);
-  const timers = useRef({ toast: null, pulse: null, burst: null, retry: null });
+  const lastIndexChangeRef = useRef(0);
+  const settleTimerRef = useRef(null);
+  const timers = useRef({ toast: null, burst: null, retry: null });
 
   // pagination bookkeeping (refs: read synchronously, never stale)
   const fetchingRef = useRef(false);
@@ -1788,25 +1842,30 @@ function ReelsFeedInner() {
   const seenSentRef = useRef(new Set());
   const seenQueueRef = useRef([]);
   const seenTimerRef = useRef(null);
+  const seenBlockedUntilRef = useRef(0);
 
   // gesture bookkeeping
   const g = useRef({ id: null, x: 0, y: 0, moved: false, holding: false, lastTap: 0, tapTimer: null, holdTimer: null }).current;
 
   reelsRef.current = reels;
   activeRef.current = activeIndex;
+  playRef.current = playIndex;
   mutedRef.current = muted;
   userPausedRef.current = userPaused;
 
-  /* ---------- seen batching (every 3s or 10 events) ---------- */
+  /* ---------- seen batching (every 3s or 10 events, backs off on 429) ---------- */
 
   const flushSeen = useCallback(() => {
     clearTimeout(seenTimerRef.current);
     seenTimerRef.current = null;
     const events = seenQueueRef.current.splice(0, 50);
     if (events.length === 0) return;
-    api(API.seen, { method: 'POST', body: JSON.stringify({ events }) }).catch(() => {
-      /* seen tracking is best-effort */
-    });
+    if (Date.now() >= seenBlockedUntilRef.current) {
+      // Fire and forget: the server answers { ok: true } immediately.
+      api(API.seen, { method: 'POST', body: JSON.stringify({ events }) }).catch((err) => {
+        if (err && err.status === 429) seenBlockedUntilRef.current = Date.now() + (err.retryAfterMs || DEFAULT_429_BACKOFF_MS);
+      });
+    }
     if (seenQueueRef.current.length > 0) seenTimerRef.current = setTimeout(flushSeen, SEEN_FLUSH_MS);
   }, []);
 
@@ -1832,7 +1891,6 @@ function ReelsFeedInner() {
     addPreconnect('https://www.youtube.com');
     addPreconnect('https://i.ytimg.com');
     addPreconnect('https://www.google.com');
-    ensureExtraStyles();
     ensureYT(); // start downloading the player API before the first reel needs it
     const onHide = () => {
       if (document.hidden) flushSeen();
@@ -1846,11 +1904,11 @@ function ReelsFeedInner() {
       document.documentElement.classList.remove('rf-body');
       document.body.classList.remove('rf-body');
       clearTimeout(t.toast);
-      clearTimeout(t.pulse);
       clearTimeout(t.burst);
       clearTimeout(t.retry);
       clearTimeout(g.tapTimer);
       clearTimeout(g.holdTimer);
+      clearTimeout(settleTimerRef.current);
     };
   }, [g, flushSeen]);
 
@@ -1916,11 +1974,12 @@ function ReelsFeedInner() {
         setStatus('error');
       } else {
         // Do NOT skip the page: pageRef is only advanced on success.
-        cooldownRef.current = Date.now() + RETRY_COOLDOWN_MS;
+        const wait = Math.max(RETRY_COOLDOWN_MS, (err && err.retryAfterMs) || 0);
+        cooldownRef.current = Date.now() + wait;
         clearTimeout(timers.current.retry);
         timers.current.retry = setTimeout(() => {
           if (aliveRef.current && activeRef.current >= reelsRef.current.length - PREFETCH_REMAINING) loadPage(false);
-        }, RETRY_COOLDOWN_MS + 50);
+        }, wait + 50);
       }
     } finally {
       fetchingRef.current = false;
@@ -1933,8 +1992,8 @@ function ReelsFeedInner() {
 
   useEffect(() => {
     if (status !== 'ready') return;
-    if (activeIndex >= reels.length - PREFETCH_REMAINING) loadPage(false);
-  }, [status, activeIndex, reels.length, loadPage]);
+    if (playIndex >= reels.length - PREFETCH_REMAINING) loadPage(false);
+  }, [status, playIndex, reels.length, loadPage]);
 
   const retryInitialLoad = useCallback(() => {
     fetchingRef.current = false;
@@ -1945,13 +2004,10 @@ function ReelsFeedInner() {
     setReels((prev) => prev.map((r) => (r.id === id ? { ...r, ...(typeof patch === 'function' ? patch(r) : patch) } : r)));
   }, []);
 
-  // A blocked / private / deleted video: drop it and tell the backend (optional endpoint).
-  const onBadReel = useCallback((id) => {
-    setReels((prev) => prev.filter((r) => r.id !== id));
-    if (!reportedRef.current.has(id)) {
-      reportedRef.current.add(id);
-      api(API.unavailable(id), { method: 'POST', body: JSON.stringify({ reason: 'unavailable' }) }).catch(() => {});
-    }
+  // A blocked / private / deleted video: MARK it only. The reel stays in the list
+  // (poster + "Open original"), nothing is skipped, no request is sent.
+  const markFailed = useCallback((id) => {
+    setFailedMap((prev) => (prev[id] ? prev : { ...prev, [id]: true }));
   }, []);
 
   const registerVideo = useCallback((id, el) => {
@@ -1959,7 +2015,7 @@ function ReelsFeedInner() {
     else videoElsRef.current.delete(id);
   }, []);
 
-  /* ---------- active slide detection (no debounce) ---------- */
+  /* ---------- active slide detection (>= 0.6 intersection, no debounce) ---------- */
 
   useEffect(() => {
     const root = scrollerRef.current;
@@ -1985,7 +2041,22 @@ function ReelsFeedInner() {
     if (reels.length > 0 && activeIndex > reels.length - 1) setActiveIndex(reels.length - 1);
   }, [reels.length, activeIndex]);
 
-  // New reel: reset progress + un-pause.
+  // Rapid-swipe protection. A single swipe (>= RAPID_MS since the previous change)
+  // plays instantly. Changes arriving in quick succession (a flick through many
+  // reels) are collapsed: only the index that holds still for SETTLE_MS is played.
+  useEffect(() => {
+    const now = Date.now();
+    const rapid = now - lastIndexChangeRef.current < RAPID_MS;
+    lastIndexChangeRef.current = now;
+    clearTimeout(settleTimerRef.current);
+    if (!rapid) {
+      setPlayIndex(activeIndex);
+    } else {
+      settleTimerRef.current = setTimeout(() => setPlayIndex(activeIndex), SETTLE_MS);
+    }
+  }, [activeIndex]);
+
+  // New reel: reset progress + un-pause (sound preference is NOT touched).
   useEffect(() => {
     setUserPaused(false);
     const fill = fillRef.current;
@@ -1996,20 +2067,20 @@ function ReelsFeedInner() {
         if (fillRef.current) fillRef.current.style.transition = '';
       });
     }
-  }, [activeIndex]);
+  }, [playIndex]);
 
-  // Seen tracking for the active reel (batched).
+  // Seen tracking for the SETTLED reel (a flick past 10 reels marks none of them).
   useEffect(() => {
-    const current = reels[activeIndex];
+    const current = reels[playIndex];
     if (current) queueSeen(current);
-  }, [activeIndex, reels, queueSeen]);
+  }, [playIndex, reels, queueSeen]);
 
   // Progress bar (reads the active <video> or the pool, 4x per second, no React renders).
   useEffect(() => {
     if (status !== 'ready') return undefined;
     const timer = setInterval(() => {
       if (seekingRef.current || document.hidden) return;
-      const current = reelsRef.current[activeRef.current];
+      const current = reelsRef.current[playRef.current];
       const el = current ? videoElsRef.current.get(current.id) : null;
       let p = null;
       if (el) p = el.duration > 0 ? el.currentTime / el.duration : null;
@@ -2046,40 +2117,37 @@ function ReelsFeedInner() {
 
   /* ---------- actions ---------- */
 
-  const showPulse = useCallback((kind) => {
-    setPulse({ kind, key: Date.now() });
-    clearTimeout(timers.current.pulse);
-    timers.current.pulse = setTimeout(() => setPulse(null), 800);
+  // persist = true  -> the user made an explicit sound choice, remember it.
+  // persist = false -> temporary state (paused, or browser blocked sound): keep the stored choice.
+  const applyMuted = useCallback((next, persist) => {
+    setMuted(next);
+    if (persist) persistMuted(next);
   }, []);
 
-  // Speaker button / "m" key: sound only.
-  const toggleMute = useCallback(
-    (withPulse) => {
-      const next = !mutedRef.current;
-      setMuted(next);
-      if (withPulse) showPulse(next ? 'muted' : 'sound');
-    },
-    [showPulse]
-  );
+  // "m" key only (there is no speaker button any more).
+  const toggleMute = useCallback(() => {
+    soundBlockedRef.current = false;
+    applyMuted(!mutedRef.current, true);
+  }, [applyMuted]);
 
-  // Single tap on the video: sound + play together, or pause + mute together.
+  // Single tap on the video:
+  //   paused  -> play + unmute
+  //   playing -> pause + mute
+  // Exception: when the browser forced muted autoplay (no user gesture yet) the first
+  // tap enables sound and keeps playing; without it sound could never be turned on.
   const onSingleTap = useCallback(() => {
     if (userPausedRef.current) {
-      // paused -> play with sound
+      soundBlockedRef.current = false;
       setUserPaused(false);
-      setMuted(false);
-      showPulse('play');
-    } else if (mutedRef.current) {
-      // playing muted -> sound on
-      setMuted(false);
-      showPulse('sound');
+      applyMuted(false, true);
+    } else if (soundBlockedRef.current && mutedRef.current) {
+      soundBlockedRef.current = false;
+      applyMuted(false, true);
     } else {
-      // playing with sound -> pause + mute
       setUserPaused(true);
-      setMuted(true);
-      showPulse('pause');
+      applyMuted(true, false); // stored preference stays "sound on"
     }
-  }, [showPulse]);
+  }, [applyMuted]);
 
   const toggleLike = useCallback(
     async (id, forceOn = false) => {
@@ -2137,9 +2205,12 @@ function ReelsFeedInner() {
     });
   }, []);
 
+  // Browser refused sound without a tap: play muted, KEEP the stored preference,
+  // and let the next tap turn sound on.
   const onForceMute = useCallback(() => {
+    soundBlockedRef.current = true;
     setMuted(true);
-    showToast('Tap the speaker to turn sound on.');
+    showToast('Tap the screen to turn sound on.');
   }, [showToast]);
 
   const onPlayerFail = useCallback(() => showToast("Video player couldn't load. Check your connection."), [showToast]);
@@ -2180,7 +2251,7 @@ function ReelsFeedInner() {
   }, []);
   const closeSheet = useCallback(() => setSheet(null), []);
 
-  /* ---------- gestures: tap = sound + play/pause, double tap = like, hold = pause ---------- */
+  /* ---------- gestures: tap = play/pause (+sound), double tap = like, hold = pause ---------- */
 
   const endHold = useCallback(() => {
     if (g.holding) {
@@ -2278,7 +2349,7 @@ function ReelsFeedInner() {
     if (!seekingRef.current) return;
     seekingRef.current = false;
     const ratio = ratioFromEvent(e);
-    const current = reelsRef.current[activeRef.current];
+    const current = reelsRef.current[playRef.current];
     const el = current ? videoElsRef.current.get(current.id) : null;
     if (el) {
       if (el.duration > 0) el.currentTime = ratio * el.duration;
@@ -2308,15 +2379,15 @@ function ReelsFeedInner() {
         e.preventDefault();
         go(-1);
       } else if ((e.key === 'm' || e.key === 'M') && !e.metaKey && !e.ctrlKey) {
-        toggleMute(true);
+        toggleMute();
       } else if (e.key === ' ' && tag !== 'BUTTON') {
         e.preventDefault();
-        setUserPaused((p) => !p);
+        onSingleTap();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [sheet, go, toggleMute]);
+  }, [sheet, go, toggleMute, onSingleTap]);
 
   /* ---------- render ---------- */
 
@@ -2325,24 +2396,18 @@ function ReelsFeedInner() {
   const sheetReel = sheetData.id ? reels.find((r) => r.id === sheetData.id) || null : null;
 
   const ready = status === 'ready' && reels.length > 0;
-  const activeReel = reels[activeIndex] || reels[0];
   const sheetOpen = Boolean(sheet);
   const pausedNow = holding || userPaused;
 
   return (
     <main className="rf-root" aria-label="Reels">
+      {/* Top bar: Back arrow ONLY. No speaker icon, no title. */}
       <div className={`rf-chrome${holding ? ' is-hidden' : ''}`}>
         <div className="rf-chrome-left">
           <button type="button" className="rf-glass-btn" onClick={goBack} aria-label="Go back">
             <BackIcon />
           </button>
-          <span className="rf-chrome-title">Reels</span>
         </div>
-        {ready && (
-          <button type="button" className="rf-glass-btn" onClick={() => toggleMute(false)} aria-label={muted ? 'Turn sound on' : 'Turn sound off'} aria-pressed={!muted}>
-            <VolumeIcon muted={muted} />
-          </button>
-        )}
       </div>
 
       {status === 'loading' && <Skeleton />}
@@ -2351,16 +2416,13 @@ function ReelsFeedInner() {
 
       {ready && (
         <>
-          {activeReel.thumb ? (
-            <div className="rf-ambient" aria-hidden="true" style={{ backgroundImage: `url(${JSON.stringify(activeReel.thumb)})` }} />
-          ) : null}
           <div className="rf-scroller" ref={scrollerRef}>
             <PlayerPool
               reels={reels}
-              activeIndex={activeIndex}
+              activeIndex={playIndex}
               muted={muted}
               paused={pausedNow}
-              onBad={onBadReel}
+              onBad={markFailed}
               onForceMute={onForceMute}
               onPlayerFail={onPlayerFail}
               apiRef={poolApiRef}
@@ -2372,15 +2434,16 @@ function ReelsFeedInner() {
                 index={i}
                 light={Math.abs(i - activeIndex) > RENDER_WINDOW}
                 isActive={i === activeIndex}
-                nearVideo={Math.abs(i - activeIndex) <= VIDEO_WINDOW}
+                isPlaying={i === playIndex}
+                nearVideo={Math.abs(i - playIndex) <= VIDEO_WINDOW}
                 muted={muted}
                 paused={pausedNow}
                 uiHidden={holding && i === activeIndex}
                 following={Boolean(follows[r.channelId || r.channelName])}
                 bookmarked={Boolean(bookmarks[r.id])}
+                failed={Boolean(failedMap[r.id])}
                 registerVideo={registerVideo}
                 onForceMute={onForceMute}
-                onBad={onBadReel}
                 onLike={onLike}
                 onOpenComments={openComments}
                 onOpenDetails={openDetails}
@@ -2422,13 +2485,6 @@ function ReelsFeedInner() {
             </button>
           </div>
 
-          {pulse && (
-            <div key={pulse.key} className="rf-pulse" aria-hidden="true">
-              {pulse.kind === 'pause' && <PauseIcon size={34} />}
-              {pulse.kind === 'play' && <PlayIcon size={34} />}
-              {(pulse.kind === 'sound' || pulse.kind === 'muted') && <VolumeIcon muted={pulse.kind === 'muted'} size={34} />}
-            </div>
-          )}
           {burst && (
             <span key={burst.key} className="rf-burst" style={{ left: burst.x, top: burst.y }} aria-hidden="true">
               <HeartIcon filled />

@@ -1,3 +1,14 @@
+/* ==========================================================================
+   ShortsFeed.css  (v6) - Instagram-native Reels / Shorts layout
+
+   z-index map inside a slide (all siblings share the scroller stacking context):
+     1  .rf-poster          poster image (cover)
+     2  .rf-pool / video    YouTube pool slots + native <video>
+     3  .rf-scrim           top 100px + bottom 240px gradients
+     4  .rf-tap             full-screen gesture layer (single / double tap)
+     5  .rf-rail            right action rail
+     6  .rf-meta            bottom-left creator metadata
+   ========================================================================== */
 
 html.rf-body,
 body.rf-body {
@@ -14,7 +25,6 @@ body.rf-body {
   --rf-like: #ff3040;
   --rf-bookmark: #ffd60a;
   --rf-glass: rgba(255, 255, 255, 0.12);
-  --rf-glass-strong: rgba(255, 255, 255, 0.2);
   --rf-glass-border: rgba(255, 255, 255, 0.18);
   --rf-muted: rgba(255, 255, 255, 0.62);
   --rf-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -23,8 +33,9 @@ body.rf-body {
   position: fixed;
   inset: 0;
   z-index: 1000;
-  width: 100%;
-  height: var(--rf-h);
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   color: #fff;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Noto Sans Devanagari', system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -68,13 +79,13 @@ body.rf-body {
    -------------------------------------------------------------------------- */
 
 .rf-scroller {
-  position: relative; /* containing block for the player pool */
+  position: relative; /* containing block for the YouTube player pool */
   z-index: 1;
   height: var(--rf-h);
   overflow-x: hidden;
   overflow-y: auto;
   scroll-snap-type: y mandatory;
-  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
 }
@@ -83,29 +94,29 @@ body.rf-body {
   display: none;
 }
 
-.rf-slide {
-  display: flex;
-  justify-content: center;
-  height: var(--rf-h);
-  scroll-snap-align: start;
-  scroll-snap-stop: always;
-}
-
-.rf-stage {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  background: #000;
+/* YouTube IFrame pool: 3 persistent slots, moved with translateY by the engine. */
+.rf-pool {
+  position: absolute !important;
+  top: 0 !important;
+  left: 50% !important;
+  z-index: 2 !important;
+  width: var(--rf-stage-w) !important;
+  height: var(--rf-h) !important;
+  pointer-events: none !important;
+  transform: translateX(-50%);
 }
 
 .rf-slot {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  opacity: 0;
+  pointer-events: none !important;
+}
+
+.rf-slot.is-shown {
+  opacity: 1 !important;
 }
 
 .rf-slot iframe {
@@ -114,24 +125,78 @@ body.rf-body {
   left: 50% !important;
   width: 100% !important;
   height: 100% !important;
-  transform: translate(-50%, -50%) !important;
-  pointer-events: none !important;
   border: none !important;
+  pointer-events: none !important;
+  transform: translate(-50%, -50%) !important;
 }
 
+/* Strict slide isolation: nothing a slide renders can leak into its neighbour. */
+.rf-slide,
+.rf-root .rf-slide {
+  position: relative !important;
+  overflow: hidden !important;
+  display: flex;
+  justify-content: center;
+  width: 100% !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  background: #000 !important;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
+.rf-stage {
+  position: relative !important;
+  width: var(--rf-stage-w) !important;
+  height: 100% !important;
+  overflow: hidden !important;
+  background: #000;
+}
+
+/* Inactive slides purge ALL of their UI (no double usernames, no leaked rails). */
+.rf-slide:not(.is-active) .rf-meta,
+.rf-slide:not(.is-active) .rf-clean-meta,
+.rf-slide:not(.is-active) .rf-rail,
+.rf-slide:not(.is-active) .rf-ui-layer {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* z 1: poster. hqdefault is 4:3 with baked side bars: cover crops to the real 9:16 strip. */
+.rf-poster {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  z-index: 1;
+  width: 100%;
+  max-height: 100%;
+  aspect-ratio: 9 / 16;
+  object-fit: cover;
+  background: #000;
+  transform: translateY(-50%);
+  pointer-events: none;
+  user-select: none;
+}
+
+/* z 2: native <video> (Instagram reels) */
 .rf-ig-video,
 .rf-native-video {
   position: absolute;
   inset: 0;
+  z-index: 2;
   width: 100% !important;
   height: 100% !important;
   object-fit: cover !important;
   background: #000;
+  pointer-events: none;
 }
 
 .rf-ig-embed {
   position: absolute;
   inset: 0;
+  z-index: 2;
   width: 100%;
   height: 100%;
   overflow: hidden;
@@ -149,84 +214,103 @@ body.rf-body {
   pointer-events: none;
 }
 
-
-/* Poster has the same geometry as a contained 9:16 video, so the swap from
-   poster to player has no visual jump. hqdefault is 4:3 with baked side bars:
-   cover crops it to the centre 9:16 strip = the actual video. */
-.rf-poster {
-  position: absolute;
-  top: 50%;
-  left: 0;
-  z-index: 0;
-  width: 100%;
-  max-height: 100%;
-  aspect-ratio: 9 / 16;
-  object-fit: cover;
-  background: #000;
-  transform: translateY(-50%);
-  pointer-events: none;
-  user-select: none;
-}
-
-.rf-tap {
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  cursor: pointer;
-  touch-action: pan-y; /* vertical swipe scrolls the feed, the rest is ours */
-  -webkit-touch-callout: none;
-  user-select: none;
-}
-
-/* --------------------------------------------------------------------------
-   Scrims (light, Instagram-like)
-   -------------------------------------------------------------------------- */
-
+/* z 3: scrims */
 .rf-scrim {
   position: absolute;
   right: 0;
   left: 0;
-  z-index: 2;
+  z-index: 3;
   pointer-events: none;
 }
 
 .rf-scrim--top {
   top: 0;
-  height: 16%;
+  height: 100px;
   background: linear-gradient(to bottom, rgba(0, 0, 0, 0.5), transparent);
 }
 
 .rf-scrim--bottom {
   bottom: 0;
-  height: 38%;
+  height: 240px;
   background: linear-gradient(to top, rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0.3) 55%, transparent);
 }
 
-/* Hold-to-hide: rail + caption fade together */
-.rf-hideable {
+/* z 4: gesture layer */
+.rf-tap {
   position: absolute;
   inset: 0;
   z-index: 4;
-  pointer-events: none;
-  transition: opacity 0.25s ease;
+  cursor: pointer;
+  touch-action: pan-y; /* vertical swipe scrolls the feed, taps are ours */
+  -webkit-touch-callout: none;
+  user-select: none;
 }
 
-.rf-hideable.is-hidden {
-  opacity: 0;
-}
-
-.rf-rail,
-.rf-meta {
+/* Video unavailable: small message over the poster, never a skip. */
+.rf-fail {
+  position: absolute;
+  right: 72px;
+  bottom: calc(150px + env(safe-area-inset-bottom, 0px));
+  left: 14px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
   pointer-events: auto;
+}
+
+.rf-fail p {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+.rf-fail-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.rf-fail-btn {
+  padding: 7px 14px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #000;
+  text-decoration: none;
+  cursor: pointer;
+  background: #fff;
+  border: 0;
+  border-radius: 999px;
+}
+
+.rf-fail-btn--ghost {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+/* Hold-to-hide wrapper: no stacking context of its own, so rail (5) and meta (6)
+   keep their place in the shared hierarchy. */
+.rf-hideable {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.rf-hideable .rf-rail,
+.rf-hideable .rf-meta {
+  transition: opacity 0.25s ease;
 }
 
 .rf-hideable.is-hidden .rf-rail,
 .rf-hideable.is-hidden .rf-meta {
+  opacity: 0;
   pointer-events: none;
 }
 
 /* --------------------------------------------------------------------------
-   Top chrome
+   Top chrome: Back arrow ONLY
    -------------------------------------------------------------------------- */
 
 .rf-chrome {
@@ -236,11 +320,11 @@ body.rf-body {
   z-index: 8;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   width: var(--rf-stage-w);
   padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 10px;
-  transform: translateX(-50%);
   pointer-events: none;
+  transform: translateX(-50%);
   transition: opacity 0.25s ease;
 }
 
@@ -248,23 +332,14 @@ body.rf-body {
   opacity: 0;
 }
 
-.rf-chrome > *,
-.rf-chrome-left > * {
-  pointer-events: auto;
-}
-
 .rf-chrome-left {
   display: flex;
   align-items: center;
-  gap: 8px;
   pointer-events: none;
 }
 
-.rf-chrome-title {
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.55);
+.rf-chrome-left > * {
+  pointer-events: auto;
 }
 
 .rf-glass-btn {
@@ -320,17 +395,19 @@ body.rf-body {
 }
 
 /* --------------------------------------------------------------------------
-   Right action rail (no glass panel: icons with a soft shadow, like Reels)
+   z 5: right action rail (plain icons with soft shadow, like Reels)
    -------------------------------------------------------------------------- */
 
 .rf-rail {
   position: absolute;
   right: 6px;
   bottom: calc(22px + env(safe-area-inset-bottom, 0px));
+  z-index: 5;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
+  pointer-events: auto;
 }
 
 .rf-rail-btn {
@@ -384,9 +461,9 @@ body.rf-body {
   animation: rf-heart-pop 0.45s var(--rf-spring);
 }
 
-/* channel thumbnail at the base of the rail (rounded square, like Instagram's audio tile) */
+/* Rotating audio / channel disc */
 .rf-disc-btn {
-  padding: 8px 0 0;
+  padding: 10px 0 0;
   cursor: pointer;
   background: none;
   border: 0;
@@ -395,13 +472,14 @@ body.rf-body {
 .rf-disc {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
   overflow: hidden;
   background: #1c1c1e;
   border: 2px solid #fff;
-  border-radius: 8px;
+  border-radius: 50%;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  animation: rf-spin 5s linear infinite;
 }
 
 .rf-disc-art.rf-avatar {
@@ -409,33 +487,45 @@ body.rf-body {
   height: 100%;
   font-size: 12px;
   border: 0;
-  border-radius: 0;
+  border-radius: 50%;
 }
 
 /* --------------------------------------------------------------------------
-   Creator row, caption, sound line (bottom left)
+   z 6: bottom-left creator metadata (transparent, text-shadow only)
    -------------------------------------------------------------------------- */
 
 .rf-meta {
   position: absolute;
   bottom: 0;
   left: 0;
+  z-index: 6;
   width: calc(100% - 72px);
   padding: 0 8px calc(22px + env(safe-area-inset-bottom, 0px)) 14px;
+  pointer-events: auto;
 }
 
+.rf-clean-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  background: none;
+}
+
+/* Row 1: avatar, verified, handle, follow pill */
 .rf-creator {
   display: flex;
+  flex-direction: row;
   align-items: center;
-  gap: 10px;
-  max-width: 100%;
-  margin: 0 0 10px;
+  gap: 8px;
+  width: 100%;
+  position: static;
 }
 
 .rf-creator-main {
   display: inline-flex;
   align-items: center;
-  gap: 9px;
+  gap: 8px;
   min-width: 0;
   padding: 0;
   color: #fff;
@@ -448,8 +538,8 @@ body.rf-body {
   display: grid;
   flex: none;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   font-size: 14px;
   font-weight: 700;
   color: #fff;
@@ -465,14 +555,13 @@ body.rf-body {
 .rf-creator-name {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
   min-width: 0;
   overflow: hidden;
   font-size: 14.5px;
   font-weight: 700;
   white-space: nowrap;
   text-overflow: ellipsis;
-  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
 }
 
 .rf-verified {
@@ -480,7 +569,9 @@ body.rf-body {
 }
 
 .rf-follow {
-  flex: none;
+  position: static !important;
+  flex-shrink: 0 !important;
+  margin: 0 !important;
   padding: 7px 14px;
   font-size: 13px;
   font-weight: 700;
@@ -503,7 +594,7 @@ body.rf-body {
   border-color: rgba(255, 255, 255, 0.3);
 }
 
-/* details / channel sheets use the solid pill version */
+/* sheets use the solid pill version */
 .rf-d-header .rf-follow,
 .rf-cp-top .rf-follow {
   padding: 9px 20px;
@@ -520,34 +611,41 @@ body.rf-body {
   border-color: rgba(255, 255, 255, 0.3);
 }
 
+/* Row 2: caption. NO box, NO border, NO background: only a text-shadow. */
 .rf-caption {
   display: block;
   max-width: 100%;
   padding: 0;
-  margin: 0 0 8px;
-  font-size: 14.5px;
-  font-weight: 400;
-  line-height: 1.38;
+  margin: 0;
   color: #fff;
   text-align: left;
   cursor: pointer;
-  background: none;
-  border: 0;
-  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.65);
+  background: none !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 
-.rf-caption-title {
+.rf-caption-text {
+  background: none !important;
+  border: none !important;
+  color: #fff !important;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  font-size: 13.5px;
+  line-height: 1.4;
   display: -webkit-box;
-  overflow: hidden;
-  overflow-wrap: anywhere;
   -webkit-line-clamp: 2;
   line-clamp: 2;
   -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
 }
 
 .rf-caption-more {
+  display: inline-block;
+  font-size: 13.5px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.72);
+  color: rgba(255, 255, 255, 0.78);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
 }
 
 .rf-caption.is-open {
@@ -562,35 +660,32 @@ body.rf-body {
   display: none;
 }
 
-.rf-caption.is-open .rf-caption-title {
+.rf-caption.is-open .rf-caption-text {
   display: block;
   -webkit-line-clamp: unset;
   line-clamp: unset;
-  font-weight: 600;
+  overflow: visible;
 }
 
 .rf-caption-desc {
   display: block;
   margin-top: 6px;
+  font-size: 13.5px;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
-  color: rgba(255, 255, 255, 0.9);
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
 }
 
+/* Row 3: audio ticker */
 .rf-sound-line {
   display: flex;
   align-items: center;
-  gap: 6px;
   max-width: min(100%, 240px);
   overflow: hidden;
-  color: rgba(255, 255, 255, 0.9);
+  color: rgba(255, 255, 255, 0.92);
   -webkit-mask-image: linear-gradient(to right, transparent, #000 5%, #000 90%, transparent);
   mask-image: linear-gradient(to right, transparent, #000 5%, #000 90%, transparent);
-}
-
-.rf-sound-note {
-  flex: none;
-  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.5));
 }
 
 .rf-marquee {
@@ -603,12 +698,8 @@ body.rf-body {
   padding-left: 100%;
   font-size: 12.5px;
   font-weight: 500;
-  text-shadow: 0 1px 5px rgba(0, 0, 0, 0.6);
-  animation: rf-marquee 9s linear infinite;
-}
-
-.rf-slide:not(.is-active) .rf-marquee span {
-  animation: none;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  animation: rf-marquee 10s linear infinite;
 }
 
 /* --------------------------------------------------------------------------
@@ -665,25 +756,8 @@ body.rf-body {
 }
 
 /* --------------------------------------------------------------------------
-   Tap feedback: sound pulse + double-tap heart
+   Double-tap heart burst (the ONLY tap feedback: no centre pause icon)
    -------------------------------------------------------------------------- */
-
-.rf-pulse {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  z-index: 9;
-  display: grid;
-  place-items: center;
-  width: 76px;
-  height: 76px;
-  margin: -38px 0 0 -38px;
-  color: #fff;
-  background: rgba(0, 0, 0, 0.55);
-  border-radius: 50%;
-  pointer-events: none;
-  animation: rf-pulse 0.75s ease forwards;
-}
 
 .rf-burst {
   position: fixed;
@@ -714,36 +788,12 @@ body.rf-body {
   animation: rf-particle 0.75s ease-out forwards;
 }
 
-.p1 {
-  --tx: -60px;
-  --ty: -40px;
-  animation-delay: 0.02s;
-}
-.p2 {
-  --tx: 55px;
-  --ty: -55px;
-  animation-delay: 0.05s;
-}
-.p3 {
-  --tx: 70px;
-  --ty: 20px;
-  animation-delay: 0.08s;
-}
-.p4 {
-  --tx: -70px;
-  --ty: 15px;
-  animation-delay: 0.03s;
-}
-.p5 {
-  --tx: -25px;
-  --ty: 65px;
-  animation-delay: 0.1s;
-}
-.p6 {
-  --tx: 30px;
-  --ty: 68px;
-  animation-delay: 0.06s;
-}
+.p1 { --tx: -60px; --ty: -40px; animation-delay: 0.02s; }
+.p2 { --tx: 55px; --ty: -55px; animation-delay: 0.05s; }
+.p3 { --tx: 70px; --ty: 20px; animation-delay: 0.08s; }
+.p4 { --tx: -70px; --ty: 15px; animation-delay: 0.03s; }
+.p5 { --tx: -25px; --ty: 65px; animation-delay: 0.1s; }
+.p6 { --tx: 30px; --ty: 68px; animation-delay: 0.06s; }
 
 /* --------------------------------------------------------------------------
    Bottom sheets (solid surface: no live blur over the playing video)
@@ -1295,8 +1345,8 @@ body.rf-body {
 }
 
 .rf-skel-dot {
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
 }
 
@@ -1306,17 +1356,9 @@ body.rf-body {
   border-radius: 6px;
 }
 
-.rf-w40 {
-  width: 40%;
-}
-
-.rf-w60 {
-  width: 60%;
-}
-
-.rf-w90 {
-  width: 90%;
-}
+.rf-w40 { width: 40%; }
+.rf-w60 { width: 60%; }
+.rf-w90 { width: 90%; }
 
 .rf-state {
   position: absolute;
@@ -1388,83 +1430,37 @@ body.rf-body {
    Motion
    -------------------------------------------------------------------------- */
 
-@keyframes rf-pulse {
-  0% {
-    opacity: 0;
-    transform: scale(0.7);
-  }
-  20% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  70% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  100% {
-    opacity: 0;
-    transform: scale(1.05);
-  }
-}
-
 @keyframes rf-heart-pop {
-  0% {
-    transform: scale(0.6);
-  }
-  55% {
-    transform: scale(1.32);
-  }
-  100% {
-    transform: scale(1);
-  }
+  0% { transform: scale(0.6); }
+  55% { transform: scale(1.32); }
+  100% { transform: scale(1); }
 }
 
 @keyframes rf-burst {
-  0% {
-    opacity: 0;
-    transform: scale(0.35) rotate(-10deg);
-  }
-  18% {
-    opacity: 1;
-    transform: scale(1.2) rotate(-5deg);
-  }
-  55% {
-    opacity: 1;
-    transform: scale(1) rotate(-5deg);
-  }
-  100% {
-    opacity: 0;
-    transform: scale(1.35) translateY(-50px) rotate(-5deg);
-  }
+  0% { opacity: 0; transform: scale(0.35) rotate(-10deg); }
+  18% { opacity: 1; transform: scale(1.2) rotate(-5deg); }
+  55% { opacity: 1; transform: scale(1) rotate(-5deg); }
+  100% { opacity: 0; transform: scale(1.35) translateY(-50px) rotate(-5deg); }
 }
 
 @keyframes rf-particle {
-  0% {
-    opacity: 1;
-    transform: translate(-50%, -50%) translate(0, 0) scale(1);
-  }
-  100% {
-    opacity: 0;
-    transform: translate(-50%, -50%) translate(var(--tx), var(--ty)) scale(0.3);
-  }
+  0% { opacity: 1; transform: translate(-50%, -50%) translate(0, 0) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) translate(var(--tx), var(--ty)) scale(0.3); }
 }
 
 @keyframes rf-marquee {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(-50%);
-  }
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+@keyframes rf-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 @keyframes rf-shimmer {
-  from {
-    background-position: 200% 0;
-  }
-  to {
-    background-position: -200% 0;
-  }
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {

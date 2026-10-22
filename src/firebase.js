@@ -2,13 +2,13 @@ import { initializeApp } from "firebase/app";
 import { getMessaging, getToken, onMessage } from "firebase/messaging";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDLGr5muEwrOAn9je3fDqVQbRatWmnmJFo",
-  authDomain: "rcm-ai-assistance-app.firebaseapp.com",
-  projectId: "rcm-ai-assistance-app",
-  storageBucket: "rcm-ai-assistance-app.firebasestorage.app",
-  messagingSenderId: "944167924646",
-  appId: "1:944167924646:web:a13b7916e7e62c26eb1567",
-  measurementId: "G-33RYFBM4V0"
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "",
+  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN || "rcm-ai-assistance-app.firebaseapp.com",
+  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID || "rcm-ai-assistance-app",
+  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET || "rcm-ai-assistance-app.appspot.com",
+  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID || "152036931077",
+  appId: process.env.REACT_APP_FIREBASE_APP_ID || "",
+  vapidKey: process.env.REACT_APP_FIREBASE_VAPID_KEY || ""
 };
 
 const app = initializeApp(firebaseConfig);
