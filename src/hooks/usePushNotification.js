@@ -15,14 +15,14 @@ const usePushNotification = () => {
   const messagingRef = useRef(null);
   const isRefreshingTokenRef = useRef(false);
 
-  // Firebase config should come from environment variables
+  // Firebase config should come from environment variables with fallback values
   const firebaseConfig = {
-    apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "",
+    apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "AIzaSyDLGr5muEwrOAn9je3fDqVQbRatWmnmJFo",
     authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN || "rcm-ai-assistance-app.firebaseapp.com",
     projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID || "rcm-ai-assistance-app",
-    storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET || "rcm-ai-assistance-app.appspot.com",
-    messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID || "152036931077",
-    appId: process.env.REACT_APP_FIREBASE_APP_ID || "",
+    storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET || "rcm-ai-assistance-app.firebasestorage.app",
+    messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID || "944167924646",
+    appId: process.env.REACT_APP_FIREBASE_APP_ID || "1:944167924646:web:a13b7916e7e62c26eb1567",
     measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID || "G-33RYFBM4V0",
   };
 
@@ -38,7 +38,7 @@ const usePushNotification = () => {
     const isPushSupported = isNotificationSupported && isServiceWorkerSupported && !isIOSSafari;
     setSupported(isPushSupported);
 
-    if (isPushSupported && firebaseConfig.apiKey) {
+    if (isPushSupported && firebaseConfig.apiKey && firebaseConfig.appId) {
       try {
         const app = initializeApp(firebaseConfig);
         messagingRef.current = getMessaging(app);
@@ -71,7 +71,7 @@ const usePushNotification = () => {
       }
     };
 
-  }, [firebaseConfig.apiKey]);
+  }, [firebaseConfig.apiKey, firebaseConfig.appId]);
 
   // Function to register service worker
   const registerServiceWorker = useCallback(async () => {

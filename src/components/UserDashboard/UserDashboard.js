@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  Zap, Star, TrendingUp, LogOut, ChevronRight, ExternalLink, ArrowUpRight, Sparkles, Bell, X, Film, BellOff
+  Zap, Star, TrendingUp, LogOut, ChevronRight, ExternalLink, ArrowUpRight, Sparkles, Bell, X, Film, BellOff, Download
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import usePushNotification from '../../hooks/usePushNotification';
+import useInstallPrompt from '../../hooks/useInstallPrompt';
+import InstallAppBanner from '../InstallAppBanner';
 import './UserDashboard.css';
 
 // Team Dekho — the in-house WebRTC meeting platform (~90% cheaper than Zoom,
@@ -12,17 +14,12 @@ import './UserDashboard.css';
 // so this never silently points at the wrong domain in production.
 const TEAM_DEKHO_URL = process.env.REACT_APP_TEAM_DEKHO_URL || 'https://teamdekho.com';
 
-// The dashboard's own logo (top-left brand mark).
-const RCM_LOGO_URL =
-  'https://i.ibb.co/GrMTmd0/Gemini-Generated-Image-q98hyq98hyq98hyq-removebg-preview-removebg-preview.png';
+// Logo from public folder (e.g., /rcm_logo.png or /rcm_logo.jpg)
+const RCM_LOGO_URL = '/rcm_logo.png';
 
-// Team Dekho's logo — place teamdekhologo.png in /public so this path
-// resolves, or swap this for a bundler import if your assets live in /src.
+// Team Dekho's logo — place teamdekhologo.png in /public so this path resolves.
 const TEAM_DEKHO_LOGO = '/teamdekhologo.png';
 
-// Desktop sidebar navigation. On mobile there's no bottom dock anymore —
-// the "Your Assistant" card below does that job, so a duplicate nav row
-// just for the same destination would be redundant clutter.
 const NAV_ITEMS = [{ path: '/chat', label: 'Assistant', icon: Zap }];
 
 const UserDashboard = () => {
@@ -30,11 +27,13 @@ const UserDashboard = () => {
   const location = useLocation();
   const { user, logout } = useAuth();
   const { supported, permission, enabled, loading, enable, disable } = usePushNotification();
+  const { deferredPrompt, isAppInstalled, promptInstall } = useInstallPrompt();
 
   const [scrolled, setScrolled] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [confirmingLogout, setConfirmingLogout] = useState(false);
+  const [showPwaBanner, setShowPwaBanner] = useState(true); // Control visibility of the install banner
 
   const profileRef = useRef(null);
   const notifRef = useRef(null);
@@ -53,8 +52,6 @@ const UserDashboard = () => {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Close any open popover on an outside click, and disarm a pending
-  // logout confirmation so it never lingers armed in the background.
   useEffect(() => {
     const handleClick = (e) => {
       if (profileRef.current && !profileRef.current.contains(e.target)) {
@@ -74,10 +71,6 @@ const UserDashboard = () => {
     navigate('/login', { replace: true });
   };
 
-  // Opens Team Dekho — our own meeting platform — in a new tab. Kept as a
-  // plain link to the product's own domain rather than inventing a query
-  // contract Team Dekho may not expect; add room/name params here later if
-  // the platform ends up supporting deep links for a specific room.
   const handleVideoCall = () => {
     window.open(TEAM_DEKHO_URL, '_blank', 'noopener,noreferrer');
   };
@@ -85,11 +78,8 @@ const UserDashboard = () => {
   const isItemActive = (item) => location.pathname === item.path;
 
   const handleNotificationToggle = async () => {
-    if (loading) return; // Prevent interaction while loading
-    if (permission === 'denied') {
-      // Optionally, guide user to browser settings
-      return;
-    }
+    if (loading) return;
+    if (permission === 'denied') return;
     if (enabled) {
       await disable();
     } else {
@@ -132,8 +122,8 @@ const UserDashboard = () => {
       {/* ---------- SIDEBAR (desktop only) ---------- */}
       <aside className="rcmud-side">
         <div className="rcmud-brand">
-          <img src={RCM_LOGO_URL} alt="" className="rcmud-brand-mark" />
-          <span className="rcmud-brand-name">RCM<span className="rcmud-accent">AI</span></span>
+          <img src={RCM_LOGO_URL} alt="TeamDekho" className="rcmud-brand-mark" />
+          <span className="rcmud-brand-name">Team<span className="rcmud-accent">Dekho</span></span>
         </div>
 
         <div className="rcmud-identity">
@@ -165,7 +155,7 @@ const UserDashboard = () => {
             </button>
           ) : (
             <div className="rcmud-signout-confirm">
-              <span>Sign out of RCM AI?</span>
+              <span>Sign out of TeamDekho?</span>
               <div className="rcmud-signout-actions">
                 <button className="rcmud-mini-btn" onClick={() => setConfirmingLogout(false)}>Cancel</button>
                 <button className="rcmud-mini-btn is-danger" onClick={performLogout}>Yes, sign out</button>
@@ -179,22 +169,22 @@ const UserDashboard = () => {
       <main className="rcmud-main">
         <header className={`rcmud-topbar ${scrolled ? 'is-scrolled' : ''}`}>
           <div className="rcmud-topbar-brand">
-            <img src={RCM_LOGO_URL} alt="" />
-            <span>RCM<span className="rcmud-accent">AI</span></span>
+            <img src={RCM_LOGO_URL} alt="TeamDekho" />
+            <span>Team<span className="rcmud-accent">Dekho</span></span>
           </div>
 
           <div className="rcmud-topbar-right">
             {supported && (
-                <button
-                    className="rcmud-icon-btn rcmud-bell-toggle"
-                    onClick={handleNotificationToggle}
-                    aria-label={enabled ? "Disable notifications" : "Enable notifications"}
-                    aria-pressed={enabled}
-                    disabled={permission === 'denied' || loading}
-                    title={permission === 'denied' ? "Notifications are blocked in your browser settings" : (enabled ? "Notifications ON" : "Notifications OFF")}
-                >
-                    {renderBellIcon()}
-                </button>
+              <button
+                className="rcmud-icon-btn rcmud-bell-toggle"
+                onClick={handleNotificationToggle}
+                aria-label={enabled ? "Disable notifications" : "Enable notifications"}
+                aria-pressed={enabled}
+                disabled={permission === 'denied' || loading}
+                title={permission === 'denied' ? "Notifications are blocked in your browser settings" : (enabled ? "Notifications ON" : "Notifications OFF")}
+              >
+                {renderBellIcon()}
+              </button>
             )}
 
             <div className="rcmud-profile" ref={notifRef}>
@@ -249,7 +239,7 @@ const UserDashboard = () => {
                     </button>
                   ) : (
                     <div className="rcmud-signout-confirm">
-                      <span>Sign out of RCM AI?</span>
+                      <span>Sign out of TeamDekho?</span>
                       <div className="rcmud-signout-actions">
                         <button className="rcmud-mini-btn" onClick={() => setConfirmingLogout(false)}>Cancel</button>
                         <button className="rcmud-mini-btn is-danger" onClick={performLogout}>Yes, sign out</button>
@@ -263,6 +253,11 @@ const UserDashboard = () => {
         </header>
 
         <div className="rcmud-content">
+          {/* PWA Install Banner Popup on Dashboard */}
+          {deferredPrompt && !isAppInstalled && showPwaBanner && (
+            <InstallAppBanner onInstall={promptInstall} onDismiss={() => setShowPwaBanner(false)} />
+          )}
+
           {/* ---------- The two headline entry points ---------- */}
           <section className="rcmud-feature-grid" aria-label="Quick access" style={{ marginTop: '1.5rem' }}>
             <button
@@ -301,7 +296,6 @@ const UserDashboard = () => {
             <button className="rcmud-app-card" onClick={() => navigate('/shorts')}>
               <div className="rcmud-app-header">
                 <span className="rcmud-app-icon red-pink-gradient"><Film size={22} /></span>
-
               </div>
               <div className="rcmud-app-body">
                 <span className="rcmud-app-title">RCM Shorts</span>

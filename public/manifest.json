@@ -1,7 +1,7 @@
 {
-  "name": "RCM AI Assistant",
-  "short_name": "RCM AI",
-  "description": "AI Assistant APP for RCM Business Network",
+  "name": "TeamDekho",
+  "short_name": "TeamDekho",
+  "description": "TeamDekho - Your AI Assistant for Team Management and Business Network",
   
   "gcm_sender_id": "103953800507",  
 
@@ -19,12 +19,12 @@
 
   "icons": [
     {
-      "src": "/rcmai_logo.png",
+      "src": "/teamdekhologo.png",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "/rcmai_logo.png",
+      "src": "/teamdekhologo.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"

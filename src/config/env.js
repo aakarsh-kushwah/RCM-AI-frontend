@@ -1,12 +1,22 @@
 /**
  * @file src/config/env.js
- * @description Central configuration file.
+ * @description Central configuration file with dual-environment auto-detection.
  */
+
+const isLocalhost = Boolean(
+  typeof window !== 'undefined' &&
+  (window.location.hostname === 'localhost' ||
+   window.location.hostname === '127.0.0.1')
+);
+
+const resolvedBaseUrl = (
+  process.env.REACT_APP_API_URL ||
+  (isLocalhost ? 'http://localhost:5000' : 'https://rcm-ai-backend.onrender.com')
+).replace(/\/+$/, '');
 
 const config = {
   API: {
-    // Backend runs on port 10000 by default
-    BASE_URL: process.env.REACT_APP_API_URL || 'http://localhost:10000',
+    BASE_URL: resolvedBaseUrl,
     TIMEOUT: 10000,
   },
   CONTACT: {
@@ -18,9 +28,5 @@ const config = {
     DEFAULT_PITCH: 1.0,
   }
 };
-
-if (process.env.NODE_ENV === 'production' && !process.env.REACT_APP_API_URL) {
-  console.error('CRITICAL CONFIG ERROR: REACT_APP_API_URL is not set in production!');
-}
 
 export default config;
