@@ -1,0 +1,38 @@
+/* Team Dekho logo. Sized only by the parent's font-size. */
+.tdlogo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6em;
+  line-height: 1;
+  user-select: none;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.tdlogo-mark { height: 3em; width: auto; flex: none; display: block; object-fit: contain; }
+
+.tdlogo-text { display: flex; flex-direction: column; gap: 0.32em; min-width: 0; }
+
+.tdlogo-name {
+  font-size: 1.35em;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.tdlogo-team { color: #0a2540; }
+
+.tdlogo-dekho {
+  color: #0e9aa7;
+  background: linear-gradient(90deg, #0f7f90, #14b8b0);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.tdlogo-tag {
+  font-size: 0.46em;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: #5f7078;
+  white-space: nowrap;
+}

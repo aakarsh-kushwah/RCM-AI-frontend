@@ -1,49 +1,53 @@
 /* ==========================================================================
-   RCM AI — User Dashboard
-   Dark premium SaaS theme.
+   Team Dekho — User Dashboard  ·  Deep ink + teal, professional SaaS theme
 
-   Performance rules used everywhere in this file:
-   - Only `transform` and `opacity` are animated (no top/left/width/height/margin).
-   - backdrop-filter is NOT used on phones (only on desktop with a real mouse).
-   - will-change is kept to the few always-visible hero cards; other cards get it
-     only while hovered / pressed, so we do not waste GPU memory on low-end phones.
-   - All animations respect prefers-reduced-motion.
+   - Fluid sizing: everything is in `em`, and the shell font-size scales with the
+     screen (phones -> laptops -> LED/LCD TVs).
+   - Only transform + opacity are animated. No backdrop-filter on phones.
+   - Respects prefers-reduced-motion.
+   - The logo itself lives in BrandLogo.css (shared with the notification popup).
    ========================================================================== */
 
 .rcmud-shell {
-  --u-bg: #07080c;
-  --u-side: #0a0c11;
-  --u-solid: #11131a;
+  --u-bg: #050a0c;
+  --u-side: #070e11;
+  --u-solid: #0d171b;
   --u-surface: rgba(255, 255, 255, 0.04);
   --u-surface-2: rgba(255, 255, 255, 0.07);
   --u-border: rgba(255, 255, 255, 0.08);
   --u-border-strong: rgba(255, 255, 255, 0.16);
-  --u-text: #f4f5f8;
-  --u-dim: rgba(244, 245, 248, 0.64);
-  --u-faint: rgba(244, 245, 248, 0.42);
-  --u-primary: #9b6dff;
-  --u-primary-rgb: 155, 109, 255;
-  --u-cyan-rgb: 34, 211, 238;
+  --u-text: #f1f7f6;
+  --u-dim: rgba(241, 247, 246, 0.66);
+  --u-faint: rgba(241, 247, 246, 0.42);
+  --u-primary: #2dd4bf;
+  --u-primary-rgb: 45, 212, 191;
+  --u-sky-rgb: 56, 189, 248;
   --u-rose: #fb7185;
-  --u-teal: #2dd4bf;
-  --u-radius: 14px;
-  --u-radius-lg: 20px;
+  --u-green: #22c55e;
+  --u-nav-bg: #f7fbfa;
+  --u-ink: #0c1f22;
+  --u-radius: 1em;
+  --u-radius-lg: 1.4em;
   --u-ease: cubic-bezier(0.16, 1, 0.3, 1);
   --u-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  /* Fluid base size: 15px on phones ... ~19px on 1080p TV ... 24px max on 4K */
+  font-size: clamp(15px, calc(0.35vw + 12px), 24px);
 
   position: relative;
   isolation: isolate;
   display: grid;
-  grid-template-columns: 248px minmax(0, 1fr);
+  grid-template-columns: 15.5em minmax(0, 1fr);
+  width: 100%;
   min-height: 100vh;
   min-height: 100dvh;
+  overflow-x: clip;
   background: var(--u-bg);
   color: var(--u-text);
   font-family: var(--u-font);
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
-  overscroll-behavior-y: contain;
-  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: none;
 }
 
 .rcmud-shell *,
@@ -52,6 +56,7 @@
 
 .rcmud-shell button {
   font-family: inherit;
+  font-size: inherit;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
@@ -61,31 +66,60 @@
   outline-offset: 2px;
 }
 
-.rcmud-accent { color: var(--u-primary); }
-
-/* Static aurora glow. Absolute (not fixed) so it never repaints while scrolling. */
-.rcmud-shell::before {
-  content: '';
+.rcmud-sr {
   position: absolute;
-  inset: 0 0 auto 0;
-  height: 640px;
-  z-index: -1;
-  pointer-events: none;
-  background:
-    radial-gradient(620px 380px at 88% -6%, rgba(155, 109, 255, 0.26), transparent 70%),
-    radial-gradient(520px 340px at 12% 0%, rgba(34, 211, 238, 0.14), transparent 70%);
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
-/* Colour tones, used as `rgb(var(--tone))` */
-.tone-violet { --tone: 155, 109, 255; }
-.tone-pink   { --tone: 244, 114, 182; }
+/* Ambient glow (static on phones, gentle drift only on mouse devices) */
+.rcmud-shell::before,
+.rcmud-shell::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.rcmud-shell::before {
+  top: 0;
+  height: 46em;
+  background:
+    radial-gradient(40em 24em at 90% -4%, rgba(var(--u-primary-rgb), 0.2), transparent 70%),
+    radial-gradient(34em 22em at 8% 2%, rgba(var(--u-sky-rgb), 0.12), transparent 70%);
+}
+
+.rcmud-shell::after {
+  bottom: 0;
+  height: 36em;
+  background: radial-gradient(40em 22em at 50% 110%, rgba(var(--u-primary-rgb), 0.1), transparent 70%);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .rcmud-shell::before { animation: rcmud-drift 16s ease-in-out infinite alternate; }
+}
+
+@keyframes rcmud-drift {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(-3%, 3%, 0); }
+}
+
+/* Tones used as rgb(var(--tone)) */
 .tone-teal   { --tone: 45, 212, 191; }
+.tone-sky    { --tone: 56, 189, 248; }
 .tone-rose   { --tone: 251, 113, 133; }
-.tone-amber  { --tone: 251, 191, 36; }
-.tone-indigo { --tone: 129, 140, 248; }
+.tone-orange { --tone: 251, 146, 60; }
+.tone-green  { --tone: 74, 222, 128; }
 
 /* ----------------------------- Scroll reveal ----------------------------- */
-/* Hidden until the IntersectionObserver adds .is-in, then one staggered rise. */
 
 .rcmud-shell [data-reveal]:not(.is-in) { opacity: 0; }
 
@@ -94,9 +128,16 @@
 }
 
 @keyframes rcmud-rise {
-  from { opacity: 0; transform: translate3d(0, 18px, 0); }
+  from { opacity: 0; transform: translate3d(0, 1.2em, 0); }
   to   { opacity: 1; transform: translate3d(0, 0, 0); }
 }
+
+@keyframes rcmud-pop {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes rcmud-spin { to { transform: rotate(360deg); } }
 
 /* -------------------------------- Sidebar -------------------------------- */
 
@@ -107,102 +148,99 @@
   height: 100dvh;
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  padding: 22px 14px;
+  gap: 1.5em;
+  padding: 1.4em 0.9em;
   background: var(--u-side);
   border-right: 1px solid var(--u-border);
 }
 
-.rcmud-brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 8px;
+.rcmud-brand-plate {
+  display: grid;
+  place-items: center;
+  padding: 0.8em 0.6em;
+  border-radius: 0.95em;
+  background: #fff;
+  box-shadow: 0 0.7em 1.6em -0.9em rgba(var(--u-primary-rgb), 0.6);
+  overflow: hidden;
 }
 
-.rcmud-brand-mark { width: 26px; height: 26px; object-fit: contain; }
-
-.rcmud-brand-name {
-  font-size: 1.05rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-}
+.rcmud-brand-plate .tdlogo { font-size: 0.62em; }
 
 .rcmud-identity {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px;
+  gap: 0.75em;
+  padding: 0.75em;
   border-radius: var(--u-radius);
   background: var(--u-surface);
   border: 1px solid var(--u-border);
 }
 
 .rcmud-avatar {
-  width: 36px;
-  height: 36px;
+  width: 2.4em;
+  height: 2.4em;
   flex: none;
   display: grid;
   place-items: center;
-  border-radius: 11px;
-  background: linear-gradient(155deg, #a87bff, #5b2a9e);
-  color: #fff;
-  font-weight: 700;
-  font-size: 0.95rem;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  border-radius: 0.75em;
+  background: linear-gradient(155deg, #34e0cb, #0b7f74);
+  color: #03211d;
+  font-weight: 800;
+  font-size: 0.95em;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 
 .rcmud-identity-text { display: flex; flex-direction: column; min-width: 0; }
-.rcmud-identity-name { font-weight: 600; font-size: 0.9rem; letter-spacing: -0.01em; }
-.rcmud-identity-role { font-size: 0.76rem; color: var(--u-dim); }
+.rcmud-identity-name { font-weight: 600; font-size: 0.92em; letter-spacing: -0.01em; }
+.rcmud-identity-role { font-size: 0.78em; color: var(--u-dim); }
 
-.rcmud-nav { display: flex; flex-direction: column; gap: 3px; flex: 1; }
+.rcmud-nav { display: flex; flex-direction: column; gap: 0.25em; flex: 1; }
 
 .rcmud-nav-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  min-height: 42px;
-  padding: 0 12px;
+  gap: 0.75em;
+  min-height: 2.8em;
+  padding: 0 0.8em;
   border: 0;
-  border-radius: 10px;
+  border-radius: 0.7em;
   background: transparent;
   color: var(--u-dim);
-  font-size: 0.9rem;
+  font-size: 0.92em;
   font-weight: 500;
   text-align: left;
   cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
 }
 
 .rcmud-nav-item:hover { background: var(--u-surface-2); color: var(--u-text); }
 .rcmud-nav-item:active { transform: scale(0.97); }
 
 .rcmud-nav-item.is-active {
-  background: rgba(var(--u-primary-rgb), 0.15);
-  color: #cdb6ff;
+  background: rgba(var(--u-primary-rgb), 0.14);
+  color: #7ef0df;
 }
 
 .rcmud-signout-zone {
-  padding-top: 14px;
+  padding-top: 1em;
   border-top: 1px solid var(--u-border);
 }
 
 .rcmud-signout {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 0.75em;
   width: 100%;
-  min-height: 42px;
-  padding: 0 12px;
+  min-height: 2.8em;
+  padding: 0 0.8em;
   border: 1px solid var(--u-border);
-  border-radius: 10px;
+  border-radius: 0.7em;
   background: transparent;
   color: var(--u-dim);
-  font-size: 0.9rem;
+  font-size: 0.92em;
   font-weight: 500;
   cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease;
+  transition: color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
 }
 
 .rcmud-signout:hover { color: var(--u-rose); border-color: rgba(251, 113, 133, 0.5); }
@@ -211,78 +249,63 @@
 .rcmud-signout-confirm {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px;
-  border-radius: 12px;
+  gap: 0.7em;
+  padding: 0.85em;
+  border-radius: 0.85em;
   background: rgba(251, 113, 133, 0.08);
   border: 1px solid rgba(251, 113, 133, 0.25);
-  font-size: 0.84rem;
+  font-size: 0.86em;
   animation: rcmud-pop 0.2s var(--u-ease) both;
 }
 
-.rcmud-signout-actions { display: flex; gap: 8px; }
+.rcmud-signout-actions { display: flex; gap: 0.55em; }
 
 .rcmud-mini-btn {
   flex: 1;
-  min-height: 36px;
+  min-height: 2.5em;
   border: 1px solid var(--u-border-strong);
-  border-radius: 9px;
+  border-radius: 0.65em;
   background: var(--u-surface-2);
   color: var(--u-text);
-  font-size: 0.8rem;
+  font-size: 0.9em;
   font-weight: 600;
   cursor: pointer;
 }
 
 .rcmud-mini-btn:active { transform: scale(0.97); }
-
-.rcmud-mini-btn.is-danger {
-  background: #e5484d;
-  border-color: #e5484d;
-  color: #fff;
-}
-
-@keyframes rcmud-pop {
-  from { opacity: 0; transform: scale(0.96); }
-  to   { opacity: 1; transform: scale(1); }
-}
+.rcmud-mini-btn.is-danger { background: #e5484d; border-color: #e5484d; color: #fff; }
 
 /* ------------------------------- Main column ------------------------------ */
 
 .rcmud-main { display: flex; flex-direction: column; min-width: 0; }
 
+/* Light navbar so the black + teal logo is always clearly visible */
 .rcmud-topbar {
   position: sticky;
   top: 0;
   z-index: 50;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: calc(12px + env(safe-area-inset-top, 0px)) 40px 12px;
-  background: transparent;
-  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+  gap: 0.8em;
+  padding:
+    calc(0.7em + env(safe-area-inset-top, 0px))
+    calc(2.4em + env(safe-area-inset-right, 0px))
+    0.7em
+    calc(2.4em + env(safe-area-inset-left, 0px));
+  background: var(--u-nav-bg);
+  border-bottom: 1px solid rgba(12, 31, 34, 0.08);
+  transition: box-shadow 0.2s ease;
 }
 
-/* Solid colour (no blur) so scrolling stays smooth on budget phones */
-.rcmud-topbar.is-scrolled {
-  background: rgba(7, 8, 12, 0.94);
-  box-shadow: 0 1px 0 var(--u-border);
-}
+.rcmud-topbar.is-scrolled { box-shadow: 0 0.7em 1.6em -1em rgba(0, 0, 0, 0.7); }
 
-.rcmud-topbar-brand {
-  display: none; /* desktop already has the sidebar brand */
-  align-items: center;
-  gap: 8px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-}
-
-.rcmud-topbar-brand img { width: 22px; height: 22px; object-fit: contain; }
+.rcmud-topbar-brand { display: flex; align-items: center; min-width: 0; }
+.rcmud-topbar-brand .tdlogo { font-size: 0.95em; }
 
 .rcmud-topbar-right {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 0.7em;
   margin-left: auto;
 }
 
@@ -290,38 +313,39 @@
 
 .rcmud-icon-btn {
   position: relative;
-  width: 40px;
-  height: 40px;
+  width: 2.7em;
+  height: 2.7em;
   display: grid;
   place-items: center;
-  border: 1px solid var(--u-border);
-  border-radius: 12px;
-  background: var(--u-surface);
-  color: var(--u-text);
+  border: 1px solid #dbe7e5;
+  border-radius: 0.85em;
+  background: #fff;
+  color: var(--u-ink);
   cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
 }
 
-.rcmud-icon-btn:hover { background: var(--u-surface-2); border-color: var(--u-border-strong); }
-.rcmud-icon-btn:active { transform: scale(0.94); }
+.rcmud-icon-btn:hover { background: #eef7f5; border-color: #bcd6d2; }
+.rcmud-icon-btn:active { transform: scale(0.92); }
 .rcmud-icon-btn:disabled { cursor: not-allowed; opacity: 0.85; }
 
 .rcmud-avatar-btn {
-  width: 40px;
-  height: 40px;
+  width: 2.7em;
+  height: 2.7em;
   display: grid;
   place-items: center;
   border: 0;
-  border-radius: 12px;
-  background: linear-gradient(155deg, #a87bff, #5b2a9e);
-  color: #fff;
-  font-weight: 700;
-  font-size: 0.9rem;
+  border-radius: 0.85em;
+  background: linear-gradient(155deg, #34e0cb, #0b7f74);
+  color: #03211d;
+  font-weight: 800;
+  font-size: 1em;
   cursor: pointer;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 6px 16px -6px rgba(var(--u-primary-rgb), 0.6);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 0.5em 1.1em -0.5em rgba(11, 127, 116, 0.8);
+  transition: transform 0.15s ease;
 }
 
-.rcmud-avatar-btn:active { transform: scale(0.94); }
+.rcmud-avatar-btn:active { transform: scale(0.92); }
 
 /* Push-notification bell states */
 .rcmud-notification-bell {
@@ -332,46 +356,45 @@
   height: 100%;
 }
 
-.rcmud-notification-bell--blocked { color: var(--u-rose); }
+.rcmud-notification-bell--blocked { color: #e11d48; }
 
 .rcmud-notification-bell--loading .rcmud-loading-spinner {
   position: absolute;
-  width: 11px;
-  height: 11px;
-  border: 2px solid rgba(255, 255, 255, 0.25);
-  border-top-color: #fff;
+  width: 0.8em;
+  height: 0.8em;
+  border: 2px solid rgba(12, 31, 34, 0.18);
+  border-top-color: var(--u-ink);
   border-radius: 50%;
   animation: rcmud-spin 0.8s linear infinite;
 }
 
-@keyframes rcmud-spin { to { transform: rotate(360deg); } }
-
 .rcmud-dot {
   position: absolute;
-  top: 9px;
-  right: 10px;
-  width: 8px;
-  height: 8px;
+  top: 0.55em;
+  right: 0.6em;
+  width: 0.62em;
+  height: 0.62em;
   border-radius: 50%;
-  background: var(--u-teal);
-  border: 1.5px solid var(--u-solid);
+  background: var(--u-green);
+  border: 2px solid #fff;
 }
 
 .rcmud-notification-bell--off .rcmud-dot,
 .rcmud-notification-bell--blocked .rcmud-dot { display: none; }
 
-/* Popover sheets */
+/* Profile popover */
 .rcmud-profile-sheet {
   position: absolute;
-  top: calc(100% + 10px);
+  top: calc(100% + 0.7em);
   right: 0;
   z-index: 60;
-  width: 240px;
-  padding: 14px;
+  width: 16em;
+  padding: 1em;
   border-radius: var(--u-radius);
   background: var(--u-solid);
+  color: var(--u-text);
   border: 1px solid var(--u-border-strong);
-  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 1.3em 3em rgba(0, 0, 0, 0.6);
   transform-origin: top right;
   animation: rcmud-pop 0.2s var(--u-ease) both;
 }
@@ -380,22 +403,21 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
-  padding-bottom: 12px;
+  gap: 0.7em;
+  margin-bottom: 0.85em;
+  padding-bottom: 0.85em;
   border-bottom: 1px solid var(--u-border);
 }
 
-.rcmud-profile-head strong { display: block; font-size: 0.9rem; }
-.rcmud-profile-head em { display: block; font-style: normal; font-size: 0.76rem; color: var(--u-dim); }
-.rcmud-sheet-title { font-size: 0.9rem; }
+.rcmud-profile-head strong { display: block; font-size: 0.92em; }
+.rcmud-profile-head em { display: block; font-style: normal; font-size: 0.78em; color: var(--u-dim); }
 
 .rcmud-sheet-close {
   position: absolute;
-  top: -2px;
-  right: -4px;
-  width: 32px;
-  height: 32px;
+  top: -0.2em;
+  right: -0.3em;
+  width: 2.2em;
+  height: 2.2em;
   display: grid;
   place-items: center;
   border: 0;
@@ -407,15 +429,15 @@
 .rcmud-sheet-signout {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 0.7em;
   width: 100%;
-  min-height: 42px;
-  padding: 0 10px;
+  min-height: 2.8em;
+  padding: 0 0.7em;
   border: 0;
-  border-radius: 10px;
+  border-radius: 0.7em;
   background: transparent;
   color: var(--u-rose);
-  font-size: 0.88rem;
+  font-size: 0.9em;
   font-weight: 600;
   cursor: pointer;
 }
@@ -423,145 +445,115 @@
 .rcmud-sheet-signout:hover { background: rgba(251, 113, 133, 0.1); }
 .rcmud-sheet-signout:active { transform: scale(0.97); }
 
-.rcmud-empty-note {
-  margin: 0;
-  padding: 6px 4px 2px;
-  font-size: 0.84rem;
-  color: var(--u-dim);
-  text-align: center;
-}
-
 /* -------------------------------- Content -------------------------------- */
 
 .rcmud-content {
   width: 100%;
-  max-width: 1040px;
+  max-width: 78em;
   margin: 0 auto;
-  padding: 8px 40px calc(40px + env(safe-area-inset-bottom, 0px));
+  padding:
+    1.6em
+    calc(2.4em + env(safe-area-inset-right, 0px))
+    calc(2.6em + env(safe-area-inset-bottom, 0px))
+    calc(2.4em + env(safe-area-inset-left, 0px));
 }
 
-/* Install callout */
+/* ---------------------------- Install card (always on) ---------------------------- */
+
 .rcmud-install {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 20px;
-  padding: 10px 10px 10px 14px;
-  border-radius: 16px;
+  gap: 1em;
+  margin-bottom: 1.3em;
+  padding: 1em 1.1em;
+  border-radius: 1.2em;
+  overflow: hidden;
   background:
-    linear-gradient(90deg, rgba(var(--u-primary-rgb), 0.2), rgba(var(--u-cyan-rgb), 0.08)),
+    linear-gradient(100deg, rgba(var(--u-primary-rgb), 0.16), rgba(var(--u-sky-rgb), 0.05)),
     var(--u-solid);
-  border: 1px solid rgba(var(--u-primary-rgb), 0.34);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 14px 34px -18px rgba(var(--u-primary-rgb), 0.7);
-  animation: rcmud-drop 0.7s var(--u-ease) both;
+  border: 1px solid rgba(var(--u-primary-rgb), 0.3);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 1.2em 2.6em -1.6em rgba(var(--u-primary-rgb), 0.6);
 }
 
-@keyframes rcmud-drop {
-  from { opacity: 0; transform: translate3d(0, -12px, 0) scale(0.98); }
-  to   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+.rcmud-install.is-done {
+  background:
+    linear-gradient(100deg, rgba(34, 197, 94, 0.14), rgba(34, 197, 94, 0.03)),
+    var(--u-solid);
+  border-color: rgba(34, 197, 94, 0.32);
 }
 
 .rcmud-install-icon {
-  width: 38px;
-  height: 38px;
+  width: 2.9em;
+  height: 2.9em;
   flex: none;
   display: grid;
   place-items: center;
-  border-radius: 11px;
-  background: rgba(var(--u-primary-rgb), 0.2);
-  color: #cdb6ff;
+  border-radius: 0.9em;
+  background: rgba(var(--u-primary-rgb), 0.16);
+  border: 1px solid rgba(var(--u-primary-rgb), 0.28);
+  color: #7ef0df;
 }
 
-.rcmud-install-copy { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-.rcmud-install-copy strong { font-size: 0.92rem; letter-spacing: -0.01em; }
-
-.rcmud-install-copy em {
-  font-style: normal;
-  font-size: 0.78rem;
-  color: var(--u-dim);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.rcmud-install.is-done .rcmud-install-icon {
+  background: rgba(34, 197, 94, 0.16);
+  border-color: rgba(34, 197, 94, 0.3);
+  color: #4ade80;
 }
+
+.rcmud-install-copy { display: flex; flex-direction: column; gap: 0.15em; min-width: 0; flex: 1; }
+.rcmud-install-copy strong { font-size: 0.98em; letter-spacing: -0.01em; }
+.rcmud-install-copy em { font-style: normal; font-size: 0.82em; line-height: 1.4; color: var(--u-dim); }
 
 .rcmud-install-btn {
   flex: none;
-  min-height: 38px;
-  padding: 0 18px;
+  min-height: 2.6em;
+  padding: 0 1.4em;
   border: 0;
-  border-radius: 11px;
-  background: linear-gradient(180deg, #ad82ff, #7c4ddb);
-  color: #fff;
-  font-size: 0.86rem;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 8px 18px -8px rgba(var(--u-primary-rgb), 0.9);
-}
-
-.rcmud-install-btn:active { transform: scale(0.96); }
-
-.rcmud-install-x {
-  flex: none;
-  width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: center;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
-  color: var(--u-faint);
-  cursor: pointer;
-}
-
-.rcmud-install-x:hover { background: var(--u-surface-2); color: var(--u-text); }
-
-/* Hero */
-.rcmud-hero { padding: 6px 0 24px; }
-
-.rcmud-hero-kicker {
-  margin: 0 0 6px;
-  font-size: 0.84rem;
-  font-weight: 600;
-  color: var(--u-primary);
-  letter-spacing: 0.01em;
-}
-
-.rcmud-hero h1 {
-  margin: 0;
-  font-size: clamp(1.6rem, 3.2vw, 2.25rem);
-  line-height: 1.15;
+  border-radius: 0.8em;
+  background: linear-gradient(180deg, #4ceedb, #14b8a6);
+  color: #03211d;
+  font-size: 0.9em;
   font-weight: 700;
-  letter-spacing: -0.03em;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 0.6em 1.3em -0.6em rgba(var(--u-primary-rgb), 0.9);
+  transition: transform 0.15s ease;
 }
 
-.rcmud-hero-sub {
-  margin: 8px 0 0;
-  font-size: 0.96rem;
-  color: var(--u-dim);
+.rcmud-install-btn:active { transform: scale(0.95); }
+
+.rcmud-install-state {
+  flex: none;
+  padding: 0.4em 0.9em;
+  border-radius: 999px;
+  font-size: 0.8em;
+  font-weight: 700;
+  color: #4ade80;
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.3);
 }
 
 /* ---------------------------- Headline cards ---------------------------- */
 
 .rcmud-feature-grid {
   display: grid;
-  grid-template-columns: 1.35fr 1fr;
-  gap: 20px;
-  margin-bottom: 20px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.3em;
+  margin-bottom: 1.3em;
 }
 
 .rcmud-feature-card {
   position: relative;
-  min-height: 190px;
+  min-height: 14em;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
-  gap: 10px;
-  padding: 24px;
+  gap: 1em;
+  padding: 1.6em;
   border: 1px solid var(--u-border);
   border-radius: var(--u-radius-lg);
   text-align: left;
-  color: inherit;
-  font: inherit;
+  color: #fff;
   cursor: pointer;
   overflow: hidden;
   transform: translate3d(0, 0, 0);
@@ -577,14 +569,17 @@
 
 .rcmud-feature-card > * { position: relative; z-index: 1; }
 
+.rcmud-feature-copy { display: flex; flex-direction: column; gap: 0.35em; margin-top: auto; }
+.rcmud-feature-title { font-size: 1.3em; font-weight: 750; letter-spacing: -0.02em; line-height: 1.15; }
+.rcmud-feature-sub { font-size: 0.88em; line-height: 1.45; opacity: 0.78; max-width: 28em; }
+
 /* AI card */
 .rcmud-feature-card.is-ai {
-  color: #fff;
   background:
-    radial-gradient(420px 260px at 100% 0%, rgba(var(--u-cyan-rgb), 0.3), transparent 70%),
-    linear-gradient(150deg, #090c13 0%, #0b1826 60%, #080b11 100%);
-  border-color: rgba(var(--u-cyan-rgb), 0.28);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 24px 54px -26px rgba(var(--u-cyan-rgb), 0.5);
+    radial-gradient(26em 16em at 100% 0%, rgba(var(--u-sky-rgb), 0.3), transparent 70%),
+    linear-gradient(150deg, #08111a 0%, #0a1c2c 60%, #070d14 100%);
+  border-color: rgba(var(--u-sky-rgb), 0.3);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 1.6em 3.4em -1.8em rgba(var(--u-sky-rgb), 0.55);
 }
 
 .rcmud-ai-shine {
@@ -594,15 +589,13 @@
   z-index: 0 !important;
   width: 34%;
   height: 140%;
-  background: linear-gradient(115deg, transparent, rgba(255, 255, 255, 0.22), transparent);
+  background: linear-gradient(115deg, transparent, rgba(255, 255, 255, 0.2), transparent);
   transform: translate3d(-140%, 0, 0) skewX(-14deg);
   will-change: transform;
   pointer-events: none;
 }
 
-.rcmud-feature-card.is-ai.is-in .rcmud-ai-shine {
-  animation: rcmud-shine 4.2s ease-in-out 1s infinite;
-}
+.rcmud-feature-card.is-ai.is-in .rcmud-ai-shine { animation: rcmud-shine 4.4s ease-in-out 1s infinite; }
 
 @keyframes rcmud-shine {
   0%        { transform: translate3d(-140%, 0, 0) skewX(-14deg); }
@@ -610,26 +603,21 @@
 }
 
 .rcmud-ai-icon {
-  width: 40px;
-  height: 40px;
+  width: 2.8em;
+  height: 2.8em;
   display: grid;
   place-items: center;
-  border-radius: 12px;
+  border-radius: 0.9em;
   background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.16);
 }
-
-.rcmud-feature-copy { display: flex; flex-direction: column; gap: 4px; }
-.rcmud-feature-title { font-size: 1.2rem; font-weight: 700; letter-spacing: -0.02em; }
-.rcmud-feature-sub { font-size: 0.84rem; line-height: 1.4; opacity: 0.78; }
 
 .rcmud-feature-go {
   position: absolute !important;
-  right: 18px;
-  bottom: 18px;
-  width: 36px;
-  height: 36px;
+  right: 1.2em;
+  bottom: 1.2em;
+  width: 2.5em;
+  height: 2.5em;
   display: grid;
   place-items: center;
   border-radius: 50%;
@@ -638,32 +626,65 @@
   transition: transform 0.35s var(--u-ease), background-color 0.2s ease;
 }
 
-/* Team Dekho tile stays light so its logo artwork is always readable */
+/* Team Dekho card */
 .rcmud-feature-card.is-team {
+  background:
+    radial-gradient(26em 16em at 0% 0%, rgba(var(--u-primary-rgb), 0.28), transparent 70%),
+    linear-gradient(155deg, #0a1b19 0%, #07110f 100%);
+  border-color: rgba(var(--u-primary-rgb), 0.32);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 1.6em 3.4em -1.8em rgba(var(--u-primary-rgb), 0.6);
+}
+
+.rcmud-team-top {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  padding: 20px;
-  background: linear-gradient(160deg, #ffffff, #efeafc);
-  border-color: rgba(255, 255, 255, 0.5);
-  box-shadow: inset 0 1px 0 #fff, 0 20px 46px -26px rgba(var(--u-primary-rgb), 0.8);
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.8em;
 }
 
-.rcmud-team-logo {
-  width: 100%;
-  max-width: 300px;
-  height: auto;
-  object-fit: contain;
-}
-
-.rcmud-feature-go.is-corner {
-  top: 14px;
-  right: 14px;
-  bottom: auto;
-  width: 30px;
-  height: 30px;
+.rcmud-team-plate {
+  padding: 0.6em 1em;
+  border-radius: 0.95em;
   background: #fff;
-  color: #6b6d80;
-  box-shadow: 0 2px 8px rgba(16, 24, 40, 0.14);
+  box-shadow: 0 0.8em 1.8em -0.8em rgba(var(--u-primary-rgb), 0.7);
+  animation: rcmud-float 5s ease-in-out infinite;
+}
+
+.rcmud-team-plate .tdlogo { font-size: 0.8em; }
+
+@keyframes rcmud-float {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50%      { transform: translate3d(0, -0.28em, 0); }
+}
+
+.rcmud-team-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.35em 0.85em;
+  border-radius: 999px;
+  font-size: 0.74em;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #5eead4;
+  background: rgba(var(--u-primary-rgb), 0.12);
+  border: 1px solid rgba(var(--u-primary-rgb), 0.28);
+}
+
+.rcmud-team-cta {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55em;
+  padding: 0.7em 1.2em;
+  border-radius: 0.85em;
+  background: linear-gradient(180deg, #4ceedb, #14b8a6);
+  color: #03211d;
+  font-size: 0.9em;
+  font-weight: 700;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 0.7em 1.4em -0.7em rgba(var(--u-primary-rgb), 0.9);
+  transition: transform 0.35s var(--u-ease);
 }
 
 /* ------------------------------ Module cards ------------------------------ */
@@ -671,23 +692,22 @@
 .rcmud-app-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20px;
+  gap: 1.3em;
 }
 
 .rcmud-app-card {
   position: relative;
-  min-height: 164px;
+  min-height: 11em;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 20px;
+  padding: 1.3em;
   border: 1px solid var(--u-border);
   border-radius: var(--u-radius-lg);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 14px 32px -22px rgba(0, 0, 0, 0.9);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 1em 2.2em -1.5em rgba(0, 0, 0, 0.9);
   text-align: left;
   color: inherit;
-  font: inherit;
   cursor: pointer;
   overflow: hidden;
   transform: translate3d(0, 0, 0);
@@ -695,10 +715,9 @@
   transition: transform 0.45s var(--u-ease), border-color 0.25s ease;
 }
 
-.rcmud-app-card.is-wide { grid-column: span 2; min-height: 148px; }
+.rcmud-app-card.is-wide { grid-column: span 2; min-height: 10em; }
 
-.rcmud-app-card > *,
-.rcmud-feature-card.is-team > * { position: relative; z-index: 1; }
+.rcmud-app-card > * { position: relative; z-index: 1; }
 
 .rcmud-app-card:active {
   transform: translate3d(0, 0, 0) scale(0.97);
@@ -706,19 +725,20 @@
   will-change: transform;
 }
 
-/* Cursor spotlight: a glow that is moved with transform only */
+/* Cursor spotlight (moved with transform only) */
 .rcmud-app-card::after,
-.rcmud-feature-card.is-team::after {
+.rcmud-feature-card.is-team::after,
+.rcmud-feature-card.is-ai::after {
   content: '';
   position: absolute;
   top: 0;
   left: 0;
   z-index: 0;
-  width: 320px;
-  height: 320px;
-  margin: -160px 0 0 -160px;
+  width: 22em;
+  height: 22em;
+  margin: -11em 0 0 -11em;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(var(--tone), 0.24), transparent 65%);
+  background: radial-gradient(circle, rgba(var(--tone), 0.22), transparent 65%);
   opacity: 0;
   transform: translate3d(var(--mx, 0px), var(--my, 0px), 0);
   transition: opacity 0.3s ease;
@@ -729,42 +749,45 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 14px;
+  gap: 0.7em;
+  margin-bottom: 0.9em;
 }
 
 .rcmud-app-icon {
-  width: 44px;
-  height: 44px;
+  width: 2.9em;
+  height: 2.9em;
   flex: none;
   display: grid;
   place-items: center;
-  border-radius: 12px;
+  border-radius: 0.85em;
   color: rgb(var(--tone));
-  background: rgba(var(--tone), 0.14);
+  background: rgba(var(--tone), 0.13);
   border: 1px solid rgba(var(--tone), 0.28);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition: transform 0.4s var(--u-ease);
 }
+
+.rcmud-app-icon svg { width: 1.45em; height: 1.45em; }
 
 .rcmud-app-badge {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 4px 10px;
+  gap: 0.5em;
+  padding: 0.3em 0.75em;
   border-radius: 999px;
-  font-size: 0.72rem;
-  font-weight: 600;
+  font-size: 0.74em;
+  font-weight: 650;
   letter-spacing: 0.01em;
   color: rgb(var(--tone));
   background: rgba(var(--tone), 0.12);
-  border: 1px solid rgba(var(--tone), 0.24);
+  border: 1px solid rgba(var(--tone), 0.25);
 }
 
-/* Pulsing live dot: the ring is scaled, never resized */
 .rcmud-live-dot {
   position: relative;
-  width: 6px;
-  height: 6px;
+  display: inline-block;
+  width: 0.5em;
+  height: 0.5em;
   border-radius: 50%;
   background: currentColor;
 }
@@ -783,28 +806,18 @@
   to   { transform: scale(3.2); opacity: 0; }
 }
 
-.rcmud-app-body { display: flex; flex-direction: column; gap: 4px; flex: 1; }
-
-.rcmud-app-title {
-  font-size: 1.05rem;
-  font-weight: 650;
-  letter-spacing: -0.015em;
-}
-
-.rcmud-app-sub {
-  font-size: 0.84rem;
-  line-height: 1.45;
-  color: var(--u-dim);
-}
+.rcmud-app-body { display: flex; flex-direction: column; gap: 0.3em; flex: 1; }
+.rcmud-app-title { font-size: 1.1em; font-weight: 650; letter-spacing: -0.015em; }
+.rcmud-app-sub { font-size: 0.86em; line-height: 1.45; color: var(--u-dim); }
 
 .rcmud-app-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: 16px;
-  padding-top: 12px;
+  margin-top: 1em;
+  padding-top: 0.8em;
   border-top: 1px solid var(--u-border);
-  font-size: 0.8rem;
+  font-size: 0.84em;
   font-weight: 600;
   color: var(--u-faint);
   transition: color 0.2s ease;
@@ -817,51 +830,71 @@
 @media (hover: hover) and (pointer: fine) {
   .rcmud-app-card:hover,
   .rcmud-feature-card:hover {
-    transform: translate3d(0, -4px, 0);
-    border-color: rgba(var(--tone, 255, 255, 255), 0.45);
+    transform: translate3d(0, -0.3em, 0);
+    border-color: rgba(var(--tone, 255, 255, 255), 0.5);
     will-change: transform;
   }
 
-  .rcmud-feature-card.is-ai:hover { border-color: rgba(var(--u-cyan-rgb), 0.6); }
-
   .rcmud-app-card:hover::after,
-  .rcmud-feature-card.is-team:hover::after { opacity: 1; }
+  .rcmud-feature-card.is-team:hover::after,
+  .rcmud-feature-card.is-ai:hover::after { opacity: 1; }
 
+  .rcmud-app-card:hover .rcmud-app-icon { transform: scale(1.08) rotate(-4deg); }
   .rcmud-app-card:hover .rcmud-app-footer { color: rgb(var(--tone)); }
   .rcmud-app-card:hover .rcmud-app-footer svg { transform: translate3d(2px, -2px, 0); }
-  .rcmud-feature-card:hover .rcmud-feature-go { transform: translate3d(2px, -2px, 0); }
-
-  /* Blur only where there is GPU headroom */
-  .rcmud-install { backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+  .rcmud-feature-card:hover .rcmud-feature-go { transform: translate3d(2px, -2px, 0); background: rgba(255, 255, 255, 0.22); }
+  .rcmud-feature-card:hover .rcmud-team-cta { transform: translate3d(0.2em, 0, 0); }
 }
 
-/* --------------------------------- Mobile --------------------------------- */
+/* ------------------------- Large screens / TV / LED ------------------------- */
+
+@media (min-width: 1280px) {
+  .rcmud-app-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .rcmud-app-card { grid-column: span 2; }
+  .rcmud-app-card:nth-child(n + 4),
+  .rcmud-app-card.is-wide { grid-column: span 3; }
+}
+
+@media (min-width: 1900px) {
+  .rcmud-content { max-width: 92em; }
+}
+
+/* --------------------------------- Tablet / Mobile --------------------------------- */
 
 @media (max-width: 900px) {
   .rcmud-shell { grid-template-columns: minmax(0, 1fr); }
   .rcmud-side { display: none; }
 
-  .rcmud-topbar { padding: calc(10px + env(safe-area-inset-top, 0px)) 16px 10px; }
-  .rcmud-topbar-brand { display: flex; }
+  .rcmud-topbar {
+    padding:
+      calc(0.6em + env(safe-area-inset-top, 0px))
+      calc(1em + env(safe-area-inset-right, 0px))
+      0.6em
+      calc(1em + env(safe-area-inset-left, 0px));
+  }
+
+  .rcmud-topbar-brand .tdlogo { font-size: 0.8em; }
 
   .rcmud-icon-btn,
-  .rcmud-avatar-btn { width: 44px; height: 44px; }
+  .rcmud-avatar-btn { width: 2.9em; height: 2.9em; }
 
-  .rcmud-dot { top: 11px; right: 12px; }
+  .rcmud-dot { top: 0.65em; right: 0.7em; }
 
-  .rcmud-content { padding: 6px 16px calc(28px + env(safe-area-inset-bottom, 0px)); }
+  .rcmud-content {
+    padding:
+      1.1em
+      calc(1em + env(safe-area-inset-right, 0px))
+      calc(2em + env(safe-area-inset-bottom, 0px))
+      calc(1em + env(safe-area-inset-left, 0px));
+  }
 
-  .rcmud-hero { padding: 4px 0 18px; }
-
-  .rcmud-feature-grid { grid-template-columns: minmax(0, 1fr); gap: 14px; margin-bottom: 14px; }
-  .rcmud-feature-card { min-height: 150px; padding: 20px; }
-  .rcmud-feature-card.is-team { min-height: 120px; }
-  .rcmud-team-logo { max-width: 230px; }
+  .rcmud-feature-grid { grid-template-columns: minmax(0, 1fr); gap: 0.9em; margin-bottom: 0.9em; }
+  .rcmud-feature-card { min-height: 12em; padding: 1.3em; }
 }
 
-/* Phones: module cards become compact rows (less scrolling, big tap targets) */
+/* Phones: module cards become compact rows */
 @media (max-width: 600px) {
-  .rcmud-app-grid { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .rcmud-app-grid { grid-template-columns: minmax(0, 1fr); gap: 0.7em; }
 
   .rcmud-app-card,
   .rcmud-app-card.is-wide {
@@ -871,33 +904,32 @@
       'icon body end'
       'icon badge end';
     align-items: center;
-    column-gap: 14px;
+    column-gap: 1em;
     min-height: 0;
-    padding: 14px;
-    border-radius: 16px;
+    padding: 0.95em;
+    border-radius: 1.1em;
     grid-column: auto;
   }
 
   .rcmud-app-header { display: contents; }
-
-  .rcmud-app-icon { grid-area: icon; width: 46px; height: 46px; }
-
+  .rcmud-app-icon { grid-area: icon; width: 3.1em; height: 3.1em; }
   .rcmud-app-body { grid-area: body; flex: none; }
-  .rcmud-app-title { font-size: 1rem; }
-  .rcmud-app-sub { font-size: 0.8rem; }
-
-  .rcmud-app-badge { grid-area: badge; justify-self: start; margin-top: 6px; }
-
-  .rcmud-app-footer {
-    grid-area: end;
-    margin: 0;
-    padding: 0;
-    border: 0;
-  }
-
+  .rcmud-app-title { font-size: 1.02em; }
+  .rcmud-app-sub { font-size: 0.82em; }
+  .rcmud-app-badge { grid-area: badge; justify-self: start; margin-top: 0.4em; }
+  .rcmud-app-footer { grid-area: end; margin: 0; padding: 0; border: 0; }
   .rcmud-app-footer > span { display: none; }
 
+  .rcmud-install { gap: 0.8em; padding: 0.85em; }
+  .rcmud-install-icon { width: 2.6em; height: 2.6em; }
+  .rcmud-install-btn { padding: 0 1.1em; }
+}
+
+@media (max-width: 380px) {
   .rcmud-install-copy em { display: none; }
+  .rcmud-team-chip { display: none; }
+  .rcmud-topbar-brand .tdlogo-tag { display: none; }
+  .rcmud-topbar-brand .tdlogo { font-size: 0.85em; }
 }
 
 /* ----------------------------- Reduced motion ----------------------------- */
@@ -905,6 +937,7 @@
 @media (prefers-reduced-motion: reduce) {
   .rcmud-shell [data-reveal]:not(.is-in) { opacity: 1; }
 
+  .rcmud-shell,
   .rcmud-shell *,
   .rcmud-shell *::before,
   .rcmud-shell *::after {
