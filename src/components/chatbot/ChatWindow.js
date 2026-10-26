@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, memo, useCallback } from 'react';
 import {
-  Send, Menu, Plus, Mic, MicOff, X, Loader2,
+  Send, Menu, Plus, Mic, MicOff, X, Loader2, Calculator,
   AudioLines, Copy, Check, Sun, Moon, ArrowDown, PanelLeftClose
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -13,6 +13,20 @@ import CalculatorWidget from './CalculatorWidget';
 const BRAND_NAME = 'TeamDekho';
 const BRAND_TAGLINE = 'Dekho. Samjho. Badho.';
 const LOGO_SRC = '/teamdekho-icon.svg';
+
+/* Chips on the empty-chat screen (like Gemini's "Create image", "Music"…).
+   Add more entries here later and handle them in handleQuickAction. */
+const QUICK_ACTIONS = [
+  { id: 'calculator', label: 'Bonus Calculator', Icon: Calculator },
+];
+
+/* The backend/hook sends an automatic greeting as the first message.
+   Hidden here so the chat opens clean. Best fix: start useChatEngine with []. */
+const HIDE_INITIAL_GREETING = true;
+
+/* Older hook versions store image-only messages as this placeholder text.
+   When a real image is available we show the picture instead of the text. */
+const IMAGE_PLACEHOLDER = /^\s*(?:📷\s*)?Image Uploaded\s*$/i;
 const MOBILE_BREAKPOINT = 768;
 const ALLOWED_STATUSES = ['active', 'premium'];
 
@@ -145,28 +159,31 @@ const BrandLogo = ({ size = 28 }) => (
 /*  Message row                                                               */
 /* -------------------------------------------------------------------------- */
 
-const ChatRow = memo(({ msg }) => {
+const getWidgetPayload = (msg) => {
+  if (!msg || msg.role !== 'assistant') return null;
+  if (typeof msg.content === 'string' && msg.content.trim().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(msg.content);
+      if (parsed && typeof parsed === 'object' && parsed.type === 'calculator_widget') {
+        return parsed;
+      }
+    } catch (_) {
+      /* plain text that merely starts with "{" */
+    }
+  }
+  if (msg.type === 'calculator_widget') {
+    return { type: 'calculator_widget', data: msg.data };
+  }
+  return null;
+};
+
+const ChatRow = memo(({ msg, onOpenCalculator }) => {
   const isAssistant = msg.role === 'assistant';
   const [copied, setCopied] = useState(false);
   const copyTimer = useRef(null);
 
-  const parsedContent = useMemo(() => {
-    if (typeof msg.content === 'string' && msg.content.trim().startsWith('{')) {
-      try {
-        const parsed = JSON.parse(msg.content);
-        if (parsed && typeof parsed === 'object' && parsed.type) return parsed;
-      } catch (_) {
-        /* plain text that merely starts with "{" */
-      }
-    }
-    if (msg.type === 'calculator_widget') {
-      return { type: 'calculator_widget', data: msg.data };
-    }
-    return null;
-  }, [msg.content, msg.type, msg.data]);
-
-  const isWidget = isAssistant && parsedContent?.type === 'calculator_widget';
-  const html = useMemo(() => (isWidget ? '' : formatText(msg.content)), [msg.content, isWidget]);
+  const widget = useMemo(() => getWidgetPayload(msg), [msg]);
+  const html = useMemo(() => (widget ? '' : formatText(msg.content)), [msg.content, widget]);
 
   useEffect(() => () => clearTimeout(copyTimer.current), []);
 
@@ -184,27 +201,25 @@ const ChatRow = memo(({ msg }) => {
 
   return (
     <div className={`chat-row ${msg.role}`}>
-      <div className="msg-avatar" aria-hidden="true">
-        {isAssistant ? (
-          <div className="ai-avatar"><BrandLogo size={28} /></div>
-        ) : (
-          <div className="user-avatar">You</div>
-        )}
-      </div>
-
       <div className="msg-body">
-        <div className="msg-sender-name">{isAssistant ? BRAND_NAME : 'You'}</div>
-
         {msg.image && (
           <div className="msg-attachment">
             <img src={msg.image} alt="Attachment" loading="lazy" />
           </div>
         )}
 
-        {isWidget ? (
-          <div className="msg-widget">
-            <CalculatorWidget initialData={parsedContent.data} />
-          </div>
+        {widget ? (
+          <button
+            type="button"
+            className="widget-chip"
+            onClick={() => onOpenCalculator(widget.data)}
+          >
+            <span className="widget-chip-icon"><Calculator size={18} /></span>
+            <span className="widget-chip-text">
+              <strong>Bonus Calculator</strong>
+              <small>Tap to open</small>
+            </span>
+          </button>
         ) : (
           html && (
             <div
@@ -220,7 +235,7 @@ const ChatRow = memo(({ msg }) => {
           </div>
         )}
 
-        {isAssistant && !isWidget && msg.content && (
+        {isAssistant && !widget && msg.content && (
           <div className="msg-actions">
             <button
               type="button"
@@ -240,16 +255,11 @@ const ChatRow = memo(({ msg }) => {
 });
 ChatRow.displayName = 'ChatRow';
 
+/* The logo appears only while the assistant is working. */
 const TypingIndicator = () => (
-  <div className="chat-row assistant">
-    <div className="msg-avatar" aria-hidden="true">
-      <div className="ai-avatar"><BrandLogo size={28} /></div>
-    </div>
-    <div className="msg-body">
-      <div className="msg-sender-name">{BRAND_NAME}</div>
-      <div className="typing-dots" role="status" aria-label="Assistant is typing">
-        <span /><span /><span />
-      </div>
+  <div className="chat-row assistant" role="status" aria-label="Assistant is thinking">
+    <div className="thinking">
+      <BrandLogo size={28} />
     </div>
   </div>
 );
@@ -275,6 +285,10 @@ const ChatWindow = () => {
   );
   const [theme, setTheme] = useState('light');
   const [showScrollButton, setShowScrollButton] = useState(false);
+  const [calcOpen, setCalcOpen] = useState(false);
+  const [calcMounted, setCalcMounted] = useState(false);
+  const [calcData, setCalcData] = useState({});
+  const [sentImages, setSentImages] = useState({}); // user-message ordinal -> image URL
 
   const rootRef = useRef(null);
   const scrollRef = useRef(null);
@@ -283,9 +297,80 @@ const ChatWindow = () => {
   const textareaRef = useRef(null);
   const stickToBottomRef = useRef(true);
   const removeTimerRef = useRef(null);
+  const calcCloseRef = useRef(null);
+  const sheetLayerRef = useRef(null);
+  const sentImagesRef = useRef({});
+  const prevLenRef = useRef(messages.length);
 
   const isLoading = status === 'loading';
   const speechSupported = useMemo(() => Boolean(getSpeechRecognition()), []);
+
+  const visibleMessages = useMemo(() => {
+    if (!HIDE_INITIAL_GREETING) return messages;
+    const first = messages[0];
+    if (first && first.role === 'assistant' && !getWidgetPayload(first)) {
+      return messages.slice(1);
+    }
+    return messages;
+  }, [messages]);
+  const hasMessages = visibleMessages.length > 0;
+
+  // Attach the picture the user sent to their message (Gemini/Claude style)
+  const displayMessages = useMemo(() => {
+    let userIndex = -1;
+    return visibleMessages.map((m) => {
+      if (m.role !== 'user') return m;
+      userIndex += 1;
+      const image = m.image || sentImages[userIndex];
+      const isPlaceholder = IMAGE_PLACEHOLDER.test(m.content || '');
+      if (!image && !isPlaceholder) return m;
+      return { ...m, image, content: image && isPlaceholder ? '' : m.content };
+    });
+  }, [visibleMessages, sentImages]);
+
+  /* ---- Calculator sheet (one persistent instance, opened on demand) ---- */
+
+  const openCalculator = useCallback((data) => {
+    if (data) setCalcData(data);
+    setCalcMounted(true);
+    setCalcOpen(true);
+  }, []);
+
+  const closeCalculator = useCallback(() => setCalcOpen(false), []);
+
+  // Open automatically when a NEW calculator reply arrives (not for old history)
+  useEffect(() => {
+    const previous = prevLenRef.current;
+    prevLenRef.current = messages.length;
+    if (messages.length <= previous) return;
+    const widget = getWidgetPayload(messages[messages.length - 1]);
+    if (widget) openCalculator(widget.data);
+  }, [messages, openCalculator]);
+
+  useEffect(() => {
+    if (!calcOpen) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setCalcOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    const focusTimer = setTimeout(() => calcCloseRef.current?.focus(), 60);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      clearTimeout(focusTimer);
+    };
+  }, [calcOpen]);
+
+  // `inert` removes the closed sheet from focus and the accessibility tree
+  useEffect(() => {
+    const layer = sheetLayerRef.current;
+    if (!layer) return;
+    if (calcOpen) layer.removeAttribute('inert');
+    else layer.setAttribute('inert', '');
+  }, [calcOpen, calcMounted]);
+
+  const handleQuickAction = useCallback((id) => {
+    if (id === 'calculator') openCalculator();
+  }, [openCalculator]);
 
   /* ---- Scrolling ---- */
 
@@ -476,6 +561,9 @@ const ChatWindow = () => {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
   }, [previewUrl]);
   useEffect(() => () => clearTimeout(removeTimerRef.current), []);
+  useEffect(() => () => {
+    Object.values(sentImagesRef.current).forEach((url) => URL.revokeObjectURL(url));
+  }, []);
 
   const handleImageProcessing = async (file) => {
     if (!file || !file.type.startsWith('image/')) return;
@@ -501,6 +589,10 @@ const ChatWindow = () => {
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
+    if (!input) {
+      el.style.height = ''; // back to a single row
+      return;
+    }
     el.style.height = 'auto';
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
   }, [input]);
@@ -519,6 +611,12 @@ const ChatWindow = () => {
     if (!trimmed && !selectedImage) return;
 
     stickToBottomRef.current = true;
+    if (selectedImage) {
+      const url = URL.createObjectURL(selectedImage);
+      const ordinal = messages.filter((m) => m.role === 'user').length;
+      sentImagesRef.current = { ...sentImagesRef.current, [ordinal]: url };
+      setSentImages(sentImagesRef.current);
+    }
     sendMessage(trimmed, selectedImage);
     setInput('');
     setSelectedImage(null);
@@ -605,16 +703,29 @@ const ChatWindow = () => {
         </header>
 
         <div className="chat-scroll-wrapper" ref={scrollRef} onScroll={handleScroll}>
-          {messages.length === 0 ? (
+          {!hasMessages ? (
             <div className="welcome-hero">
               <div className="hero-logo-box"><BrandLogo size={84} /></div>
               <h1 className="hero-title">Hello, Leader.</h1>
               <h2 className="hero-subtitle">Team dekho, products dekho, AI se jaankari lo.</h2>
+              <div className="quick-actions" role="group" aria-label="Quick actions">
+                {QUICK_ACTIONS.map(({ id, label, Icon }) => (
+                  <button
+                    key={id}
+                    type="button"
+                    className="quick-chip"
+                    onClick={() => handleQuickAction(id)}
+                  >
+                    <Icon size={17} />
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
           ) : (
             <div className="message-list">
-              {messages.map((msg, i) => (
-                <ChatRow key={msg.id ?? i} msg={msg} />
+              {displayMessages.map((msg, i) => (
+                <ChatRow key={msg.id ?? i} msg={msg} onOpenCalculator={openCalculator} />
               ))}
               {isLoading && <TypingIndicator />}
             </div>
@@ -707,6 +818,30 @@ const ChatWindow = () => {
           </div>
         </div>
       </main>
+
+      {calcMounted && (
+        <div ref={sheetLayerRef} className={`sheet-layer ${calcOpen ? 'open' : ''}`} inert="">
+          <div className="sheet-scrim" onClick={closeCalculator} />
+          <section className="sheet" role="dialog" aria-modal="true" aria-label="Bonus Calculator">
+            <div className="sheet-grabber" aria-hidden="true" />
+            <header className="sheet-header">
+              <h2>Bonus Calculator</h2>
+              <button
+                type="button"
+                ref={calcCloseRef}
+                className="icon-btn"
+                onClick={closeCalculator}
+                aria-label="Close calculator"
+              >
+                <X size={19} />
+              </button>
+            </header>
+            <div className="sheet-body">
+              <CalculatorWidget initialData={calcData} />
+            </div>
+          </section>
+        </div>
+      )}
 
       <input
         type="file"
