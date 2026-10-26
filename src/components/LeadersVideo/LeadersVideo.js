@@ -4,7 +4,7 @@ import axios from 'axios';
 import { useAuth } from '../../context/AuthContext';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
-    Search, Play, ArrowLeft, X, BadgeCheck, Share2, Check, Film, RotateCcw
+    Search, Play, ArrowLeft, X, BadgeCheck, Share2, Check, Film, RotateCcw, ChevronDown
 } from 'lucide-react';
 import { extractYouTubeId } from '../../utils/textUtils';
 import './LeadersVideo.css';
@@ -12,6 +12,7 @@ import './LeadersVideo.css';
 const SKELETON_COUNT = 8;
 const SKELETONS = Array.from({ length: SKELETON_COUNT }, (_, i) => i);
 const MORE_SKELETONS = SKELETONS.slice(0, 4);
+const NEXT_SKELETONS = SKELETONS.slice(0, 5);
 const DEFAULT_LEADER = "Leader's Video";
 
 function useDebounce(value, delay) {
@@ -42,6 +43,8 @@ const formatDuration = (d) => {
     const pad = (n) => String(n).padStart(2, '0');
     return h ? `${h}:${pad(m)}:${pad(sec)}` : `${m}:${pad(sec)}`;
 };
+
+const videoKey = (v) => v.id || v.publicId;
 
 // Thumbnail fallback order: sharpest YouTube image -> always-available YouTube image
 // -> thumbnail saved in the database -> styled placeholder (never a grey broken box)
@@ -159,48 +162,117 @@ const StateBlock = memo(({ kind, message, onPrimary, primaryLabel }) => (
     </div>
 ));
 
-/* ------------------------------ player modal ------------------------------ */
+/* ------------------------------ watch screen ------------------------------ */
+/*
+  YouTube-style watch screen:
+  - phone: the player is pinned at the top, details and "Up next" scroll underneath
+  - laptop / landscape: player + details on the left, suggestions list on the right
+  Tapping a suggestion swaps the video instantly. Browser/phone Back returns to the list.
+*/
 
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 const CLOSE_MS = 200;
 
-const LeaderVideoModal = ({ video, onClose }) => {
+// The poster (thumbnail from the list, already cached) shows immediately on tap,
+// then fades out as soon as the YouTube player has loaded.
+const Player = memo(({ video }) => {
+    const [ready, setReady] = useState(false);
+    const { id, chain } = useMemo(() => buildThumbChain(video), [video]);
+    const embedUrl = id
+        ? `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&rel=0&modestbranding=1&playsinline=1&fs=1`
+        : null;
+    const isFile = !id && Boolean(video.videoUrl);
+    const unavailable = !embedUrl && !isFile;
+
+    return (
+        <div className="lv-player">
+            {embedUrl && (
+                <iframe
+                    className="lv-iframe"
+                    src={embedUrl}
+                    title={video.title}
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                    referrerPolicy="strict-origin-when-cross-origin"
+                    onLoad={() => setReady(true)}
+                />
+            )}
+            {isFile && (
+                <video
+                    className="lv-iframe"
+                    src={video.videoUrl}
+                    poster={video.thumbnailUrl}
+                    controls
+                    autoPlay
+                    playsInline
+                    onLoadedData={() => setReady(true)}
+                />
+            )}
+            {unavailable && <div className="lv-player-empty">This video is unavailable right now.</div>}
+
+            <div className={`lv-poster ${ready || unavailable ? 'is-hidden' : ''}`} aria-hidden="true">
+                <Thumb chain={chain} title={video.title} eager />
+                <span className="lv-poster-spin" />
+            </div>
+
+            {embedUrl && <span className="lv-player-blocker" aria-hidden="true" />}
+        </div>
+    );
+});
+
+const Description = ({ text }) => {
+    const [open, setOpen] = useState(false);
+    const long = text.length > 140 || text.includes('\n');
+
+    return (
+        <div className="lv-desc-box">
+            <p className={`lv-desc ${open ? 'is-open' : ''}`}>{text}</p>
+            {long && (
+                <button type="button" className="lv-desc-more" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+                    {open ? 'Show less' : '...more'}
+                </button>
+            )}
+        </div>
+    );
+};
+
+const WatchView = ({
+    video, suggestions, loadingList, hasMore, loadingMore, canAutoLoad,
+    onSelect, onClose, onLoadMore
+}) => {
     const [closing, setClosing] = useState(false);
     const [copied, setCopied] = useState(false);
     const dialogRef = useRef(null);
-    const closeRef = useRef(null);
+    const scrollRef = useRef(null);
+    const backRef = useRef(null);
+    const sentinelRef = useRef(null);
     const closeTimer = useRef(0);
     const copyTimer = useRef(0);
+    const currentKey = videoKey(video);
 
     const requestClose = useCallback(() => {
         if (closing) return;
         setClosing(true);
-        closeTimer.current = setTimeout(() => {
-            setClosing(false);
-            onClose();
-        }, CLOSE_MS);
+        closeTimer.current = setTimeout(onClose, CLOSE_MS);
     }, [closing, onClose]);
 
-    // Scroll lock + focus handling (runs only when a video opens / closes)
+    // Page scroll lock + focus handling (runs once, while the watch screen is open)
     useEffect(() => {
-        if (!video) return undefined;
         const previouslyFocused = document.activeElement;
         const prevOverflow = document.body.style.overflow;
         document.body.style.overflow = 'hidden';
-        setCopied(false);
-        if (closeRef.current) closeRef.current.focus();
+        if (backRef.current) backRef.current.focus({ preventScroll: true });
 
         return () => {
             document.body.style.overflow = prevOverflow;
             clearTimeout(closeTimer.current);
             clearTimeout(copyTimer.current);
-            if (previouslyFocused && previouslyFocused.focus) previouslyFocused.focus();
+            if (previouslyFocused && previouslyFocused.focus) previouslyFocused.focus({ preventScroll: true });
         };
-    }, [video]);
+    }, []);
 
-    // Escape closes, Tab stays inside the dialog
+    // Escape closes, Tab stays inside the screen
     useEffect(() => {
-        if (!video) return undefined;
         const onKey = (e) => {
             if (e.key === 'Escape') {
                 requestClose();
@@ -221,14 +293,32 @@ const LeaderVideoModal = ({ video, onClose }) => {
         };
         document.addEventListener('keydown', onKey);
         return () => document.removeEventListener('keydown', onKey);
-    }, [video, requestClose]);
+    }, [requestClose]);
 
-    if (!video) return null;
+    // New video picked from "Up next": jump back to the top so the player is in view
+    useEffect(() => {
+        setCopied(false);
+        if (scrollRef.current) scrollRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }, [currentKey]);
 
-    const ytId = extractYouTubeId(video.videoUrl);
-    const embedUrl = ytId
-        ? `https://www.youtube-nocookie.com/embed/${ytId}?autoplay=1&rel=0&modestbranding=1&playsinline=1`
-        : null;
+    // Auto-load more suggestions before the user reaches the end of the list
+    const loadMoreRef = useRef(onLoadMore);
+    useEffect(() => { loadMoreRef.current = onLoadMore; });
+
+    useEffect(() => {
+        const el = sentinelRef.current;
+        const root = scrollRef.current;
+        if (!el || !root || !hasMore || !canAutoLoad || loadingMore) return undefined;
+        if (typeof IntersectionObserver === 'undefined') return undefined;
+
+        const io = new IntersectionObserver((entries) => {
+            if (entries[0].isIntersecting) loadMoreRef.current();
+        }, { root, rootMargin: '0px 0px 700px 0px' });
+
+        io.observe(el);
+        return () => io.disconnect();
+    }, [hasMore, canAutoLoad, loadingMore, suggestions.length]);
+
     const canNativeShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
 
     const handleShare = async () => {
@@ -253,56 +343,63 @@ const LeaderVideoModal = ({ video, onClose }) => {
 
     return createPortal(
         <div
-            className={`lv-modal ${closing ? 'is-closing' : ''}`}
+            className={`lv-watch ${closing ? 'is-closing' : ''}`}
             role="dialog"
             aria-modal="true"
             aria-label={video.title}
-            onClick={requestClose}
+            ref={dialogRef}
         >
-            <div className="lv-sheet" ref={dialogRef} onClick={(e) => e.stopPropagation()}>
-                <div className="lv-player">
-                    {embedUrl ? (
-                        <iframe
-                            className="lv-iframe"
-                            src={embedUrl}
-                            title={video.title}
-                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                            allowFullScreen
-                            referrerPolicy="strict-origin-when-cross-origin"
-                        />
-                    ) : video.videoUrl ? (
-                        <video
-                            className="lv-iframe"
-                            src={video.videoUrl}
-                            poster={video.thumbnailUrl}
-                            controls
-                            autoPlay
-                            playsInline
-                        />
-                    ) : (
-                        <div className="lv-player-empty">This video is unavailable right now.</div>
-                    )}
-                    {embedUrl && <span className="lv-player-blocker" aria-hidden="true" />}
-                    <button type="button" className="lv-close" ref={closeRef} onClick={requestClose} aria-label="Close video">
-                        <X size={20} />
-                    </button>
-                </div>
+            <div className="lv-watch-scroll" ref={scrollRef}>
+                <div className="lv-watch-grid">
+                    <div className="lv-watch-primary">
+                        <div className="lv-player-wrap">
+                            <Player key={currentKey} video={video} />
+                            <button type="button" className="lv-watch-back" ref={backRef} onClick={requestClose} aria-label="Back to videos">
+                                <ChevronDown size={24} />
+                            </button>
+                        </div>
 
-                <div className="lv-info">
-                    <h2 className="lv-info-title">{video.title}</h2>
+                        <div className="lv-watch-info">
+                            <h2 className="lv-info-title">{video.title}</h2>
 
-                    <div className="lv-meta">
-                        <LeaderTag name={video.leaderName || DEFAULT_LEADER} />
+                            <div className="lv-meta">
+                                <LeaderTag name={video.leaderName || DEFAULT_LEADER} />
+                                <button type="button" className="lv-btn is-ghost is-small" onClick={handleShare}>
+                                    {copied ? <Check size={16} /> : <Share2 size={16} />}
+                                    {copied ? 'Link copied' : canNativeShare ? 'Share' : 'Copy link'}
+                                </button>
+                            </div>
+
+                            {video.description && <Description key={currentKey} text={video.description} />}
+                        </div>
                     </div>
 
-                    <div className="lv-actions">
-                        <button type="button" className="lv-btn is-ghost" onClick={handleShare}>
-                            {copied ? <Check size={16} /> : <Share2 size={16} />}
-                            {copied ? 'Link copied' : canNativeShare ? 'Share' : 'Copy link'}
-                        </button>
-                    </div>
+                    <aside className="lv-watch-next" aria-label="Up next">
+                        <h3 className="lv-next-title">Up next</h3>
 
-                    {video.description && <p className="lv-desc">{video.description}</p>}
+                        <div className="lv-next-list">
+                            {loadingList && NEXT_SKELETONS.map((n) => <SkeletonCard key={`ns-${n}`} />)}
+
+                            {suggestions.map((v, i) => (
+                                <VideoCard key={videoKey(v)} video={v} index={i} onSelect={onSelect} />
+                            ))}
+
+                            {loadingMore && MORE_SKELETONS.map((n) => <SkeletonCard key={`nm-${n}`} />)}
+                        </div>
+
+                        {!loadingList && suggestions.length === 0 && !hasMore && (
+                            <p className="lv-next-empty">No more videos right now.</p>
+                        )}
+
+                        {hasMore && (
+                            <div className="lv-more-wrap">
+                                <div ref={sentinelRef} className="lv-sentinel" aria-hidden="true" />
+                                <button type="button" className="lv-more" onClick={onLoadMore} disabled={loadingMore}>
+                                    {loadingMore ? <><span className="lv-spinner" /> Loading</> : 'Load more videos'}
+                                </button>
+                            </div>
+                        )}
+                    </aside>
                 </div>
             </div>
         </div>,
@@ -331,6 +428,27 @@ function LeadersVideo({ pageTitle }) {
 
     const reqId = useRef(0); // ignores late responses from an older request
     const sentinelRef = useRef(null);
+    const watchPushed = useRef(false); // true when opening a video added a history entry
+
+    // Full-screen chrome: removes the white browser margin around the page
+    useEffect(() => {
+        const root = document.documentElement;
+        root.classList.add('lv-lock');
+        return () => root.classList.remove('lv-lock');
+    }, []);
+
+    // Connect to YouTube early, so the first tap on a video starts faster
+    useEffect(() => {
+        const hosts = ['https://www.youtube-nocookie.com', 'https://i.ytimg.com', 'https://img.youtube.com'];
+        const links = hosts.map((href) => {
+            const link = document.createElement('link');
+            link.rel = 'preconnect';
+            link.href = href;
+            document.head.appendChild(link);
+            return link;
+        });
+        return () => links.forEach((l) => l.remove());
+    }, []);
 
     const fetchVideos = useCallback(async (pageNum, isInitialLoad = false) => {
         const authToken = accessToken || localStorage.getItem('accessToken');
@@ -375,20 +493,32 @@ function LeadersVideo({ pageTitle }) {
         }
     }, [accessToken, API_URL]);
 
+    // First page of videos
     useEffect(() => {
         if (accessToken && API_URL) {
             setPage(1);
             setAllVideos([]);
             setHasMore(true);
-
-            if (location.state && location.state.selectedVideo) {
-                setActiveVideo(location.state.selectedVideo);
-                navigate(location.pathname, { replace: true, state: {} });
-            }
-
             fetchVideos(1, true);
         }
-    }, [accessToken, API_URL, location.state, navigate, fetchVideos]);
+    }, [accessToken, API_URL, fetchVideos]);
+
+    // Opened from another page with a chosen video: play it straight away
+    const incomingVideo = location.state && location.state.selectedVideo;
+    useEffect(() => {
+        if (incomingVideo) {
+            setActiveVideo(incomingVideo);
+            navigate(location.pathname, { replace: true, state: {} });
+        }
+    }, [incomingVideo, navigate, location.pathname]);
+
+    // Phone / browser Back button closes the watch screen instead of leaving the page
+    useEffect(() => {
+        if (watchPushed.current && !(location.state && location.state.lvWatch)) {
+            watchPushed.current = false;
+            setActiveVideo(null);
+        }
+    }, [location.state]);
 
     const filteredVideos = useMemo(() => {
         if (!debouncedSearchTerm) return allVideos;
@@ -398,6 +528,19 @@ function LeadersVideo({ pageTitle }) {
         );
     }, [allVideos, debouncedSearchTerm]);
 
+    // "Up next": every other loaded video, videos of the same leader first
+    const suggestions = useMemo(() => {
+        if (!activeVideo) return [];
+        const current = videoKey(activeVideo);
+        const others = allVideos.filter((v) => videoKey(v) !== current);
+        const leader = activeVideo.leaderName;
+        if (!leader) return others;
+        const same = [];
+        const rest = [];
+        others.forEach((v) => (v.leaderName === leader ? same : rest).push(v));
+        return [...same, ...rest];
+    }, [activeVideo, allVideos]);
+
     const handleSearchChange = useCallback((e) => {
         setSearchTerm(e.target.value);
     }, []);
@@ -405,12 +548,17 @@ function LeadersVideo({ pageTitle }) {
     const handleClearSearch = useCallback(() => setSearchTerm(''), []);
 
     const handleVideoSelect = useCallback((video) => {
+        if (!watchPushed.current) {
+            navigate(location.pathname + location.search, { state: { lvWatch: true } });
+            watchPushed.current = true;
+        }
         setActiveVideo(video);
-    }, []);
+    }, [navigate, location.pathname, location.search]);
 
-    const handleCloseModal = useCallback(() => {
-        setActiveVideo(null);
-    }, []);
+    const handleCloseWatch = useCallback(() => {
+        if (watchPushed.current) navigate(-1);
+        else setActiveVideo(null);
+    }, [navigate]);
 
     const handleLoadMore = useCallback(() => {
         if (!loadingMore && hasMore) {
@@ -430,7 +578,7 @@ function LeadersVideo({ pageTitle }) {
 
     useEffect(() => {
         const el = sentinelRef.current;
-        if (!el || !hasMore || debouncedSearchTerm || loading || loadingMore || error) return undefined;
+        if (!el || activeVideo || !hasMore || debouncedSearchTerm || loading || loadingMore || error) return undefined;
         if (typeof IntersectionObserver === 'undefined') return undefined;
 
         const io = new IntersectionObserver((entries) => {
@@ -439,7 +587,7 @@ function LeadersVideo({ pageTitle }) {
 
         io.observe(el);
         return () => io.disconnect();
-    }, [hasMore, debouncedSearchTerm, loading, loadingMore, error, allVideos.length]);
+    }, [activeVideo, hasMore, debouncedSearchTerm, loading, loadingMore, error, allVideos.length]);
 
     const showSkeleton = loading && allVideos.length === 0;
     const showFullError = !loading && !!error && allVideos.length === 0;
@@ -486,7 +634,7 @@ function LeadersVideo({ pageTitle }) {
 
                         {filteredVideos.map((video, index) => (
                             <VideoCard
-                                key={video.id || video.publicId}
+                                key={videoKey(video)}
                                 video={video}
                                 index={index}
                                 onSelect={handleVideoSelect}
@@ -523,7 +671,19 @@ function LeadersVideo({ pageTitle }) {
                 )}
             </main>
 
-            <LeaderVideoModal video={activeVideo} onClose={handleCloseModal} />
+            {activeVideo && (
+                <WatchView
+                    video={activeVideo}
+                    suggestions={suggestions}
+                    loadingList={showSkeleton}
+                    hasMore={hasMore}
+                    loadingMore={loadingMore}
+                    canAutoLoad={!loading && !error}
+                    onSelect={handleVideoSelect}
+                    onClose={handleCloseWatch}
+                    onLoadMore={handleLoadMore}
+                />
+            )}
         </div>
     );
 }

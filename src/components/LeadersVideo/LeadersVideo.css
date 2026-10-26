@@ -10,9 +10,9 @@
    - All motion respects prefers-reduced-motion.
    ========================================================================== */
 
-/* Variables are shared with the modal, which is rendered in a portal (outside .lv-page) */
+/* Variables are shared with the watch screen, which is rendered in a portal (outside .lv-page) */
 .lv-page,
-.lv-modal {
+.lv-watch {
   --lv-bg: #07080c;
   --lv-solid: #0d0f15;
   --lv-surface: rgba(255, 255, 255, 0.05);
@@ -37,19 +37,19 @@
 .lv-page *,
 .lv-page *::before,
 .lv-page *::after,
-.lv-modal *,
-.lv-modal *::before,
-.lv-modal *::after { box-sizing: border-box; }
+.lv-watch *,
+.lv-watch *::before,
+.lv-watch *::after { box-sizing: border-box; }
 
 .lv-page button,
 .lv-page input,
-.lv-modal button {
+.lv-watch button {
   font-family: inherit;
   touch-action: manipulation;
 }
 
 .lv-page :focus-visible,
-.lv-modal :focus-visible {
+.lv-watch :focus-visible {
   outline: 2px solid var(--lv-accent);
   outline-offset: 2px;
 }
@@ -485,60 +485,83 @@
 
 @keyframes lv-spin { to { transform: rotate(360deg); } }
 
-/* ------------------------------ Modal ------------------------------ */
+/* --------------------------- Full-screen chrome --------------------------- */
+/* Removes the white browser margin around the page and keeps scrollbars dark */
 
-.lv-modal {
+html.lv-lock,
+html.lv-lock body {
+  margin: 0;
+  padding: 0;
+  background: #07080c;
+  color-scheme: dark;
+}
+
+html.lv-lock #root { margin: 0; padding: 0; max-width: none; }
+
+html.lv-lock ::-webkit-scrollbar-track { background: #07080c; border-radius: 0; }
+html.lv-lock ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 10px; }
+html.lv-lock ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.34); }
+
+/* ----------------------------- Watch screen ----------------------------- */
+/* Phone: player pinned at the top, details + "Up next" scroll underneath. */
+
+.lv-watch {
   position: fixed;
   inset: 0;
   z-index: 1000;
   display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  background: rgba(3, 4, 7, 0.82);
-  overscroll-behavior: contain;
-  animation: lv-fade 0.25s ease both;
-}
-
-.lv-modal.is-closing { animation: lv-fade-out 0.2s ease both; }
-
-@keyframes lv-fade     { from { opacity: 0; } to { opacity: 1; } }
-@keyframes lv-fade-out { from { opacity: 1; } to { opacity: 0; } }
-
-.lv-sheet {
-  display: flex;
   flex-direction: column;
-  width: 100%;
-  max-width: 980px;
-  max-height: 94vh;
-  max-height: 94dvh;
-  overflow: hidden;
-  background: var(--lv-solid);
-  border: 1px solid var(--lv-border-strong);
-  border-bottom: 0;
-  border-radius: 22px 22px 0 0;
-  box-shadow: 0 -24px 70px rgba(0, 0, 0, 0.65);
-  transform: translate3d(0, 0, 0);
-  animation: lv-sheet-in 0.5s var(--lv-ease) both;
+  background: var(--lv-bg);
+  animation: lv-watch-in 0.38s var(--lv-ease) both;
 }
 
-.lv-modal.is-closing .lv-sheet { animation: lv-sheet-out 0.2s ease both; }
+.lv-watch.is-closing { animation: lv-watch-out 0.2s ease both; }
 
-@keyframes lv-sheet-in {
-  from { opacity: 0; transform: translate3d(0, 48px, 0); }
+@keyframes lv-watch-in {
+  from { opacity: 0; transform: translate3d(0, 28px, 0); }
   to   { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 
-@keyframes lv-sheet-out {
+@keyframes lv-watch-out {
   from { opacity: 1; transform: translate3d(0, 0, 0); }
-  to   { opacity: 0; transform: translate3d(0, 36px, 0); }
+  to   { opacity: 0; transform: translate3d(0, 24px, 0); }
+}
+
+.lv-watch-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.lv-watch-grid {
+  width: 100%;
+  max-width: 1500px;
+  margin: 0 auto;
+}
+
+/* On phones the two children become direct children of the grid,
+   so the player stays pinned while the whole list scrolls. */
+.lv-watch-primary { display: contents; }
+
+.lv-player-wrap {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #000;
+  padding-top: env(safe-area-inset-top, 0px);
 }
 
 .lv-player {
   position: relative;
-  flex: none;
   width: 100%;
   aspect-ratio: 16 / 9;
   background: #000;
+  overflow: hidden;
 }
 
 .lv-iframe {
@@ -550,14 +573,46 @@
   background: #000;
 }
 
+/* The list thumbnail shows instantly, then fades out once the player is ready */
+.lv-poster {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: #000;
+  transition: opacity 0.35s ease;
+}
+
+.lv-poster::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.32);
+}
+
+.lv-poster.is-hidden { opacity: 0; pointer-events: none; }
+
+.lv-poster-spin {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 2;
+  width: 46px;
+  height: 46px;
+  margin: -23px 0 0 -23px;
+  border: 3px solid rgba(255, 255, 255, 0.28);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: lv-spin 0.8s linear infinite;
+}
+
 /* Covers the top strip where YouTube shows its title link */
 .lv-player-blocker {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  height: 56px;
-  z-index: 2;
+  height: 48px;
+  z-index: 3;
 }
 
 .lv-player-empty {
@@ -570,11 +625,11 @@
   color: var(--lv-dim);
 }
 
-.lv-close {
+.lv-watch-back {
   position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 3;
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  left: 10px;
+  z-index: 4;
   width: 42px;
   height: 42px;
   display: grid;
@@ -587,58 +642,107 @@
   transition: transform 0.15s ease, background-color 0.2s ease;
 }
 
-.lv-close:hover { background: rgba(10, 12, 18, 0.85); }
-.lv-close:active { transform: scale(0.92); }
+.lv-watch-back:active { transform: scale(0.92); }
 
-.lv-info {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
-  padding: 18px 20px calc(24px + env(safe-area-inset-bottom, 0px));
-}
+/* ---- details ---- */
+
+.lv-watch-info { padding: 14px 16px 4px; }
 
 .lv-info-title {
-  margin: 0 0 12px;
-  font-size: 1.2rem;
-  font-weight: 700;
+  margin: 0 0 14px;
+  font-size: 1.08rem;
+  font-weight: 650;
   line-height: 1.35;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.015em;
 }
 
 .lv-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px 14px;
+  justify-content: space-between;
+  gap: 12px 14px;
 }
 
-.lv-channel {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--lv-dim);
+.lv-watch-info .lv-meta .lv-avatar { width: 40px; height: 40px; font-size: 1rem; }
+.lv-watch-info .lv-meta .lv-leader-name { font-size: 0.98rem; font-weight: 620; color: var(--lv-text); }
+
+.lv-btn.is-small { min-height: 38px; padding: 0 16px; font-size: 0.84rem; }
+
+.lv-desc-box {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--lv-surface);
+  border: 1px solid var(--lv-border);
 }
-
-.lv-verified { color: var(--lv-accent); }
-
-.lv-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
 
 .lv-desc {
-  margin: 18px 0 0;
-  padding-top: 16px;
-  border-top: 1px solid var(--lv-border);
-  font-size: 0.94rem;
-  line-height: 1.65;
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
   color: var(--lv-dim);
   white-space: pre-line;
   overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
-/* ------------------------ Tablet & desktop ------------------------ */
+.lv-desc.is-open { display: block; -webkit-line-clamp: unset; overflow: visible; }
+
+.lv-desc-more {
+  margin-top: 6px;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: var(--lv-text);
+  font-size: 0.86rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+/* ---- Up next (phone: full-width cards, like the YouTube app) ---- */
+
+.lv-watch-next { padding: 6px 0 calc(40px + env(safe-area-inset-bottom, 0px)); }
+
+.lv-next-title {
+  margin: 14px 0 12px;
+  padding: 0 16px;
+  font-size: 1rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.lv-next-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 22px;
+}
+
+.lv-next-list .lv-thumb { border-radius: 0; border-left: 0; border-right: 0; }
+.lv-next-list .lv-card-info { padding: 12px 16px 0; }
+
+.lv-next-empty { margin: 0; padding: 12px 16px; font-size: 0.9rem; color: var(--lv-dim); }
+
+.lv-watch-next .lv-more-wrap { margin-top: 26px; padding: 0 16px; }
+
+/* ------------------------------ Tablet ------------------------------ */
+
+@media (min-width: 600px) and (max-width: 899px) {
+  .lv-watch-info { padding: 16px 24px 6px; }
+  .lv-next-title { padding: 0 24px; }
+
+  .lv-next-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 22px 16px;
+    padding: 0 24px;
+  }
+
+  .lv-next-list .lv-thumb { border-radius: 14px; border: 1px solid var(--lv-border); }
+  .lv-next-list .lv-card-info { padding: 12px 2px 0; }
+}
 
 @media (min-width: 768px) {
   .lv-wrap { padding: 0 32px; }
@@ -657,31 +761,58 @@
 
   .lv-main { padding-top: 22px; }
   .lv-grid { gap: 30px 22px; }
+}
 
-  .lv-modal { align-items: center; padding: 24px; }
+/* ----------- Laptop / large screens / landscape phones: 2 columns ----------- */
 
-  .lv-sheet {
-    border-bottom: 1px solid var(--lv-border-strong);
-    border-radius: 22px;
-    box-shadow: 0 30px 90px rgba(0, 0, 0, 0.7);
-    animation-name: lv-pop-in;
-    animation-duration: 0.45s;
+@media (min-width: 900px), (orientation: landscape) and (max-height: 520px) {
+  .lv-watch-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) clamp(300px, 28vw, 410px);
+    gap: 24px;
+    align-items: start;
+    padding: 20px 24px calc(40px + env(safe-area-inset-bottom, 0px));
+    padding-left: calc(24px + env(safe-area-inset-left, 0px));
+    padding-right: calc(24px + env(safe-area-inset-right, 0px));
   }
 
-  .lv-modal.is-closing .lv-sheet { animation-name: lv-pop-out; animation-duration: 0.2s; }
+  .lv-watch-primary { display: block; min-width: 0; }
 
-  .lv-info { padding: 22px 28px 28px; }
-  .lv-info-title { font-size: 1.45rem; }
-}
+  .lv-player-wrap {
+    position: static;
+    padding-top: 0;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 24px 56px -28px rgba(0, 0, 0, 0.85);
+  }
 
-@keyframes lv-pop-in {
-  from { opacity: 0; transform: translate3d(0, 16px, 0) scale(0.96); }
-  to   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
-}
+  .lv-watch-back { top: 12px; left: 12px; }
 
-@keyframes lv-pop-out {
-  from { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
-  to   { opacity: 0; transform: translate3d(0, 10px, 0) scale(0.97); }
+  .lv-watch-info { padding: 16px 2px 6px; }
+  .lv-info-title { font-size: 1.3rem; }
+
+  .lv-watch-next { padding: 0; }
+  .lv-next-title { margin: 0 0 14px; padding: 0; }
+
+  .lv-next-list { display: flex; flex-direction: column; gap: 14px; padding: 0; }
+
+  .lv-next-list .lv-card-btn {
+    display: grid;
+    grid-template-columns: 168px minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+  }
+
+  .lv-next-list .lv-thumb { border-radius: 10px; border: 1px solid var(--lv-border); }
+  .lv-next-list .lv-card-info { padding: 0; gap: 6px; }
+  .lv-next-list .lv-card-title { font-size: 0.9rem; }
+  .lv-next-list .lv-play { width: 32px; height: 32px; margin: -16px 0 0 -16px; padding-left: 2px; }
+  .lv-next-list .lv-play svg { width: 14px; height: 14px; }
+  .lv-next-list .lv-badge-hd,
+  .lv-next-list .lv-avatar { display: none; }
+  .lv-next-list .lv-leader-name { font-size: 0.78rem; }
+
+  .lv-watch-next .lv-more-wrap { padding: 0; }
 }
 
 /* Hover effects and blur only where there is a mouse and GPU headroom */
@@ -698,36 +829,34 @@
   .lv-card-btn:hover .lv-card-title { color: #fff; }
 
   .lv-play,
-  .lv-close {
+  .lv-watch-back {
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
   }
 
-}
-
-/* Landscape phones: keep the player fully visible */
-@media (max-height: 520px) and (orientation: landscape) {
-  .lv-sheet { max-width: min(100%, calc(78dvh * 16 / 9)); }
+  .lv-watch-back:hover { background: rgba(10, 12, 18, 0.85); }
 }
 
 @media (max-width: 380px) {
   .lv-wrap { padding: 0 12px; }
-  .lv-info { padding-left: 16px; padding-right: 16px; }
+  .lv-watch-info { padding-left: 12px; padding-right: 12px; }
+  .lv-next-title { padding: 0 12px; }
+  .lv-next-list .lv-card-info { padding: 12px 12px 0; }
 }
 
 /* ------------------------- Reduced motion ------------------------- */
 
 @media (prefers-reduced-motion: reduce) {
   .lv-card,
-  .lv-modal,
-  .lv-sheet,
+  .lv-watch,
   .lv-shimmer::after,
-  .lv-spinner {
+  .lv-spinner,
+  .lv-poster-spin {
     animation: none !important;
   }
 
   .lv-page *,
-  .lv-modal * {
+  .lv-watch * {
     transition-duration: 0.01ms !important;
   }
 }
