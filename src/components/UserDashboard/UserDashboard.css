@@ -118,6 +118,7 @@
 .tone-rose   { --tone: 251, 113, 133; }
 .tone-orange { --tone: 251, 146, 60; }
 .tone-green  { --tone: 74, 222, 128; }
+.tone-violet { --tone: 168, 85, 247; }
 
 /* ----------------------------- Scroll reveal ----------------------------- */
 
@@ -943,5 +944,136 @@
   .rcmud-shell *::after {
     animation: none !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* Upgrade banner & Pro badge styles */
+.rcmud-upgrade-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.2em;
+  margin-bottom: 1.3em;
+  padding: 1.1em 1.4em;
+  border-radius: 1.2em;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.18), rgba(217, 119, 6, 0.08)), var(--u-solid);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  box-shadow: 0 1.2em 2.6em -1.6em rgba(245, 158, 11, 0.5);
+}
+
+.rcmud-upgrade-banner-content {
+  display: flex;
+  align-items: center;
+  gap: 1em;
+  min-width: 0;
+}
+
+.rcmud-upgrade-icon {
+  width: 2.8em;
+  height: 2.8em;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 0.85em;
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.rcmud-upgrade-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15em;
+  min-width: 0;
+}
+
+.rcmud-upgrade-text strong {
+  font-size: 1.02em;
+  font-weight: 700;
+  color: #fef3c7;
+}
+
+.rcmud-upgrade-text span {
+  font-size: 0.85em;
+  color: var(--u-dim);
+  line-height: 1.4;
+}
+
+.rcmud-upgrade-banner-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  min-height: 2.6em;
+  padding: 0 1.3em;
+  border: 0;
+  border-radius: 0.8em;
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #ffffff;
+  font-size: 0.9em;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 0.6em 1.3em -0.6em rgba(245, 158, 11, 0.8);
+  transition: transform 0.15s ease;
+}
+
+.rcmud-upgrade-banner-btn:active { transform: scale(0.95); }
+
+.rcmud-ai-pro-badge {
+  position: absolute;
+  top: 1.2em;
+  right: 1.2em;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35em 0.85em;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #ffffff;
+  font-size: 0.75em;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  box-shadow: 0 0.5em 1.2em -0.4em rgba(245, 158, 11, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.rcmud-ai-top-upgrade-btn {
+  position: absolute;
+  top: 1.2em;
+  right: 1.2em;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  padding: 0.35em 0.85em;
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+  font-size: 0.8em;
+  font-weight: 700;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.15s ease;
+}
+
+.rcmud-ai-top-upgrade-btn:hover {
+  background: rgba(245, 158, 11, 0.3);
+}
+
+.rcmud-ai-top-upgrade-btn:active {
+  transform: scale(0.95);
+}
+
+@media (max-width: 600px) {
+  .rcmud-upgrade-banner {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1em;
+    padding: 1em;
+  }
+  .rcmud-upgrade-banner-btn {
+    width: 100%;
+    justify-content: center;
   }
 }

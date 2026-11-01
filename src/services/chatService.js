@@ -10,23 +10,27 @@ class ChatService {
     const token = localStorage.getItem('accessToken') || '';
     
     try {
-      let body;
-      let headers = { 'Authorization': `Bearer ${token}` };
-
-      // Handle Image Uploads (Multipart vs JSON)
+      let imageBase64 = null;
       if (imageFile) {
-        const formData = new FormData();
-        // Append message even if empty string to avoid backend errors
-        formData.append('message', message || " "); 
-        formData.append('image', imageFile); 
-        
-        // Browser sets Content-Type to multipart/form-data automatically
-        body = formData;
-      } else {
-        // Standard Text Message
-        headers['Content-Type'] = 'application/json';
-        body = JSON.stringify({ message });
+        imageBase64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(imageFile);
+        });
       }
+
+      const finalMessage = message && message.trim() ? message : (imageFile ? "Is image ke baare me batao" : "");
+
+      let headers = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      };
+
+      const body = JSON.stringify({
+        message: finalMessage,
+        image: imageBase64
+      });
 
       const response = await fetch(`${config.API.BASE_URL}/api/chat`, {
         method: 'POST',

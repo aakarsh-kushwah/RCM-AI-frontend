@@ -114,6 +114,7 @@ const ChannelVideos = lazyRetry(() => import('./components/Channels/ChannelVideo
 const ChatWindow = lazyRetry(() => import('./components/chatbot/ChatWindow'));
 const VoiceCallPage = lazyRetry(() => import('./components/chatbot/VoiceCall'));
 const DailyReport = lazyRetry(() => import('./components/DailyReport/DailyReport'));
+const LifelinesPage = lazyRetry(() => import('./components/Lifelines/LifelinesPage'));
 
 // ============================================================================
 // 🔒 SUBSCRIPTION PROTECTION HOC
@@ -277,6 +278,15 @@ function App() {
                         element={
                             <UserProtectedRoute>
                                 <DailyReport />
+                            </UserProtectedRoute>
+                        }
+                    />
+
+                    <Route
+                        path="/lifelines"
+                        element={
+                            <UserProtectedRoute>
+                                <LifelinesPage />
                             </UserProtectedRoute>
                         }
                     />

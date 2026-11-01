@@ -44,7 +44,7 @@ const LoginPage = () => {
     const handleGoogleSuccess = async (credentialResponse) => {
         try {
             const response = await axios.post(
-                `${API_URL || 'http://localhost:10000'}/api/auth/google`,
+                `${API_URL || 'http://localhost:5000'}/api/auth/google`,
                 { credential: credentialResponse.credential },
                 { withCredentials: true }
             );

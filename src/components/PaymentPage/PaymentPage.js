@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from '../../context/AuthContext';
 import {
   ShieldCheck, Lock, ChevronRight, CheckCircle, Zap, ShieldAlert
 } from "lucide-react";
@@ -14,6 +15,7 @@ function PaymentPage() {
    const isPaymentProcessing = useRef(false); 
    
    const navigate = useNavigate();
+   const { login } = useAuth(); // Access login function from AuthContext
 
    // 1. Robust SDK Loading
    useEffect(() => {
@@ -44,7 +46,7 @@ function PaymentPage() {
          if (!token) { navigate("/login"); return; }
 
          // 2. Fetch Order + User Details from Backend
-         const baseUrl = (process.env.REACT_APP_API_URL || "http://localhost:10000").replace(/\/$/, "");
+         const baseUrl = (process.env.REACT_APP_API_URL || "http://localhost:5000").replace(/\/$/, "");
 
          const res = await fetch(`${baseUrl}/api/payment/create-subscription`, {
             method: "POST",
@@ -65,7 +67,7 @@ function PaymentPage() {
             key: data.key,
             subscription_id: data.subscriptionId,
             name: "Enterprise AI Suite",
-            description: "Refundable Security Verification",
+            description: "24-Hour Trial / Setup",
             image: "/rcmai_logo.png",
             theme: { color: "#0071e3" },
 
@@ -95,13 +97,14 @@ function PaymentPage() {
                   const vData = await verifyRes.json();
 
                   if (vData.success) {
-                     // Update Local Storage immediately
-                     const user = JSON.parse(localStorage.getItem('user') || '{}');
-                     user.status = 'active';
-                     localStorage.setItem('user', JSON.stringify(user));
+                     // Update Local Storage & AuthContext immediately with status: 'premium'
+                     const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+                     const updatedUser = { ...currentUser, status: 'premium', ...(vData.user || {}) };
+                     localStorage.setItem('user', JSON.stringify(updatedUser));
+                     login(updatedUser, token);
 
-                     // Force Redirect
-                     window.location.href = "/dashboard";
+                     // Navigate without full page reload
+                     navigate("/dashboard", { replace: true });
                   } else {
                      alert("❌ Payment Successful, but Verification Failed.");
                      setLoading(false);
@@ -181,18 +184,46 @@ function PaymentPage() {
                      <div className="refundable-badge">
                         <CheckCircle size={14} /> 100% REFUNDABLE
                      </div>
-                     <p className="hero-desc">Refunded automatically after verification</p>
+                     <p className="hero-desc">Auto-renews at ₹49/month after 24 hours.</p>
                   </div>
                </div>
 
                <div className="feature-grid">
                   <div className="f-item">
                      <Zap size={18} className="f-icon" />
-                     <span><b>Unlimited</b> AI Business Coaching</span>
+                     <span><b>Unlimited 24x7</b> AI Chat Support & Instant Answers</span>
                   </div>
                   <div className="f-item">
                      <Zap size={18} className="f-icon" />
-                     <span><b>Pro</b> Voice Pitching Tools</span>
+                     <span><b>RCM A to Z</b> Product Knowledge (PV, BV & Benefits)</span>
+                  </div>
+                  <div className="f-item">
+                     <Zap size={18} className="f-icon" />
+                     <span><b>Rise Health</b> & Health Care Nutrition Guidance</span>
+                  </div>
+                  <div className="f-item">
+                     <Zap size={18} className="f-icon" />
+                     <span><b>Tree Structure Analysis</b> (Track who purchased & who didn't)</span>
+                  </div>
+                  <div className="f-item">
+                     <Zap size={18} className="f-icon" />
+                     <span><b>Diamond Club</b> (5000+ PV) & Pin Achiever Auto-Tracker</span>
+                  </div>
+                  <div className="f-item">
+                     <Zap size={18} className="f-icon" />
+                     <span><b>Active vs Terminate</b> Downline List</span>
+                  </div>
+                  <div className="f-item">
+                     <Zap size={18} className="f-icon" />
+                     <span><b>Auto WhatsApp</b> Congratulations Poster Generator</span>
+                  </div>
+                  <div className="f-item">
+                     <Zap size={18} className="f-icon" />
+                     <span><b>Daily Business Report</b> & Growth Tracking</span>
+                  </div>
+                  <div className="f-item">
+                     <Zap size={18} className="f-icon" />
+                     <span><b>Commission & Target</b> Calculator</span>
                   </div>
                </div>
 
@@ -207,14 +238,14 @@ function PaymentPage() {
                         ? "Verifying Payment..." 
                         : loading 
                            ? "Securing Connection..." 
-                           : "Activate Now for ₹5"
+                           : "Activate Now for ₹5 (24-Hour Trial)"
                      }
                      {!loading && !verifying && <ChevronRight size={20} />}
                   </button>
                </div>
 
                <div className="sub-detail-faint">
-                  Renews at ₹29/mo after trial. Cancel with 1-click.
+                  ₹5 (24-Hour Trial / Setup), followed by ₹49/month recurring autopay. Cancel with 1-click anytime.
                </div>
             </div>
 

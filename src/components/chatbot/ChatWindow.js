@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import imageCompression from 'browser-image-compression';
 import { useChatEngine } from '../../hooks/useChatEngine';
+import SubscriptionRequired from '../SubscriptionRequired/SubscriptionRequired'; // Import the SubscriptionRequired component
 import './ChatWindow.css';
 import CalculatorWidget from './CalculatorWidget';
 
@@ -22,7 +23,7 @@ const QUICK_ACTIONS = [
 
 /* The backend/hook sends an automatic greeting as the first message.
    Hidden here so the chat opens clean. Best fix: start useChatEngine with []. */
-const HIDE_INITIAL_GREETING = true;
+const HIDE_INITIAL_GREETING = false;
 
 /* Older hook versions store image-only messages as this placeholder text.
    When a real image is available we show the picture instead of the text. */
@@ -288,6 +289,7 @@ const ChatWindow = () => {
   const [calcOpen, setCalcOpen] = useState(false);
   const [calcMounted, setCalcMounted] = useState(false);
   const [calcData, setCalcData] = useState({});
+ 
   const [sentImages, setSentImages] = useState({}); // user-message ordinal -> image URL
 
   const rootRef = useRef(null);
@@ -602,8 +604,9 @@ const ChatWindow = () => {
   const handleSend = () => {
     if (isLoading) return;
 
-    if (user && !ALLOWED_STATUSES.includes(user.status)) {
-      navigate('/payment-setup');
+    if (!user || user.status !== 'premium') {
+      // SubscriptionRequired component is now rendered at the top level.
+      // The user won't be able to send messages if not premium, so we just return.
       return;
     }
 
@@ -633,6 +636,10 @@ const ChatWindow = () => {
 
   const hasDraft = input.trim().length > 0 || Boolean(selectedImage);
   const canSend = hasDraft && !isLoading;
+
+  if (user && user.status !== 'premium') {
+    return <SubscriptionRequired />;
+  }
 
   return (
     <div className="rcm-app" data-theme={theme} ref={rootRef}>

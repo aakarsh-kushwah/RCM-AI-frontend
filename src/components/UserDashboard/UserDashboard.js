@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import {
+import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { ChevronRight,
   Zap, Star, TrendingUp, LogOut, ArrowUpRight, Sparkles, Bell, BellOff, X,
   Film, Download, Package, Youtube, Video, Check
 } from 'lucide-react';
@@ -19,6 +19,7 @@ const NAV_BG = '#f7fbfa';    // navbar / status bar colour
 const NAV_ITEMS = [{ path: '/chat', label: 'Assistant', icon: Zap }];
 
 const MODULES = [
+  { path: '/lifelines', title: 'Lifelines (लाइफ लाइन)', sub: 'Sync and explore your network tree with live stats', cta: 'Open Lifelines', icon: TrendingUp, tone: 'violet', badge: 'Tree' },
   { path: '/shorts', title: 'RCM Shorts', sub: '60s Micro-Learning & Sales Hacks', cta: 'Explore Feed', icon: Film, tone: 'rose' },
   { path: '/leaders-videos', title: 'Leader Academy', sub: 'Training from top direct-selling leaders', cta: 'Watch Classes', icon: Star, tone: 'teal', badge: 'Academy' },
   { path: '/products-videos', title: 'Product Catalog', sub: 'Browse items with visual guides & demos', cta: 'Browse Products', icon: Package, tone: 'orange', badge: 'Catalog' },
@@ -80,7 +81,7 @@ const InstallCard = memo(({ installed, canInstall, showHint, onInstall }) => (
   </section>
 ));
 
-const AiCard = memo(({ onOpen }) => {
+const AiCard = memo(({ onOpen, isPremium, onUpgrade }) => {
   const onPointerMove = useSpotlight();
   return (
     <button
@@ -92,6 +93,30 @@ const AiCard = memo(({ onOpen }) => {
       onPointerMove={onPointerMove}
       aria-label="Open your AI assistant"
     >
+      {isPremium ? (
+        <span className="rcmud-ai-pro-badge" aria-label="Pro User">
+          PRO
+        </span>
+      ) : (
+        <span
+          role="button"
+          tabIndex={0}
+          className="rcmud-ai-top-upgrade-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            onUpgrade();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.stopPropagation();
+              onUpgrade();
+            }
+          }}
+          aria-label="Upgrade to Pro"
+        >
+          Upgrade <ChevronRight size={14} />
+        </span>
+      )}
       <span className="rcmud-ai-shine" aria-hidden="true" />
       <span className="rcmud-ai-icon"><Sparkles size={22} strokeWidth={1.8} /></span>
       <span className="rcmud-feature-copy">
@@ -476,8 +501,31 @@ const UserDashboard = () => {
             onInstall={handleInstall}
           />
 
+          {user?.status !== 'premium' && (
+            <div className="rcmud-upgrade-banner" data-reveal style={{ '--i': 0 }}>
+              <div className="rcmud-upgrade-banner-content">
+                <span className="rcmud-upgrade-icon"><Sparkles size={20} strokeWidth={2} /></span>
+                <div className="rcmud-upgrade-text">
+                  <strong>Unlock Pro AI & Tools</strong>
+                  <span>Get unlimited 24x7 AI chat support, downline tracking, and business calculators.</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="rcmud-upgrade-banner-btn"
+                onClick={() => navigate('/payment-setup')}
+              >
+                Upgrade to Pro <ChevronRight size={16} />
+              </button>
+            </div>
+          )}
+
           <section className="rcmud-feature-grid" aria-label="Quick access">
-            <AiCard onOpen={openChat} />
+            <AiCard
+              onOpen={openChat}
+              isPremium={user?.status === 'premium'}
+              onUpgrade={() => navigate('/payment-setup')}
+            />
             <TeamCard onOpen={handleVideoCall} />
           </section>
 

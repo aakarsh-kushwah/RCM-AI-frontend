@@ -3,47 +3,160 @@
     justify-content: center;
     align-items: center;
     min-height: 100vh;
-    background-color: #f8f9fa;
+    background-color: #050a0c;
+    color: #f1f7f6;
     padding: 20px;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 .subscription-card {
-    background: white;
-    padding: 40px;
-    border-radius: 16px;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+    background: #0d171b;
+    padding: 36px 32px;
+    border-radius: 1.4em;
+    box-shadow: 0 1.5em 3.5em rgba(0, 0, 0, 0.7);
     text-align: center;
-    max-width: 500px;
+    max-width: 540px;
     width: 100%;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.subscription-badge-top {
+    display: inline-block;
+    padding: 0.35em 0.9em;
+    background: rgba(245, 158, 11, 0.15);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.35);
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    margin-bottom: 14px;
 }
 
 .subscription-header {
-    color: #dc3545; /* Red for high-end alert */
-    margin-bottom: 20px;
+    font-size: 1.8rem;
+    font-weight: 800;
+    color: #ffffff;
+    margin-bottom: 10px;
+    letter-spacing: -0.02em;
 }
 
-.subscription-message, .subscription-cta {
-    margin-bottom: 20px;
-    color: #555;
+.subscription-message {
+    font-size: 0.95rem;
+    color: #a0aec0;
+    margin-bottom: 24px;
+    line-height: 1.5;
+}
+
+.trial-pricing-banner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(217, 119, 6, 0.05));
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 24px;
+}
+
+.price-rupee {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #fbbf24;
+}
+
+.price-val {
+    font-size: 2.5rem;
+    font-weight: 900;
+    color: #fbbf24;
+    line-height: 1;
+}
+
+.price-details {
+    display: flex;
+    flex-direction: column;
+    text-align: left;
+}
+
+.price-details strong {
+    font-size: 0.95rem;
+    color: #fef3c7;
+}
+
+.price-details span {
+    font-size: 0.8rem;
+    color: #94a3b8;
+}
+
+.feature-showcase-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    text-align: left;
+    margin-bottom: 24px;
+    max-height: 240px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.feature-showcase-grid::-webkit-scrollbar {
+    width: 4px;
+}
+
+.feature-showcase-grid::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+}
+
+.f-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(255, 255, 255, 0.03);
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    font-size: 0.85rem;
+    color: #e2e8f0;
+}
+
+.f-icon {
+    color: #34d399;
+    flex: none;
 }
 
 .subscribe-button {
-    display: inline-block;
-    background-color: #007bff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    background: linear-gradient(135deg, #f59e0b, #d97706);
     color: white;
-    padding: 12px 24px;
-    border-radius: 8px;
+    padding: 14px 24px;
+    border-radius: 10px;
     text-decoration: none;
-    font-weight: bold;
-    transition: background-color 0.3s;
+    font-weight: 700;
+    font-size: 1rem;
+    box-shadow: 0 6px 20px rgba(245, 158, 11, 0.4);
+    transition: transform 0.15s ease, opacity 0.15s ease;
 }
 
 .subscribe-button:hover {
-    background-color: #0056b3;
+    opacity: 0.95;
+    transform: translateY(-1px);
+}
+
+.subscribe-button:active {
+    transform: scale(0.98);
 }
 
 .razorpay-note {
-    margin-top: 20px;
-    font-size: 0.8em;
-    color: #999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 18px;
+    font-size: 0.78rem;
+    color: #64748b;
 }
