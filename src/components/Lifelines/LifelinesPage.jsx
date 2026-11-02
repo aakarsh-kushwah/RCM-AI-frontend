@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import {
-  ShieldCheck, Activity, TreePine, Sparkles, RefreshCw, LogOut,
-  Search, ChevronDown, ChevronRight, Phone, MessageCircle, X, ArrowUpRight
+  ShieldCheck, Activity, TreePine, Sparkles, RefreshCw, LogOut, Search, Phone,
+  MessageCircle, X, ArrowUpRight, ArrowLeft, ChevronsUp, ChevronUp, Info,
+  Users, TrendingUp, UserCheck, Wallet
 } from 'lucide-react';
 import socketService from '../../services/socketService';
 import {
@@ -10,56 +11,62 @@ import {
 } from '../../services/lifelinesApiClient';
 
 const ACTIVE_ID_KEY = 'rcm_active_buyer_id';
-const COLORS = { green: '#25D366', red: '#EF4444', slate: '#8696A0', teal: '#00A884', line: '#2A3942' };
+const COLORS = { green: '#16A34A', red: '#DC2626', slate: '#94A3B8' };
+const TREE_PAGE = 40;      // direct children rendered per "page" inside the tree
+const CAP = 4;             // children shown per node on deeper levels (rest = "+N")
+const MAX_DEPTH = 6;       // max levels auto-opened under the focused member
+const MATRIX_PAGE = 50;    // table rows rendered per page
+const MAX_PARALLEL = 4;    // max simultaneous tree requests from one browser
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Helpers (module level: created once, never per render)
 // ---------------------------------------------------------------------------
-const formatNumber = (val) => new Intl.NumberFormat('en-IN').format(Number(val || 0));
+const numberFmt = new Intl.NumberFormat('en-IN');
+const formatNumber = (v) => numberFmt.format(Number(v || 0));
+const nid = (n) => String(n?.buyer_id ?? n?.id ?? '');
 
 const getRolling12Months = () => {
-  const months = [];
+  const out = [];
   const now = new Date();
   for (let i = 0; i < 12; i += 1) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    months.push(d.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }));
+    out.push(new Date(now.getFullYear(), now.getMonth() - i, 1)
+      .toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }));
   }
-  return months;
+  return out;
 };
 
-const getInitials = (nameOrId) => {
-  const text = String(nameOrId || '').trim();
-  if (!text) return 'RC';
-  if (/^\d+$/.test(text)) return text.slice(0, 2);
-  const parts = text.split(/\s+/).filter(Boolean);
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[1][0]).toUpperCase();
+const getInitials = (v) => {
+  const t = String(v || '').trim();
+  if (!t) return 'RC';
+  if (/^\d+$/.test(t)) return t.slice(0, 2);
+  const p = t.split(/\s+/).filter(Boolean);
+  return p.length === 1 ? p[0].slice(0, 2).toUpperCase() : (p[0][0] + p[1][0]).toUpperCase();
 };
 
 const formatJoinDate = (d) => {
   if (!d) return '—';
-  const parsed = new Date(d);
-  if (Number.isNaN(parsed.getTime())) return String(d);
-  return parsed.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  const x = new Date(d);
+  if (Number.isNaN(x.getTime())) return String(d);
+  return x.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
-const formatKyc = (status) => {
-  if (status === null || status === undefined || status === '') return '—';
-  if (status === 1 || status === 'A') return 'Active';
-  if (status === 0 || status === 'T') return 'Terminated';
-  return String(status);
+const formatKyc = (s) => {
+  if (s === null || s === undefined || s === '') return '—';
+  if (s === 1 || s === 'A') return 'Active';
+  if (s === 0 || s === 'T') return 'Terminated';
+  return String(s);
 };
 
-const getRing = (node) => {
-  if (Number(node.status ?? 1) === 0) return { color: COLORS.red, label: 'Terminated' };
-  if (Number(node.self_pv ?? node.current_pv ?? 0) > 0) return { color: COLORS.green, label: 'Active' };
+const getRing = (n) => {
+  if (Number(n.status ?? 1) === 0) return { color: COLORS.red, label: 'Terminated' };
+  if (Number(n.self_pv ?? n.current_pv ?? 0) > 0) return { color: COLORS.green, label: 'Active' };
   return { color: COLORS.slate, label: '0 PV' };
 };
 
-const toWhatsappNumber = (mobile) => {
-  const digits = String(mobile || '').replace(/\D/g, '');
-  if (digits.length === 10) return `91${digits}`;
-  return digits.length >= 11 ? digits : '';
+const toWhatsappNumber = (m) => {
+  const d = String(m || '').replace(/\D/g, '');
+  if (d.length === 10) return `91${d}`;
+  return d.length >= 11 ? d : '';
 };
 
 const getActiveSocket = () => {
@@ -67,35 +74,185 @@ const getActiveSocket = () => {
   return socketService?.getSocket?.() || socketService?.socket || null;
 };
 
-const cardStyle = { background: '#111B21', border: '1px solid #202C33', borderRadius: 20 };
-const inputStyle = {
-  width: '100%', background: '#1F2C34', border: '1px solid #2A3942', borderRadius: 12,
-  color: '#E9EDEF', padding: '12px 16px', fontSize: 14, outline: 'none', boxSizing: 'border-box'
+// Small request limiter: thousands of taps can never open more than MAX_PARALLEL calls per browser.
+const makeLimiter = (max) => {
+  let active = 0;
+  const queue = [];
+  const next = () => {
+    if (active >= max || !queue.length) return;
+    active += 1;
+    const { fn, res, rej } = queue.shift();
+    fn().then(res, rej).finally(() => { active -= 1; next(); });
+  };
+  return (fn) => new Promise((res, rej) => { queue.push({ fn, res, rej }); next(); });
 };
+const limitTreeCalls = makeLimiter(MAX_PARALLEL);
 
 // ---------------------------------------------------------------------------
-// Avatar (photo with graceful fallback to 2-letter initials)
+// Styles: one CSS block (classes + media queries) instead of thousands of inline style objects
 // ---------------------------------------------------------------------------
-const Avatar = ({ name, id, photoUrl, color, size = 60, fontSize = 18 }) => {
+const CSS = `
+.ll{--bg:#F5F7FB;--bd:#E7EBF2;--tx:#0F172A;--mu:#64748B;--pri:#111827;--gr:#16A34A;--rd:#DC2626;--sl:#94A3B8;--line:#CBD5E1;
+  background:var(--bg);color:var(--tx);min-height:100vh;padding:20px;font-family:Inter,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;-webkit-tap-highlight-color:transparent}
+.ll,.ll *{box-sizing:border-box}
+.ll button{font-family:inherit}
+.ll-wrap{max-width:1240px;margin:0 auto}
+.ll-card{background:#fff;border:1px solid var(--bd);border-radius:18px;box-shadow:0 1px 2px rgba(16,24,40,.04)}
+.ll-head{padding:16px 20px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px}
+.ll-who{display:flex;align-items:center;gap:14px;min-width:0}
+.ll-h1{font-size:20px;font-weight:800;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ll-sub{font-size:12.5px;color:var(--mu);margin-top:3px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ll-chip{display:inline-flex;align-items:center;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;background:#F1F5F9;color:var(--mu)}
+.ll-chip.g{background:#DCFCE7;color:#15803D}.ll-chip.r{background:#FEE2E2;color:#B91C1C}.ll-chip.t{background:#E0F2FE;color:#0369A1}
+.ll-acts{display:flex;gap:8px;flex-wrap:wrap}
+.ll-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:40px;padding:0 16px;border-radius:12px;border:1px solid var(--bd);background:#fff;color:var(--tx);font-weight:700;font-size:13px;cursor:pointer;text-decoration:none;transition:background .15s}
+.ll-btn:hover{background:#F8FAFC}.ll-btn:disabled{opacity:.45;cursor:not-allowed}
+.ll-btn.p{background:var(--pri);color:#fff;border-color:var(--pri)}.ll-btn.p:hover{background:#1F2937}
+.ll-btn.d{color:var(--rd);border-color:#FECACA;background:#FEF2F2}
+.ll-btn.ic{width:40px;padding:0}
+.ll-btn:focus-visible,.ll-tab:focus-visible,.ll-node:focus-visible,.ll-mini:focus-visible{outline:2px solid #6366F1;outline-offset:2px}
+.ll-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:6px;margin-bottom:16px}
+.ll-tab{height:44px;border:0;border-radius:12px;background:transparent;color:var(--mu);font-weight:700;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
+.ll-tab.on{background:var(--pri);color:#fff}
+.ll-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}
+.ll-stat{padding:18px;display:flex;flex-direction:column;gap:6px}
+.ll-stat .ico{width:38px;height:38px;border-radius:11px;background:#F1F5F9;display:grid;place-items:center;color:var(--pri);margin-bottom:6px}
+.ll-stat .v{font-size:30px;font-weight:800;letter-spacing:-.5px}
+.ll-stat .l{font-size:13px;color:var(--mu);font-weight:600}
+.ll-stat .n{font-size:12px;color:var(--mu)}
+.ll-sec{padding:20px;margin-top:16px}
+.ll-sec h3{margin:0;font-size:18px}.ll-sec p{margin:3px 0 0;color:var(--mu);font-size:13px}
+.ll-sechd{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.ll-legs{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:12px}
+.ll-leg{border:1px solid var(--bd);border-radius:14px;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;gap:10px;cursor:pointer;background:#fff;text-align:left;width:100%}
+.ll-leg:hover{background:#F8FAFC}
+.ll-empty{padding:22px;text-align:center;color:var(--mu);font-size:14px}
+.ll-av{border-radius:50%;background:#F1F5F9;display:flex;align-items:center;justify-content:center;overflow:hidden;flex:none;font-weight:800}
+.ll-av img{width:100%;height:100%;object-fit:cover}
+.ll-chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.ll-fchip{border:1px solid var(--bd);background:#fff;border-radius:999px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;color:var(--tx)}
+.ll-fchip.on{background:var(--pri);color:#fff;border-color:var(--pri)}
+.ll-tw{overflow:auto;border:1px solid var(--bd);border-radius:14px;max-height:70vh;background:#fff}
+.ll-tbl{width:100%;border-collapse:separate;border-spacing:0;font-size:13px;white-space:nowrap}
+.ll-tbl th{position:sticky;top:0;background:#F8FAFC;color:var(--mu);text-align:left;padding:12px 14px;font-weight:700;z-index:2;border-bottom:1px solid var(--bd)}
+.ll-tbl td{padding:12px 14px;background:#fff;border-bottom:1px solid #F1F5F9}
+.ll-tbl tr:nth-child(even) td{background:#FAFBFD}
+.ll-tbl .sl{position:sticky;left:0;z-index:1;min-width:200px;box-shadow:2px 0 6px rgba(15,23,42,.05)}
+.ll-tbl th.sl{z-index:3}
+.ll-tbl .sr{position:sticky;right:0;z-index:1;box-shadow:-2px 0 6px rgba(15,23,42,.05)}
+.ll-tbl th.sr{z-index:3}
+.ll-tbl .num{text-align:right}
+.ll-round{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;text-decoration:none;background:#F1F5F9;color:var(--gr)}
+.ll-round.wa{background:var(--gr);color:#fff}.ll-round.off{opacity:.35;color:var(--mu)}
+.ll-pager{display:flex;justify-content:space-between;align-items:center;margin-top:12px;font-size:13px;color:var(--mu);gap:10px;flex-wrap:wrap}
+.ll-ov{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:100;display:flex;justify-content:flex-end}
+.ll-dr{width:min(420px,100%);background:#fff;height:100%;padding:22px;overflow-y:auto}
+.ll-ov.c{align-items:center;justify-content:center;z-index:110;padding:16px;background:rgba(245,247,251,.92)}
+.ll-modal{width:min(440px,100%);background:#fff;border:1px solid var(--bd);border-radius:22px;padding:28px;box-shadow:0 24px 60px rgba(15,23,42,.18);position:relative}
+.ll-in{width:100%;height:46px;border:1px solid var(--bd);border-radius:12px;padding:0 14px;font-size:14px;background:#fff;color:var(--tx);outline:none}
+.ll-in:focus{border-color:#6366F1;box-shadow:0 0 0 3px rgba(99,102,241,.15)}
+.ll-err{background:#FEF2F2;border:1px solid #FECACA;color:#B91C1C;border-radius:12px;padding:10px 14px;font-size:13px}
+.ll-grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ll-kv{background:#F8FAFC;border:1px solid var(--bd);border-radius:12px;padding:12px}
+.ll-kv .k{font-size:11px;color:var(--mu)}.ll-kv .v{font-size:15px;font-weight:800;margin-top:3px;word-break:break-word}
+.ll-pill{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;background:#fff;border:1.5px solid var(--bd);border-radius:16px;padding:12px 18px;z-index:90;box-shadow:0 12px 32px rgba(15,23,42,.18);display:flex;gap:12px;align-items:center;max-width:92vw}
+.ll-dot{width:10px;height:10px;border-radius:50%;flex:none}
+.ll-toast{background:#FEF2F2;border:1px solid #FECACA;color:#B91C1C;border-radius:12px;padding:10px 14px;margin-bottom:14px;font-size:13px;display:flex;justify-content:space-between;gap:10px}
+
+/* ---------- Tree screen (full screen) ---------- */
+.ll-tree{--slot:84px;--upw:144px;position:fixed;inset:0;z-index:50;background:#fff;display:flex;flex-direction:column;color:var(--tx)}
+@media (min-width:761px){.ll-tree{--slot:112px;--upw:176px}}
+.ll-tbar{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--bd);position:relative}
+.ll-tbar h2{margin:0;font-size:16px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ll-sbox{position:relative;width:min(300px,50vw)}
+.ll-sbox .ll-in{height:38px;padding-left:34px;font-size:13px}
+.ll-sbox svg{position:absolute;left:11px;top:11px;color:var(--mu)}
+.ll-sres{position:absolute;top:calc(100% + 6px);right:0;width:min(340px,92vw);background:#fff;border:1px solid var(--bd);border-radius:14px;box-shadow:0 14px 34px rgba(15,23,42,.16);max-height:300px;overflow-y:auto;z-index:20}
+.ll-sres div.it{padding:10px 14px;cursor:pointer;border-bottom:1px solid #F1F5F9}
+.ll-sres div.it:hover{background:#F8FAFC}
+.ll-crumbbar{display:flex;align-items:center;gap:6px;padding:6px 10px;border-bottom:1px solid var(--bd);background:#FAFBFD}
+.ll-crumbs{display:flex;gap:5px;align-items:center;overflow-x:auto;flex:1;scrollbar-width:none;min-width:0}
+.ll-crumbs::-webkit-scrollbar{display:none}
+.ll-crumb{flex:none;border:1px solid var(--bd);background:#fff;border-radius:999px;padding:5px 10px;font-size:11.5px;font-weight:700;cursor:pointer;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tx)}
+.ll-crumb.on{background:var(--pri);color:#fff;border-color:var(--pri)}
+.ll-crumb.fw{opacity:.45;border-style:dashed}
+.ll-sep{color:var(--sl);flex:none;font-size:12px}
+.ll-stage{flex:1;overflow:auto;padding:12px 60px 90px 8px;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+.ll-inner{width:max-content;margin:0 auto;display:flex;flex-direction:column;align-items:center}
+.ll-inner.left{margin:0;align-items:flex-start}
+.ll-inner.grow .ll-row{transform-origin:50% 0;animation:llGrow .18s ease-out}
+.ll-inner.shrink{transform-origin:50% 0;animation:llShrink .18s ease-out}
+.ll-up{width:var(--upw);display:flex;flex-direction:column;align-items:center}
+.ll-vline{width:0;height:var(--h,18px);border-left:2px dashed var(--line)}
+.ll-apill{width:var(--upw);height:34px;display:flex;align-items:center;gap:6px;border:2px solid var(--fc,#94A3B8);border-radius:11px;padding:0 7px;background:#fff;cursor:pointer;font-size:11px;font-weight:800;text-align:left}
+.ll-apill.t{background:#FEF2F2}
+.ll-apill span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ll-fcard{width:var(--upw);border:2px solid var(--fc,#94A3B8);border-radius:14px;padding:8px 6px;display:flex;flex-direction:column;align-items:center;background:#fff;box-shadow:0 4px 14px rgba(15,23,42,.1);position:relative;text-align:center}
+.ll-fcard.t{background:#FEF2F2}
+.ll-fcard .nm{font-size:12.5px;font-weight:800;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:5px}
+.ll-fcard .id{font-size:10px;color:var(--mu);margin-top:1px}
+.ll-fcard .inf{position:absolute;top:5px;right:5px;width:24px;height:24px;border-radius:50%;border:0;background:#F1F5F9;color:var(--mu);display:grid;place-items:center;cursor:pointer;padding:0}
+.ll-row{display:flex;align-items:flex-start;position:relative}
+.ll-spine{position:absolute;top:0;height:0;border-top:2px dashed var(--line)}
+.ll-col{--stub:20px;position:relative;display:flex;flex-direction:column;align-items:center;padding:var(--stub) 4px 0}
+.ll-st{position:absolute;top:0;left:50%;height:var(--stub);border-left:2px dashed var(--line)}
+.ll-hl{position:absolute;top:0;left:0;right:0;border-top:2px dashed var(--line)}
+.ll-hl.f{left:50%}.ll-hl.l{right:50%}
+.ll-node{width:calc(var(--slot) - 8px);border:2px solid var(--fc,#94A3B8);border-radius:12px;padding:5px 3px;background:#fff;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;z-index:1;text-align:center;transition:transform .1s}
+.ll-node:active{transform:scale(.95)}
+.ll-node.t{background:#FEF2F2}
+.ll-node .nm{font-size:10.5px;font-weight:800;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:4px}
+.ll-node .id{font-size:9px;color:var(--mu);line-height:1.2}
+.ll-tag{margin-top:3px;font-size:9px;font-weight:800;padding:1px 6px;border-radius:999px;background:#F1F5F9;color:var(--mu);white-space:nowrap}
+.ll-tag.g{background:#DCFCE7;color:#15803D}.ll-tag.r{background:#FEE2E2;color:#B91C1C}
+.ll-kidhint{font-size:9px;color:#0369A1;font-weight:800;margin-top:2px}
+.ll-more{min-width:34px;height:34px;padding:0 8px;border-radius:17px;border:1.5px dashed #94A3B8;background:#fff;color:var(--mu);font-size:11px;font-weight:800;cursor:pointer;display:grid;place-items:center;position:relative;z-index:1}
+.ll-rail{position:fixed;right:2px;top:50%;transform:translateY(-50%);height:min(60vh,400px);width:54px;z-index:60;touch-action:none;cursor:ns-resize;user-select:none}
+.ll-rtrack{position:absolute;left:25px;top:16px;bottom:16px;width:4px;border-radius:4px;background:#E2E8F0}
+.ll-rfill{position:absolute;left:0;top:0;width:100%;border-radius:4px;background:var(--pri)}
+.ll-tick{position:absolute;left:-3px;width:10px;height:10px;border-radius:50%;background:#fff;border:2px solid #CBD5E1;transform:translateY(-50%)}
+.ll-tick.on{border-color:var(--pri)}
+.ll-thumb{position:absolute;left:-11px;width:26px;height:26px;border-radius:50%;background:var(--pri);border:3px solid #fff;box-shadow:0 2px 10px rgba(15,23,42,.4);transform:translateY(-50%)}
+.ll-thumb.s{transition:top .15s}
+.ll-bubble{position:absolute;right:30px;transform:translateY(-50%);background:var(--pri);color:#fff;font-size:12px;font-weight:700;padding:6px 10px;border-radius:10px;white-space:nowrap;max-width:60vw;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
+@keyframes llGrow{from{opacity:0;transform:scaleY(.55) translateY(-6px)}to{opacity:1;transform:none}}
+@keyframes llShrink{from{opacity:.25;transform:scale(1.07)}to{opacity:1;transform:none}}
+@keyframes llSpin{to{transform:rotate(360deg)}}
+@keyframes llPulse{0%,100%{opacity:1}50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.ll-inner,.ll-inner .ll-row{animation:none!important}.ll-node{transition:none}}
+@media (max-width:760px){
+  .ll{padding:12px}
+  .ll-head{padding:14px}
+  .ll-btn .t{display:none}.ll-btn{padding:0;width:40px}
+  .ll-tab .t{font-size:12px}
+  .ll-tab{gap:5px;font-size:12px}
+  .ll-stats{grid-template-columns:1fr 1fr;gap:10px}
+  .ll-stat{padding:14px}.ll-stat .v{font-size:23px}
+  .ll-sec{padding:14px}
+  .ll-sbox{width:auto;flex:1}
+  .ll-ov{align-items:flex-end}
+  .ll-dr{width:100%;height:auto;max-height:90vh;border-radius:22px 22px 0 0}
+  .ll-ov.c{align-items:center}
+}
+`;
+
+// ---------------------------------------------------------------------------
+// Avatar
+// ---------------------------------------------------------------------------
+const Avatar = memo(function Avatar({ name, id, photoUrl, color, size = 56, fontSize = 16 }) {
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [photoUrl]);
   return (
-    <div style={{
-      width: size, height: size, minWidth: size, borderRadius: '50%', border: `3px solid ${color}`,
-      background: '#1F2C34', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      overflow: 'hidden', boxSizing: 'border-box'
-    }}>
-      {photoUrl && !failed ? (
-        <img src={photoUrl} alt="" onError={() => setFailed(true)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-      ) : (
-        <span style={{ fontSize, fontWeight: 800, color }}>{getInitials(name || id)}</span>
-      )}
+    <div className="ll-av" style={{ width: size, height: size, border: `${size < 44 ? 2 : 3}px solid ${color}`, color, fontSize }}>
+      {photoUrl && !failed
+        ? <img src={photoUrl} alt="" loading="lazy" onError={() => setFailed(true)} />
+        : <span>{getInitials(name || id)}</span>}
     </div>
   );
-};
+});
 
 // ---------------------------------------------------------------------------
-// Live telemetry pill (own state, so socket updates never re-render the tree)
+// Live sync pill. Socket events are throttled so a flood of messages never re-renders the page.
 // ---------------------------------------------------------------------------
 function SyncPill({ buyerId, onComplete }) {
   const [t, setT] = useState(null);
@@ -106,18 +263,26 @@ function SyncPill({ buyerId, onComplete }) {
     const socket = getActiveSocket();
     if (!socket || !buyerId) return undefined;
     let hideTimer;
+    let flushTimer;
+    let latest = null;
     const handle = (data) => {
       if (!data || String(data.buyerId) !== String(buyerId)) return;
-      setT(data);
+      latest = data;
       if (data.isComplete) {
+        clearTimeout(flushTimer); flushTimer = null;
+        setT(data);
         if (onCompleteRef.current) onCompleteRef.current(data);
         clearTimeout(hideTimer);
         hideTimer = setTimeout(() => setT(null), data.status === 'error' ? 6000 : 4000);
+        return;
+      }
+      if (!flushTimer) {
+        flushTimer = setTimeout(() => { flushTimer = null; setT(latest); }, 400);
       }
     };
     socket.on('LIFELINES_SYNC_PROGRESS', handle);
     return () => {
-      clearTimeout(hideTimer);
+      clearTimeout(hideTimer); clearTimeout(flushTimer);
       if (socket.off) socket.off('LIFELINES_SYNC_PROGRESS', handle);
     };
   }, [buyerId]);
@@ -125,28 +290,18 @@ function SyncPill({ buyerId, onComplete }) {
   if (!t) return null;
   const isError = t.status === 'error';
   const done = t.isComplete && !isError;
-
   return (
-    <div style={{
-      position: 'fixed', bottom: 24, right: 24, background: '#111B21',
-      border: `2px solid ${isError ? COLORS.red : COLORS.teal}`, borderRadius: 16, padding: '14px 22px',
-      zIndex: 90, boxShadow: '0 10px 30px rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', gap: 14, maxWidth: '90vw'
-    }}>
-      <div style={{
-        width: 12, height: 12, borderRadius: '50%', background: isError ? COLORS.red : COLORS.green,
-        animation: t.isComplete ? 'none' : 'lifelinesPulse 1.2s infinite'
-      }} />
+    <div className="ll-pill" style={{ borderColor: isError ? '#FECACA' : '#BBF7D0' }}>
+      <div className="ll-dot" style={{ background: isError ? COLORS.red : COLORS.green, animation: t.isComplete ? 'none' : 'llPulse 1.2s infinite' }} />
       <div>
-        <div style={{ fontSize: 14, fontWeight: 800, color: '#E9EDEF' }}>
-          {isError
-            ? (t.message || 'Sync failed')
-            : done
-              ? `✅ Sync complete: ${formatNumber(t.totalParsed)} members`
-              : `⚡ Live Syncing Team: ${formatNumber(t.totalParsed)} members found`}
+        <div style={{ fontSize: 13.5, fontWeight: 800 }}>
+          {isError ? (t.message || 'Sync failed')
+            : done ? `Sync complete: ${formatNumber(t.totalParsed)} members`
+              : `Syncing team: ${formatNumber(t.totalParsed)} members found`}
         </div>
         {!isError && (
-          <div style={{ fontSize: 12, color: COLORS.slate, marginTop: 2 }}>
-            ({formatNumber(t.activePurchasers)} active, {formatNumber(t.terminatedCount)} terminated)
+          <div style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>
+            {formatNumber(t.activePurchasers)} active, {formatNumber(t.terminatedCount)} terminated
             {!done && ` • ${t.latestMemberName || 'Processing...'}`}
           </div>
         )}
@@ -156,127 +311,347 @@ function SyncPill({ buyerId, onComplete }) {
 }
 
 // ---------------------------------------------------------------------------
-// Tree node (recursive, memoised)
+// Tree pieces
 // ---------------------------------------------------------------------------
-const Connector = ({ index, count }) => {
-  const line = `2px dashed ${COLORS.line}`;
-  return (
-    <>
-      {count > 1 && (
-        <div style={{
-          position: 'absolute', top: 0, height: 0, borderTop: line,
-          left: index === 0 ? '50%' : 0, right: index === count - 1 ? '50%' : 0
-        }} />
-      )}
-      <div style={{ position: 'absolute', top: 0, left: '50%', height: 24, borderLeft: line }} />
-    </>
-  );
+// Border colour rule: Terminated = red (whole box + label), bought this month (self PV > 0) = green, otherwise grey.
+const getStatus = (n) => {
+  const ring = getRing(n);
+  if (ring.label === 'Terminated') return { ...ring, cls: 'r', tag: 'Terminated' };
+  const pv = Number(n.self_pv ?? n.current_pv ?? 0);
+  return { ...ring, cls: pv > 0 ? 'g' : '', tag: `${formatNumber(pv)} PV` };
 };
 
-const TreeNode = memo(function TreeNode({
-  node, index, count, expandedNodes, childrenCache, loadingNodes, crawlRunning, onToggle, onOpen
-}) {
-  const id = String(node.buyer_id || node.id);
-  const isExpanded = Boolean(expandedNodes[id]);
-  const children = childrenCache[id];
-  const loading = Boolean(loadingNodes[id]);
-  const ring = getRing(node);
-  const selfPv = Number(node.self_pv ?? node.current_pv ?? 0);
-  const rePur = Number(node.repurchase_amt || 0);
-  const groupPv = Number(node.total_group_pv || 0);
-  const isTerminated = Number(node.status ?? 1) === 0;
-  const canExpand = Boolean(node.has_children) || Number(node.children_count) > 0 || crawlRunning;
+const Branch = ({ index, count }) => (
+  <>
+    {count > 1 && <div className={`ll-hl${index === 0 ? ' f' : ''}${index === count - 1 ? ' l' : ''}`} />}
+    <div className="ll-st" />
+  </>
+);
+
+// Decides how many levels fit on this screen and which parents still need their children loaded.
+function buildPlan(focus, getKids, availW, slot, visible, crawl) {
+  const need = [];
+  let level = [focus];
+  let maxLevel = 0;
+  let widest = 1;
+  for (let d = 1; d <= MAX_DEPTH; d += 1) {
+    const cap = d === 1 ? visible : CAP;
+    const next = [];
+    let slots = 0;
+    let unknown = false;
+    for (let i = 0; i < level.length; i += 1) {
+      const n = level[i];
+      const id = nid(n);
+      const kids = getKids(id);
+      if (kids === undefined) {
+        if (d === 1 || n.has_children || Number(n.children_count) > 0 || crawl) { need.push(id); unknown = true; }
+      } else {
+        const take = Math.min(kids.length, cap);
+        for (let j = 0; j < take; j += 1) next.push(kids[j]);
+        slots += take + (d > 1 && kids.length > cap ? 1 : 0);
+      }
+    }
+    if (d > 2 && unknown) break;                    // wait for data before deciding on a 3rd+ level
+    if (slots === 0) break;
+    if (d > 2 && slots * slot > availW) break;      // deeper levels only while they fit on screen
+    maxLevel = d;
+    widest = Math.max(widest, slots);
+    level = next;
+  }
+  return { maxLevel, widest, need };
+}
+
+function Subtree({ node, chain, index, count, level, plan, getKids, onPick }) {
+  const id = nid(node);
+  const st = getStatus(node);
+  const showKids = level + 1 <= plan.maxLevel;
+  const kids = showKids ? getKids(id) : undefined;
+  const shown = kids ? kids.slice(0, CAP) : [];
+  const extra = kids ? kids.length - shown.length : 0;
+  const kc = Number(node.children_count) || 0;
+  const slots = shown.length + (extra > 0 ? 1 : 0);
 
   return (
-    <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '24px 18px 0' }}>
-      <Connector index={index} count={count} />
-
-      <div
-        onClick={() => onOpen(node)}
-        style={{
-          background: '#111B21', border: `2px solid ${ring.color}`, borderRadius: 20, padding: '14px 18px',
-          minWidth: 220, maxWidth: 260, display: 'flex', flexDirection: 'column', alignItems: 'center',
-          cursor: 'pointer', boxShadow: '0 6px 20px rgba(0,0,0,0.4)', zIndex: 2
-        }}
-      >
-        <div style={{ marginBottom: 8 }}>
-          <Avatar name={node.name} id={id} photoUrl={node.photo_url} color={ring.color} size={60} />
-        </div>
-
-        <div style={{ fontWeight: 800, fontSize: 15, color: '#E9EDEF', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%' }}>
-          {node.name || `Associate #${id}`}
-        </div>
-        <div style={{ fontSize: 12, color: COLORS.slate, marginTop: 2 }}>
-          ID: <span style={{ color: '#E9EDEF', fontWeight: 600 }}>{id}</span>
-        </div>
-
-        <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
-          <span style={{
-            background: isTerminated ? 'rgba(239,68,68,0.15)' : selfPv > 0 ? 'rgba(37,211,102,0.15)' : 'rgba(134,150,160,0.15)',
-            color: ring.color, padding: '3px 8px', borderRadius: 8, fontSize: 11, fontWeight: 700
-          }}>
-            {isTerminated ? 'Terminated' : `Self: ${formatNumber(selfPv)} PV`}
-          </span>
-          {rePur > 0 && (
-            <span style={{ background: '#1F2C34', color: COLORS.slate, padding: '3px 8px', borderRadius: 8, fontSize: 11, fontWeight: 600 }}>
-              ₹{formatNumber(rePur)}
-            </span>
-          )}
-        </div>
-
-        {groupPv > 0 && (
-          <div style={{ fontSize: 11, color: COLORS.teal, fontWeight: 700, marginTop: 6 }}>
-            Group: {formatNumber(groupPv)} PV
-          </div>
-        )}
-
-        {canExpand && (
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); onToggle(node); }}
-            style={{
-              marginTop: 10, background: '#1F2C34', border: `1px solid ${COLORS.line}`, color: '#E9EDEF',
-              padding: '5px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer',
-              display: 'flex', alignItems: 'center', gap: 4
-            }}
-          >
-            {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            {loading ? 'Loading...' : isExpanded ? 'Collapse' : 'Expand Downline'}
-          </button>
-        )}
+    <div className="ll-col">
+      <Branch index={index} count={count} />
+      <div className={`ll-node${st.cls === 'r' ? ' t' : ''}`} style={{ '--fc': st.color }} role="button" tabIndex={0}
+        onClick={() => onPick(chain)} onKeyDown={(e) => { if (e.key === 'Enter') onPick(chain); }}>
+        <Avatar name={node.name} id={id} photoUrl={node.photo_url} color={st.color} size={34} fontSize={11} />
+        <div className="nm">{node.name || `#${id}`}</div>
+        <div className="id">{id}</div>
+        <span className={`ll-tag ${st.cls}`}>{st.tag}</span>
+        {!showKids && kc > 0 && <span className="ll-kidhint">↓ {kc}</span>}
       </div>
-
-      {isExpanded && (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          <div style={{ height: 0 }} />
-          {loading && !children ? (
-            <div style={{ padding: '30px 10px 0', fontSize: 12, color: COLORS.slate }}>Loading downline...</div>
-          ) : children && children.length > 0 ? (
-            <div style={{ display: 'flex', alignItems: 'flex-start', marginTop: 0 }}>
-              <div style={{ position: 'absolute' }} />
-              {children.map((child, i) => (
-                <TreeNode
-                  key={child.buyer_id || child.id}
-                  node={child}
-                  index={i}
-                  count={children.length}
-                  expandedNodes={expandedNodes}
-                  childrenCache={childrenCache}
-                  loadingNodes={loadingNodes}
-                  crawlRunning={crawlRunning}
-                  onToggle={onToggle}
-                  onOpen={onOpen}
-                />
-              ))}
-            </div>
-          ) : (
-            <div style={{ marginTop: 24, background: '#111B21', border: `1px dashed ${COLORS.line}`, borderRadius: 12, padding: '10px 16px', fontSize: 12, color: COLORS.slate }}>
-              No deeper downlines enrolled
-            </div>
-          )}
-        </div>
+      {slots > 0 && (
+        <>
+          <div className="ll-vline" style={{ '--h': '12px' }} />
+          <div className="ll-row">
+            {shown.map((k, i) => (
+              <Subtree key={nid(k)} node={k} chain={chain.concat(k)} index={i} count={slots}
+                level={level + 1} plan={plan} getKids={getKids} onPick={onPick} />
+            ))}
+            {extra > 0 && (
+              <div className="ll-col">
+                <Branch index={shown.length} count={slots} />
+                <button type="button" className="ll-more" onClick={() => onPick(chain)} aria-label={`${extra} more`}>+{extra}</button>
+              </div>
+            )}
+          </div>
+        </>
       )}
     </div>
+  );
+}
+
+// Depth scrubber (like a video seek bar): drag up = collapse back through the uplines, drag down = open again.
+// The thumb follows the finger smoothly and the tree updates live while dragging.
+function DepthRail({ trail, idx, onChange }) {
+  const trackRef = useRef(null);
+  const draggingRef = useRef(false);
+  const [drag, setDrag] = useState(null);
+  const n = trail.length;
+  const ratio = drag !== null ? drag : (n > 1 ? idx / (n - 1) : 0);
+
+  const pick = useCallback((clientY) => {
+    const el = trackRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const x = Math.min(1, Math.max(0, (clientY - r.top) / r.height));
+    setDrag(x);
+    onChange(Math.round(x * (n - 1)));
+  }, [n, onChange]);
+
+  const stop = useCallback(() => { draggingRef.current = false; setDrag(null); }, []);
+
+  return (
+    <div className="ll-rail" aria-label="Tree depth"
+      onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); draggingRef.current = true; pick(e.clientY); }}
+      onPointerMove={(e) => { if (draggingRef.current) pick(e.clientY); }}
+      onPointerUp={stop} onPointerCancel={stop}>
+      <div className="ll-rtrack" ref={trackRef}>
+        <div className="ll-rfill" style={{ height: `${ratio * 100}%` }} />
+        {n <= 30 && trail.map((t, i) => (
+          <div key={nid(t) + i} className={`ll-tick${i <= idx ? ' on' : ''}`} style={{ top: `${n > 1 ? (i / (n - 1)) * 100 : 0}%` }} />
+        ))}
+        <div className={`ll-thumb${drag === null ? ' s' : ''}`} style={{ top: `${ratio * 100}%` }} />
+        {drag !== null && (
+          <div className="ll-bubble" style={{ top: `${ratio * 100}%` }}>
+            L{idx} • {trail[idx]?.name || nid(trail[idx])}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TreeScreen({
+  trail, idx, setIdx, onPush, getKids, ensureKids, retry, isLoading, isFailed,
+  crawlRunning, onClose, onProfile, search, setSearch, results, searching, onPickResult
+}) {
+  const focus = trail[idx];
+  const fid = nid(focus);
+  const kids = getKids(fid);
+  const [visible, setVisible] = useState(TREE_PAGE);
+  const [searchFocus, setSearchFocus] = useState(false);
+  const [winW, setWinW] = useState(() => window.innerWidth);
+  const stageRef = useRef(null);
+  const crumbsRef = useRef(null);
+  const dirRef = useRef('');
+  const lastRef = useRef({ fid, idx });
+
+  // animation direction is decided once per focus change (so later data refreshes don't restart it)
+  if (lastRef.current.fid !== fid) {
+    dirRef.current = idx > lastRef.current.idx ? 'grow' : 'shrink';
+    lastRef.current = { fid, idx };
+  }
+
+  useEffect(() => {
+    const f = () => setWinW(window.innerWidth);
+    window.addEventListener('resize', f);
+    return () => window.removeEventListener('resize', f);
+  }, []);
+
+  useEffect(() => {
+    setVisible(TREE_PAGE);
+    if (stageRef.current) stageRef.current.scrollTo(0, 0);
+  }, [fid]);
+
+  const slot = winW < 761 ? 84 : 112;
+  const upW = winW < 761 ? 144 : 176;
+  const availW = winW - 68;
+  const plan = buildPlan(focus, getKids, availW, slot, visible, crawlRunning);
+  const needKey = plan.need.join(',');
+
+  // load only what the plan says is needed for what is on screen
+  useEffect(() => {
+    if (needKey) needKey.split(',').forEach((id) => ensureKids(id));
+  }, [needKey, ensureKids]);
+
+  useEffect(() => {
+    const active = crumbsRef.current?.querySelector('[data-active="1"]');
+    if (active?.scrollIntoView) active.scrollIntoView({ inline: 'center', block: 'nearest' });
+  }, [idx, trail.length]);
+
+  const onPick = useCallback((chain) => onPush(chain), [onPush]);
+
+  const st = getStatus(focus);
+  const shownKids = kids ? kids.slice(0, visible) : [];
+  const leftMode = plan.widest * slot > availW;   // too wide for the screen: upline sits at the start and slides away with the swipe
+  const ancestors = trail.slice(Math.max(0, idx - 2), idx);
+  const hiddenAbove = Math.max(0, idx - 2);
+  const selfPv = Number(focus.self_pv ?? focus.current_pv ?? 0);
+
+  return (
+    <div className="ll-tree" style={{ '--slot': `${slot}px`, '--upw': `${upW}px` }}>
+      <div className="ll-tbar">
+        <button type="button" className="ll-btn ic" onClick={onClose} aria-label="Close tree"><ArrowLeft size={18} /></button>
+        <h2>Team Tree</h2>
+        <div className="ll-sbox">
+          <Search size={16} />
+          <input className="ll-in" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name or ID"
+            onFocus={() => setSearchFocus(true)} onBlur={() => setTimeout(() => setSearchFocus(false), 150)} />
+          {searchFocus && search.trim().length >= 2 && (
+            <div className="ll-sres" onPointerDown={(e) => e.preventDefault()}>
+              {searching && <div style={{ padding: 12, fontSize: 12, color: '#64748B' }}>Searching...</div>}
+              {!searching && results.length === 0 && <div style={{ padding: 12, fontSize: 12, color: '#64748B' }}>No members found.</div>}
+              {results.map((r) => (
+                <div key={nid(r)} className="it" onClick={() => onPickResult(r)}>
+                  <div style={{ fontSize: 13, fontWeight: 700 }}>{r.name || `Associate #${nid(r)}`}</div>
+                  <div style={{ fontSize: 11, color: '#64748B' }}>ID {nid(r)}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="ll-crumbbar">
+        <button type="button" className="ll-btn" style={{ height: 32, padding: '0 10px' }} disabled={idx === 0} onClick={() => setIdx(idx - 1)}>
+          <ChevronUp size={15} /><span>Back</span>
+        </button>
+        <button type="button" className="ll-btn" style={{ height: 32, padding: '0 10px' }} disabled={idx === 0} onClick={() => setIdx(0)}>
+          <ChevronsUp size={15} /><span>Top</span>
+        </button>
+        <div className="ll-crumbs" ref={crumbsRef}>
+          {trail.map((t, i) => (
+            <React.Fragment key={nid(t) + i}>
+              {i > 0 && <span className="ll-sep">›</span>}
+              <button type="button" data-active={i === idx ? '1' : '0'}
+                className={`ll-crumb${i === idx ? ' on' : ''}${i > idx ? ' fw' : ''}`} onClick={() => setIdx(i)}>
+                {i === 0 ? 'You' : (t.name || nid(t))}
+              </button>
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
+
+      <div className="ll-stage" ref={stageRef}>
+        <div className={`ll-inner ${leftMode ? 'left' : ''} ${dirRef.current}`} key={fid}>
+          <div className="ll-up">
+            {hiddenAbove > 0 && (
+              <>
+                <button type="button" className="ll-more" onClick={() => setIdx(Math.max(0, idx - 3))}>+{hiddenAbove} above</button>
+                <div className="ll-vline" style={{ '--h': '8px' }} />
+              </>
+            )}
+            {ancestors.map((a, i) => {
+              const as = getStatus(a);
+              const pos = idx - ancestors.length + i;
+              return (
+                <React.Fragment key={nid(a) + pos}>
+                  <button type="button" className={`ll-apill${as.cls === 'r' ? ' t' : ''}`} style={{ '--fc': as.color }} onClick={() => setIdx(pos)}>
+                    <Avatar name={a.name} id={nid(a)} photoUrl={a.photo_url} color={as.color} size={22} fontSize={8} />
+                    <span className="n">{pos === 0 ? 'You' : (a.name || nid(a))}</span>
+                  </button>
+                  <div className="ll-vline" style={{ '--h': '10px' }} />
+                </React.Fragment>
+              );
+            })}
+
+            <div className={`ll-fcard${st.cls === 'r' ? ' t' : ''}`} style={{ '--fc': st.color }}>
+              <button type="button" className="inf" aria-label="View profile" onClick={() => onProfile(focus)}><Info size={14} /></button>
+              <Avatar name={focus.name} id={fid} photoUrl={focus.photo_url} color={st.color} size={40} fontSize={13} />
+              <div className="nm">{focus.name || `Associate #${fid}`}{idx === 0 ? ' (You)' : ''}</div>
+              <div className="id">ID {fid}{focus.highest_pin ? ` • ${focus.highest_pin}` : ''}</div>
+              <div style={{ display: 'flex', gap: 4, marginTop: 4, flexWrap: 'wrap', justifyContent: 'center' }}>
+                <span className={`ll-tag ${st.cls}`} style={{ marginTop: 0 }}>{st.cls === 'r' ? 'Terminated' : `Self ${formatNumber(selfPv)} PV`}</span>
+                {kids && <span className="ll-tag" style={{ marginTop: 0 }}>{kids.length} direct</span>}
+              </div>
+            </div>
+            {kids && kids.length > 0 && <div className="ll-vline" style={{ '--h': '18px' }} />}
+          </div>
+
+          {!kids && isLoading(fid) && <div style={{ padding: 24, color: '#64748B', fontSize: 13 }}>Loading downline...</div>}
+          {!kids && !isLoading(fid) && isFailed(fid) && (
+            <div style={{ padding: 20, textAlign: 'center' }}>
+              <div style={{ color: '#B91C1C', fontSize: 13, marginBottom: 10 }}>Could not load this downline.</div>
+              <button type="button" className="ll-btn p" onClick={() => retry(fid)}>Try again</button>
+            </div>
+          )}
+          {kids && kids.length === 0 && (
+            <div style={{ marginTop: 14, border: '1px dashed #CBD5E1', borderRadius: 12, padding: '10px 16px', fontSize: 13, color: '#64748B' }}>
+              {crawlRunning ? 'Team is still syncing...' : 'No downline enrolled yet'}
+            </div>
+          )}
+
+          {shownKids.length > 0 && (
+            <div className="ll-row">
+              {leftMode && upW / 2 > slot / 2 && (
+                <div className="ll-spine" style={{ left: slot / 2, width: upW / 2 - slot / 2 }} />
+              )}
+              {shownKids.map((k, i) => (
+                <Subtree key={nid(k)} node={k} chain={[k]} index={i} count={shownKids.length}
+                  level={1} plan={plan} getKids={getKids} onPick={onPick} />
+              ))}
+            </div>
+          )}
+
+          {kids && kids.length > visible && (
+            <button type="button" className="ll-btn" style={{ marginTop: 16 }} onClick={() => setVisible((v) => v + TREE_PAGE)}>
+              Show more ({kids.length - visible} left)
+            </button>
+          )}
+        </div>
+      </div>
+
+      {trail.length > 1 && <DepthRail trail={trail} idx={idx} onChange={setIdx} />}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Report table row (memoised so paging/filtering never re-renders unchanged rows)
+// ---------------------------------------------------------------------------
+const MatrixRow = memo(function MatrixRow({ row, months }) {
+  const wa = toWhatsappNumber(row.mobile_no);
+  const dial = String(row.mobile_no || '').replace(/\D/g, '');
+  return (
+    <tr>
+      <td className="sl">
+        <div style={{ fontWeight: 800 }}>{row.name}</div>
+        <div style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>ID {row.buyer_id}{row.leg_type ? ` • ${row.leg_type}` : ''}</div>
+      </td>
+      <td style={{ color: '#64748B' }}>{row.district || '—'}</td>
+      {months.map((m, i) => {
+        const pv = row.monthly_pv?.[m] ?? (i === 0 ? row.current_month_pv || 0 : 0);
+        return (
+          <td key={m} className="num" style={{ fontWeight: i === 0 ? 800 : pv > 0 ? 600 : 400, color: i === 0 ? COLORS.green : pv > 0 ? '#0F172A' : '#94A3B8' }}>
+            {formatNumber(pv)}
+          </td>
+        );
+      })}
+      <td className="sr">
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+          {dial.length >= 10
+            ? <a className="ll-round" href={`tel:+${wa || dial}`} title="Call"><Phone size={14} /></a>
+            : <span className="ll-round off"><Phone size={14} /></span>}
+          {wa
+            ? <a className="ll-round wa" target="_blank" rel="noreferrer" title="WhatsApp"
+              href={`https://wa.me/${wa}?text=${encodeURIComponent(`Namaste ${row.name} ji! RCM team business update.`)}`}><MessageCircle size={14} /></a>
+            : <span className="ll-round off"><MessageCircle size={14} /></span>}
+        </div>
+      </td>
+    </tr>
   );
 });
 
@@ -284,7 +659,7 @@ const TreeNode = memo(function TreeNode({
 // Page
 // ---------------------------------------------------------------------------
 export default function LifelinesPage() {
-  const initialId = localStorage.getItem(ACTIVE_ID_KEY) || localStorage.getItem('rcm_buyer_id') || '';
+  const [initialId] = useState(() => localStorage.getItem(ACTIVE_ID_KEY) || localStorage.getItem('rcm_buyer_id') || '');
 
   const [activeBuyerId, setActiveBuyerId] = useState(initialId);
   const [loginId, setLoginId] = useState(initialId);
@@ -293,18 +668,16 @@ export default function LifelinesPage() {
   const [formError, setFormError] = useState('');
   const [isConnecting, setIsConnecting] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [booting, setBooting] = useState(false);
+  const [booting, setBooting] = useState(Boolean(initialId));
   const [loadError, setLoadError] = useState('');
   const [notice, setNotice] = useState('');
 
   const [overview, setOverview] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
 
-  const [tree, setTree] = useState([]);
-  const [expandedNodes, setExpandedNodes] = useState({});
-  const [childrenCache, setChildrenCache] = useState({});
-  const [loadingNodes, setLoadingNodes] = useState({});
-  const [selectedLeg, setSelectedLeg] = useState(null);
+  // Tree navigation: path = nodes below root, idx = where we currently stand (0 = root).
+  const [nav, setNav] = useState({ path: [], idx: 0 });
+  const [, setVer] = useState(0);
   const [search, setSearch] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -316,30 +689,77 @@ export default function LifelinesPage() {
   const [matrixData, setMatrixData] = useState([]);
   const [matrixMonths, setMatrixMonths] = useState(getRolling12Months);
   const [loadingAssistant, setLoadingAssistant] = useState(false);
+  const [matrixPage, setMatrixPage] = useState(0);
 
   const sessionRef = useRef(0);
   const activeIdRef = useRef(activeBuyerId);
-  const expandedRef = useRef(expandedNodes);
-  const cacheRef = useRef(childrenCache);
   const assistantQueryRef = useRef('');
   const lastCompleteRef = useRef(0);
-  const unauthorizedRef = useRef(null);
   const syncCompleteRef = useRef(null);
+  const kidsRef = useRef(new Map());       // parentId -> children[]
+  const inflightRef = useRef(new Map());   // parentId -> Promise (dedupes simultaneous taps)
+  const failedRef = useRef(new Set());
+  const bumpTimerRef = useRef(null);
 
   useEffect(() => { activeIdRef.current = activeBuyerId; }, [activeBuyerId]);
-  useEffect(() => { expandedRef.current = expandedNodes; }, [expandedNodes]);
-  useEffect(() => { cacheRef.current = childrenCache; }, [childrenCache]);
   useEffect(() => { assistantQueryRef.current = assistantQuery; }, [assistantQuery]);
+
+  // Batch re-renders: many children arriving together cause ONE render, not dozens.
+  const scheduleRender = useCallback(() => {
+    if (bumpTimerRef.current) return;
+    bumpTimerRef.current = setTimeout(() => { bumpTimerRef.current = null; setVer((v) => v + 1); }, 60);
+  }, []);
+  useEffect(() => () => clearTimeout(bumpTimerRef.current), []);
+
+  // ----- tree data (cache + in-flight dedupe + concurrency limit) -----
+  const getKids = useCallback((id) => kidsRef.current.get(String(id)), []);
+  const isLoading = useCallback((id) => inflightRef.current.has(String(id)), []);
+  const isFailed = useCallback((id) => failedRef.current.has(String(id)), []);
+
+  const ensureKids = useCallback((parentId) => {
+    const pid = String(parentId);
+    if (!pid || !activeIdRef.current) return Promise.resolve(null);
+    if (kidsRef.current.has(pid)) return Promise.resolve(kidsRef.current.get(pid));
+    if (inflightRef.current.has(pid)) return inflightRef.current.get(pid);
+    const sid = sessionRef.current;
+    failedRef.current.delete(pid);
+    const p = limitTreeCalls(() => getTreeChildren(activeIdRef.current, pid))
+      .then((json) => {
+        if (sid !== sessionRef.current) return null;
+        if (json?.success && Array.isArray(json.data)) {
+          kidsRef.current.set(pid, json.data);   // only successful results are cached
+          return json.data;
+        }
+        failedRef.current.add(pid);
+        return null;
+      })
+      .catch(() => { if (sid === sessionRef.current) failedRef.current.add(pid); return null; })
+      .finally(() => {
+        inflightRef.current.delete(pid);
+        if (sid === sessionRef.current) scheduleRender();
+      });
+    inflightRef.current.set(pid, p);
+    scheduleRender();
+    return p;
+  }, [scheduleRender]);
+
+  const retryKids = useCallback((id) => { failedRef.current.delete(String(id)); ensureKids(id); }, [ensureKids]);
+
+  const clearTreeCache = useCallback(() => {
+    kidsRef.current = new Map();
+    inflightRef.current = new Map();
+    failedRef.current = new Set();
+    scheduleRender();
+  }, [scheduleRender]);
 
   const resetSessionState = useCallback(() => {
     sessionRef.current += 1;
+    kidsRef.current = new Map();
+    inflightRef.current = new Map();
+    failedRef.current = new Set();
     setOverview(null);
-    setTree([]);
     setMatrixData([]);
-    setExpandedNodes({});
-    setChildrenCache({});
-    setLoadingNodes({});
-    setSelectedLeg(null);
+    setNav({ path: [], idx: 0 });
     setSelectedMember(null);
     setDrawerOpen(false);
     setSearch('');
@@ -348,28 +768,6 @@ export default function LifelinesPage() {
     setSyncing(false);
     setLoadError('');
     setActiveBuyerId('');
-  }, []);
-
-  useEffect(() => {
-    unauthorizedRef.current = () => {
-      setOverview(null);
-      setTree([]);
-      setMatrixData([]);
-      setBooting(false);
-      setShowSyncModal(true);
-    };
-  }, []);
-
-  const fetchChildren = useCallback(async (rootId, parentId) => {
-    try {
-      const json = await getTreeChildren(rootId, parentId);
-      if (json?.success && Array.isArray(json.data)) {
-        return json.data;
-      }
-      return [];
-    } catch (e) {
-      return [];
-    }
   }, []);
 
   const loadOverview = useCallback(async (id, sid) => {
@@ -385,21 +783,10 @@ export default function LifelinesPage() {
     } catch (e) {
       if (sid === sessionRef.current) {
         setOverview(null);
-        if (e.status === 401) {
-          setShowSyncModal(true);
-        }
+        if (e.status === 401) setShowSyncModal(true);
       }
     }
   }, []);
-
-  const loadTree = useCallback(async (id, sid) => {
-    try {
-      const kids = await fetchChildren(id, id);
-      if (sid === sessionRef.current) setTree(kids);
-    } catch (e) {
-      if (sid === sessionRef.current) setTree([]);
-    }
-  }, [fetchChildren]);
 
   const loadAssistant = useCallback(async (id, queryStr, sid) => {
     setLoadingAssistant(true);
@@ -408,58 +795,37 @@ export default function LifelinesPage() {
       if (sid !== sessionRef.current) return;
       if (json?.success && Array.isArray(json.data)) {
         setMatrixData(json.data);
+        setMatrixPage(0);
         if (Array.isArray(json.months) && json.months.length) setMatrixMonths(json.months);
       } else {
         setMatrixData([]);
       }
     } catch (e) {
-      if (sid === sessionRef.current) {
-        setMatrixData([]);
-      }
+      if (sid === sessionRef.current) setMatrixData([]);
     } finally {
       if (sid === sessionRef.current) setLoadingAssistant(false);
     }
   }, []);
 
-  const refreshExpanded = useCallback(async (rootId, sid) => {
-    const ids = Object.keys(expandedRef.current).filter((k) => expandedRef.current[k]);
-    if (!ids.length) return;
-    const entries = await Promise.all(ids.map(async (pid) => [pid, await fetchChildren(rootId, pid)]));
-    if (sid !== sessionRef.current) return;
-    setChildrenCache((prev) => ({ ...prev, ...Object.fromEntries(entries) }));
-  }, [fetchChildren]);
-
   const loadAll = useCallback(async (id) => {
     if (!id) return;
     const sid = sessionRef.current;
     setLoadError('');
+    clearTreeCache();
     try {
       await Promise.allSettled([
         loadOverview(id, sid),
-        loadTree(id, sid),
         loadAssistant(id, assistantQueryRef.current, sid)
       ]);
-    } catch (e) {
-      if (sid === sessionRef.current) {
-        setOverview(null);
-        setTree([]);
-        setMatrixData([]);
-      }
     } finally {
-      if (sid === sessionRef.current) {
-        setBooting(false);
-        refreshExpanded(id, sid);
-      }
+      if (sid === sessionRef.current) setBooting(false);
     }
-  }, [loadOverview, loadTree, loadAssistant, refreshExpanded]);
+  }, [loadOverview, loadAssistant, clearTreeCache]);
 
   useEffect(() => {
-    if (initialId) {
-      loadAll(initialId);
-    } else {
-      setShowSyncModal(true);
-    }
-  }, [initialId, loadAll]);
+    if (initialId) loadAll(initialId); else setShowSyncModal(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSyncComplete = useCallback(() => {
     const now = Date.now();
@@ -470,22 +836,22 @@ export default function LifelinesPage() {
   }, [loadAll]);
   useEffect(() => { syncCompleteRef.current = handleSyncComplete; }, [handleSyncComplete]);
 
+  // Fallback polling (socket is the main channel): slower, and stops when tab is hidden.
   useEffect(() => {
     if (!syncing || !activeBuyerId) return undefined;
     const sid = sessionRef.current;
     let ticks = 0;
     const timer = setInterval(async () => {
+      if (document.hidden) return;
       ticks += 1;
-      if (ticks > 720) { setSyncing(false); return; }
+      if (ticks > 450) { setSyncing(false); return; }
       try {
         const json = await getSyncStatus(activeBuyerId);
         if (sid !== sessionRef.current) return;
         const crawl = json?.data?.crawl;
-        if (!crawl || (!crawl.running && crawl.finishedAt)) {
-          if (syncCompleteRef.current) syncCompleteRef.current();
-        }
+        if (!crawl || (!crawl.running && crawl.finishedAt)) syncCompleteRef.current?.();
       } catch (e) { /* ignore transient errors */ }
-    }, 5000);
+    }, 8000);
     return () => clearInterval(timer);
   }, [syncing, activeBuyerId]);
 
@@ -505,7 +871,7 @@ export default function LifelinesPage() {
       } finally {
         if (sid === sessionRef.current) setSearching(false);
       }
-    }, 350);
+    }, 400);
     return () => clearTimeout(timer);
   }, [search, activeBuyerId]);
 
@@ -522,19 +888,27 @@ export default function LifelinesPage() {
     return () => clearTimeout(t);
   }, [notice]);
 
+  // Lock page scroll behind full-screen tree
+  useEffect(() => {
+    if (activeTab !== 'tree') return undefined;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [activeTab]);
+
   const handleSyncConnect = async () => {
     const id = loginId.trim();
     if (!/^\d{6,10}$/.test(id)) { setFormError('Enter a valid RCM Buyer ID (digits only).'); return; }
     if (!password) { setFormError('Enter your RCM password.'); return; }
-
     setIsConnecting(true);
     setFormError('');
     try {
-      resetSessionState();
+      // Log in FIRST. A wrong password must not wipe the data that is already on screen.
       const json = await syncLifelines(id, password);
       const token = json?.lifelinesToken || json?.token;
       if (!json?.success || !token) throw new Error(json?.message || 'RCM connection failed.');
 
+      if (id !== activeIdRef.current) resetSessionState();
       localStorage.setItem(ACTIVE_ID_KEY, id);
       localStorage.setItem('rcm_buyer_id', id);
       setActiveBuyerId(id);
@@ -553,48 +927,27 @@ export default function LifelinesPage() {
 
   const handleDisconnect = async () => {
     try { await logoutLifelines(); } catch (e) { /* best effort */ }
-    localStorage.removeItem(ACTIVE_ID_KEY);
-    localStorage.removeItem('rcm_buyer_id');
-    localStorage.removeItem('lifelines_token');
-    localStorage.removeItem('rcm_lifelines_token');
+    ['rcm_active_buyer_id', 'rcm_buyer_id', 'lifelines_token', 'rcm_lifelines_token'].forEach((k) => localStorage.removeItem(k));
     resetSessionState();
-    setLoginId('');
-    setPassword('');
-    setFormError('');
+    setLoginId(''); setPassword(''); setFormError('');
+    setActiveTab('overview');
     setShowSyncModal(true);
   };
 
   const openMemberDetails = useCallback(async (node) => {
-    const memberId = node?.buyer_id || node?.id;
-    if (!memberId || !activeBuyerId) return;
+    const memberId = nid(node);
+    if (!memberId || !activeIdRef.current) return;
     const sid = sessionRef.current;
     try {
-      const json = await getMemberFullProfile(activeBuyerId, memberId);
+      const json = await getMemberFullProfile(activeIdRef.current, memberId);
       if (sid !== sessionRef.current) return;
-      if (json?.success) {
-        setSelectedMember(json.data);
-        setDrawerOpen(true);
-      }
+      if (json?.success) { setSelectedMember(json.data); setDrawerOpen(true); }
     } catch (e) {
       if (e.status !== 401) setNotice(e.message || 'Could not open member profile.');
     }
-  }, [activeBuyerId]);
+  }, []);
 
-  const toggleNode = useCallback(async (node) => {
-    const id = String(node?.buyer_id || node?.id);
-    const open = Boolean(expandedRef.current[id]);
-    setExpandedNodes((prev) => ({ ...prev, [id]: !open }));
-
-    if (!open && !cacheRef.current[id]) {
-      const sid = sessionRef.current;
-      setLoadingNodes((prev) => ({ ...prev, [id]: true }));
-      const kids = await fetchChildren(activeIdRef.current, id);
-      if (sid !== sessionRef.current) return;
-      setChildrenCache((prev) => ({ ...prev, [id]: kids }));
-      setLoadingNodes((prev) => ({ ...prev, [id]: false }));
-    }
-  }, [fetchChildren]);
-
+  // ----- derived data -----
   const ovData = overview || {};
   const totalNetworkPv = ovData.total_pv ?? ovData.totals?.totalPv ?? 0;
   const selfPurchasePv = ovData.self_pv ?? ovData.totals?.selfPv ?? 0;
@@ -605,473 +958,315 @@ export default function LifelinesPage() {
   const photoUrl = rootIdentity.photo_url || null;
   const crawlRunning = Boolean(syncing || ovData.crawl?.running);
 
-  const filteredTree = useMemo(() => {
-    if (!selectedLeg) return tree;
-    return tree.filter((n) => Number(n.buyer_id) === Number(selectedLeg.headId));
-  }, [tree, selectedLeg]);
+  const rootNode = useMemo(() => ({
+    buyer_id: activeBuyerId,
+    name: rootIdentity.name || `Leader #${activeBuyerId}`,
+    photo_url: photoUrl,
+    highest_pin: rootIdentity.highest_pin,
+    self_pv: selfPurchasePv,
+    total_group_pv: totalNetworkPv,
+    status: 1
+  }), [activeBuyerId, rootIdentity.name, rootIdentity.highest_pin, photoUrl, selfPurchasePv, totalNetworkPv]);
 
+  const trail = useMemo(() => [rootNode, ...nav.path], [rootNode, nav.path]);
+
+  const pushNodes = useCallback((nodes) => {
+    setNav((n) => ({ path: n.path.slice(0, n.idx).concat(nodes), idx: n.idx + nodes.length }));
+  }, []);
+  const setIdx = useCallback((i) => setNav((n) => (n.idx === i ? n : { ...n, idx: i })), []);
+
+  const openLeg = (leg, idx) => {
+    const headId = leg.head_id || leg.buyer_id;
+    if (!headId) { setActiveTab('tree'); return; }
+    setNav({ path: [{ buyer_id: headId, name: leg.head_name || leg.name, status: 1, self_pv: 0, total_group_pv: leg.pv }], idx: 1 });
+    setActiveTab('tree');
+  };
+
+  const pickSearchResult = useCallback((r) => {
+    setSearch(''); setSearchResults([]);
+    openMemberDetails(r);
+  }, [openMemberDetails]);
+
+  const pagedRows = useMemo(
+    () => matrixData.slice(matrixPage * MATRIX_PAGE, (matrixPage + 1) * MATRIX_PAGE),
+    [matrixData, matrixPage]
+  );
   const memberPhone = toWhatsappNumber(selectedMember?.mobile || selectedMember?.mobile_no);
 
+  const stats = [
+    { icon: <TrendingUp size={19} />, label: 'Total Network Turnover', value: `${formatNumber(totalNetworkPv)} PV`, note: 'Official portal turnover', color: COLORS.green },
+    { icon: <Wallet size={19} />, label: 'Your Self Purchase', value: `${formatNumber(selfPurchasePv)} PV`, note: 'Personal monthly consumption' },
+    { icon: <UserCheck size={19} />, label: 'Active Purchasers', value: formatNumber(activeCount), note: 'Members billing above 0 PV', color: COLORS.green },
+    { icon: <Users size={19} />, label: 'Total Downline Team', value: formatNumber(totalTeamCount), note: crawlRunning ? 'Deep sync in progress...' : 'Members across all legs' }
+  ];
+
   return (
-    <div style={{ background: '#0B141A', color: '#E9EDEF', minHeight: '100vh', fontFamily: 'system-ui, -apple-system, sans-serif', padding: '24px 32px', boxSizing: 'border-box' }}>
-      <style>{`
-        @keyframes lifelinesSpin { to { transform: rotate(360deg); } }
-        @keyframes lifelinesPulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
-      `}</style>
+    <div className="ll">
+      <style>{CSS}</style>
+      <div className="ll-wrap">
+        {(loadError || notice) && (
+          <div className="ll-toast">
+            <span>{notice || loadError}</span>
+            <button type="button" aria-label="Dismiss" onClick={() => { setNotice(''); setLoadError(''); }} style={{ background: 'transparent', border: 0, color: '#B91C1C', cursor: 'pointer' }}><X size={16} /></button>
+          </div>
+        )}
 
-      {(loadError || notice) && (
-        <div style={{ background: '#2C1B1B', border: '1px solid rgba(239,68,68,0.4)', color: '#FCA5A5', borderRadius: 12, padding: '10px 16px', marginBottom: 16, fontSize: 13, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-          <span>{notice || loadError}</span>
-          <button type="button" onClick={() => { setNotice(''); setLoadError(''); }} style={{ background: 'transparent', border: 'none', color: '#FCA5A5', cursor: 'pointer' }}>
-            <X size={16} />
-          </button>
+        {/* HEADER */}
+        <div className="ll-card ll-head">
+          <div className="ll-who">
+            <Avatar name={rootIdentity.name} id={activeBuyerId} photoUrl={photoUrl} color={COLORS.green} size={52} fontSize={18} />
+            <div style={{ minWidth: 0 }}>
+              <h1 className="ll-h1">{booting ? 'Loading...' : rootIdentity.name || (activeBuyerId ? `Leader #${activeBuyerId}` : 'Not connected')}</h1>
+              {activeBuyerId && (
+                <div className="ll-sub">
+                  <span>ID {activeBuyerId}</span>
+                  {rootIdentity.highest_pin && <span className="ll-chip g">{rootIdentity.highest_pin}</span>}
+                  {rootIdentity.kyc_status && <span className="ll-chip t">KYC {formatKyc(rootIdentity.kyc_status)}</span>}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="ll-acts">
+            <button type="button" className="ll-btn" disabled={!activeBuyerId} onClick={() => loadAll(activeBuyerId)}>
+              <RefreshCw size={16} /><span className="t">Refresh</span>
+            </button>
+            <button type="button" className="ll-btn p" disabled={!activeBuyerId}
+              onClick={() => { setLoginId(activeBuyerId); setFormError(''); setShowSyncModal(true); }}>
+              <ShieldCheck size={16} /><span className="t">Re-sync from RCM</span>
+            </button>
+            <button type="button" className="ll-btn d" onClick={handleDisconnect}>
+              <LogOut size={16} /><span className="t">Disconnect</span>
+            </button>
+          </div>
         </div>
-      )}
 
-      {/* 1. EXECUTIVE HEADER */}
-      <div style={{ ...cardStyle, padding: '20px 28px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 20, marginBottom: 24, boxShadow: '0 8px 30px rgba(0,0,0,0.5)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
-          <Avatar name={rootIdentity.name} id={activeBuyerId} photoUrl={photoUrl} color={COLORS.green} size={64} fontSize={22} />
+        {/* TABS */}
+        <div className="ll-card ll-tabs" role="tablist">
+          {[
+            { key: 'overview', label: 'Overview', icon: <Activity size={17} /> },
+            { key: 'tree', label: 'Team Tree', icon: <TreePine size={17} /> },
+            { key: 'assistant', label: 'Reports', icon: <Sparkles size={17} /> }
+          ].map((tab) => (
+            <button key={tab.key} type="button" role="tab" aria-selected={activeTab === tab.key}
+              className={`ll-tab${activeTab === tab.key ? ' on' : ''}`} onClick={() => setActiveTab(tab.key)}>
+              {tab.icon}<span className="t">{tab.label}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* OVERVIEW */}
+        {activeTab === 'overview' && (
           <div>
-            <div style={{ fontSize: 11, color: COLORS.teal, fontWeight: 800, letterSpacing: 1.5, textTransform: 'uppercase' }}>
-              Enterprise RCM AI Assistant
-            </div>
-            <div style={{ fontSize: 24, fontWeight: 900, marginTop: 2 }}>
-              {booting ? 'Loading...' : rootIdentity.name || (activeBuyerId ? `Leader #${activeBuyerId}` : 'Not connected')}
-            </div>
-            {activeBuyerId && (
-              <div style={{ fontSize: 13, color: COLORS.slate, marginTop: 3, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <span>ID: <strong style={{ color: '#E9EDEF' }}>{activeBuyerId}</strong></span>
-                {rootIdentity.highest_pin && (<><span>•</span><span>Pin: <strong style={{ color: COLORS.green }}>{rootIdentity.highest_pin}</strong></span></>)}
-                {rootIdentity.kyc_status && (
-                  <><span>•</span>
-                    <span style={{ color: COLORS.green, background: 'rgba(37,211,102,0.1)', padding: '2px 8px', borderRadius: 6, fontWeight: 700, fontSize: 11 }}>
-                      {formatKyc(rootIdentity.kyc_status)}
-                    </span></>
-                )}
+            {(!overview || overview.synced === false) && !booting && (
+              <div className="ll-card ll-empty" style={{ marginBottom: 14 }}>
+                {activeBuyerId ? 'No data synced yet. Tap "Re-sync from RCM" to fetch live data.' : 'Connect your RCM account to see live metrics.'}
               </div>
             )}
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-          <button type="button" disabled={!activeBuyerId} onClick={() => loadAll(activeBuyerId)}
-            style={{ background: '#1F2C34', border: `1px solid ${COLORS.green}`, color: COLORS.green, padding: '10px 18px', borderRadius: 12, fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <RefreshCw size={16} /> Refresh
-          </button>
-          <button type="button" disabled={!activeBuyerId}
-            onClick={() => { setLoginId(activeBuyerId); setFormError(''); setShowSyncModal(true); }}
-            style={{ background: '#1F2C34', border: `1px solid ${COLORS.line}`, color: '#E9EDEF', padding: '10px 18px', borderRadius: 12, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
-            Re-sync from RCM
-          </button>
-          <button type="button" onClick={handleDisconnect}
-            style={{ background: '#2C1B1B', border: '1px solid rgba(239,68,68,0.4)', color: COLORS.red, padding: '10px 18px', borderRadius: 12, fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <LogOut size={16} /> Disconnect
-          </button>
-        </div>
-      </div>
-
-      {/* 2. TABS */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, ...cardStyle, borderRadius: 16, padding: 8, marginBottom: 24 }}>
-        {[
-          { key: 'overview', label: 'Executive Overview', icon: <Activity size={18} /> },
-          { key: 'tree', label: 'MLM Visual Tree', icon: <TreePine size={18} /> },
-          { key: 'assistant', label: 'Smart Reports & Outreach', icon: <Sparkles size={18} /> }
-        ].map((tab) => (
-          <button key={tab.key} type="button" onClick={() => setActiveTab(tab.key)}
-            style={{ background: activeTab === tab.key ? COLORS.teal : 'transparent', color: activeTab === tab.key ? '#0B141A' : COLORS.slate, border: 'none', borderRadius: 12, padding: 12, fontWeight: 800, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-            {tab.icon} {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* TAB 1: OVERVIEW */}
-      {activeTab === 'overview' && (
-        <div style={{ display: 'grid', gap: 24 }}>
-          {(!overview || overview.synced === false) && (
-            <div style={{ ...cardStyle, padding: 24, textAlign: 'center', color: COLORS.slate, fontSize: 14 }}>
-              {activeBuyerId ? 'No data synced yet for this ID. Click "Re-sync from RCM" to fetch live data.' : 'Please connect your RCM account to view live metrics.'}
-            </div>
-          )}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 20 }}>
-            <div style={{ ...cardStyle, border: `2px solid ${COLORS.green}`, borderRadius: 18, padding: 22 }}>
-              <div style={{ fontSize: 13, color: COLORS.slate, fontWeight: 600 }}>Total Network Turnover</div>
-              <div style={{ fontSize: 34, fontWeight: 900, color: COLORS.green, marginTop: 6 }}>{formatNumber(totalNetworkPv)} PV</div>
-              <div style={{ fontSize: 12, color: COLORS.teal, marginTop: 6, fontWeight: 700 }}>Official portal turnover</div>
-            </div>
-            <div style={{ ...cardStyle, borderRadius: 18, padding: 22 }}>
-              <div style={{ fontSize: 13, color: COLORS.slate, fontWeight: 600 }}>Your Self Purchase PV</div>
-              <div style={{ fontSize: 34, fontWeight: 900, marginTop: 6 }}>{formatNumber(selfPurchasePv)} PV</div>
-              <div style={{ fontSize: 12, color: COLORS.slate, marginTop: 6 }}>Personal monthly consumption</div>
-            </div>
-            <div style={{ ...cardStyle, borderRadius: 18, padding: 22 }}>
-              <div style={{ fontSize: 13, color: COLORS.slate, fontWeight: 600 }}>Active Purchasers</div>
-              <div style={{ fontSize: 34, fontWeight: 900, color: COLORS.green, marginTop: 6 }}>{formatNumber(activeCount)}</div>
-              <div style={{ fontSize: 12, color: COLORS.slate, marginTop: 6 }}>Team members with billing > 0 PV</div>
-            </div>
-            <div style={{ ...cardStyle, borderRadius: 18, padding: 22 }}>
-              <div style={{ fontSize: 13, color: COLORS.slate, fontWeight: 600 }}>Total Downline Team</div>
-              <div style={{ fontSize: 34, fontWeight: 900, marginTop: 6 }}>{formatNumber(totalTeamCount)}</div>
-              <div style={{ fontSize: 12, color: COLORS.slate, marginTop: 6 }}>
-                {crawlRunning ? 'Still counting... deep sync in progress' : 'Members across all legs'}
-              </div>
-            </div>
-          </div>
-
-          <div style={{ ...cardStyle, padding: 24 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: 20 }}>Direct Leg Heads & Business Volume</h3>
-                <p style={{ margin: '4px 0 0', color: COLORS.slate, fontSize: 13 }}>Group volume of each direct leg</p>
-              </div>
-              <button type="button" onClick={() => setActiveTab('tree')}
-                style={{ background: 'transparent', border: 'none', color: COLORS.green, fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-                Inspect Visual Tree <ArrowUpRight size={16} />
-              </button>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 20 }}>
-              {directLegs.length > 0 ? directLegs.map((leg, idx) => {
-                const letter = leg.leg || String.fromCharCode(65 + idx);
-                const headId = leg.head_id || leg.buyer_id;
-                return (
-                  <div key={headId || idx}
-                    onClick={() => { setSelectedLeg({ letter, headId }); setActiveTab('tree'); }}
-                    style={{ background: '#1F2C34', border: `1px solid ${COLORS.line}`, borderRadius: 16, padding: 20, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-                    <div>
-                      <div style={{ fontSize: 12, color: COLORS.teal, fontWeight: 800 }}>LEG {letter} HEAD</div>
-                      <div style={{ fontSize: 18, fontWeight: 800, marginTop: 4 }}>{leg.head_name || leg.name}</div>
-                      <div style={{ fontSize: 12, color: COLORS.slate, marginTop: 2 }}>ID: {headId}</div>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: 22, fontWeight: 900, color: COLORS.green }}>{formatNumber(leg.pv)} PV</div>
-                      <div style={{ fontSize: 11, color: COLORS.slate, marginTop: 4 }}>Click to filter tree ↗</div>
-                    </div>
-                  </div>
-                );
-              }) : (
-                <div style={{ color: COLORS.slate, padding: 20 }}>{booting ? 'Loading...' : 'No direct leg volume detected yet.'}</div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 2: TREE */}
-      {activeTab === 'tree' && (
-        <div style={{ ...cardStyle, padding: 28 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28, flexWrap: 'wrap', gap: 16 }}>
-            <div>
-              <h3 style={{ margin: 0, fontSize: 22 }}>MLM Visual Tree Network</h3>
-              <div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: 12, flexWrap: 'wrap' }}>
-                <span style={{ color: COLORS.green }}>● Active purchaser (> 0 PV)</span>
-                <span style={{ color: COLORS.red }}>● Terminated member</span>
-                <span style={{ color: COLORS.slate }}>● Inactive (0 PV)</span>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-              <div style={{ position: 'relative', minWidth: 260 }}>
-                <Search size={16} style={{ position: 'absolute', left: 14, top: 12, color: COLORS.slate }} />
-                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search downline name or ID..."
-                  style={{ ...inputStyle, borderRadius: 10, padding: '10px 14px 10px 38px', fontSize: 13 }} />
-                {search.trim().length >= 2 && (
-                  <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0, background: '#1F2C34', border: `1px solid ${COLORS.line}`, borderRadius: 12, zIndex: 20, maxHeight: 280, overflowY: 'auto', boxShadow: '0 12px 30px rgba(0,0,0,0.5)' }}>
-                    {searching && <div style={{ padding: 12, fontSize: 12, color: COLORS.slate }}>Searching...</div>}
-                    {!searching && searchResults.length === 0 && <div style={{ padding: 12, fontSize: 12, color: COLORS.slate }}>No members found.</div>}
-                    {searchResults.map((r) => {
-                      const rid = r.buyer_id || r.id;
-                      return (
-                        <div key={rid} onClick={() => { setSearch(''); setSearchResults([]); openMemberDetails({ buyer_id: rid }); }}
-                          style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid #202C33' }}>
-                          <div style={{ fontSize: 13, fontWeight: 700 }}>{r.name || `Associate #${rid}`}</div>
-                          <div style={{ fontSize: 11, color: COLORS.slate }}>ID: {rid}</div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {selectedLeg && (
-                <button type="button" onClick={() => setSelectedLeg(null)}
-                  style={{ background: '#1F2C34', border: `1px solid ${COLORS.green}`, color: COLORS.green, padding: '8px 14px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-                  Clear Leg {selectedLeg.letter}
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div style={{ overflowX: 'auto', padding: '20px 0' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 'max-content', margin: '0 auto' }}>
-              <div onClick={() => openMemberDetails({ buyer_id: activeBuyerId })}
-                style={{ background: '#1F2C34', border: `3px solid ${COLORS.green}`, borderRadius: 24, padding: '16px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', boxShadow: '0 8px 30px rgba(37,211,102,0.2)', zIndex: 3 }}>
-                <Avatar name={rootIdentity.name} id={activeBuyerId} photoUrl={photoUrl} color={COLORS.green} size={68} fontSize={22} />
-                <div style={{ fontSize: 17, fontWeight: 900, marginTop: 10 }}>{rootIdentity.name || `Leader #${activeBuyerId}`} (You)</div>
-                <div style={{ fontSize: 12, color: COLORS.slate, marginTop: 2 }}>
-                  ID: {activeBuyerId}{rootIdentity.highest_pin ? <> • <span style={{ color: COLORS.green, fontWeight: 700 }}>{rootIdentity.highest_pin}</span></> : null}
-                </div>
-                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                  <span style={{ background: 'rgba(37,211,102,0.15)', color: COLORS.green, padding: '3px 10px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>
-                    Self: {formatNumber(selfPurchasePv)} PV
-                  </span>
-                  <span style={{ background: '#111B21', padding: '3px 10px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>
-                    Group: {formatNumber(totalNetworkPv)} PV
-                  </span>
-                </div>
-              </div>
-
-              {filteredTree.length > 0 && <div style={{ height: 0 }} />}
-
-              <div style={{ display: 'flex', alignItems: 'flex-start' }}>
-                {filteredTree.length > 0 ? filteredTree.map((child, i) => (
-                  <TreeNode
-                    key={child.buyer_id || child.id}
-                    node={child}
-                    index={i}
-                    count={filteredTree.length}
-                    expandedNodes={expandedNodes}
-                    childrenCache={childrenCache}
-                    loadingNodes={loadingNodes}
-                    crawlRunning={crawlRunning}
-                    onToggle={toggleNode}
-                    onOpen={openMemberDetails}
-                  />
-                )) : (
-                  <div style={{ color: COLORS.slate, padding: 30, textAlign: 'center' }}>
-                    {booting ? 'Loading tree...' : crawlRunning ? 'Team is still being synced...' : 'No downline members found.'}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 3: 12 MONTH MATRIX */}
-      {activeTab === 'assistant' && (
-        <div style={{ ...cardStyle, padding: 24 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
-            <div>
-              <h3 style={{ margin: 0, fontSize: 22 }}>12-Month Performance Matrix</h3>
-              <p style={{ margin: '4px 0 0', color: COLORS.slate, fontSize: 13 }}>
-                Rolling 12-month purchase volume. Past months fill up as monthly syncs accumulate.
-              </p>
-            </div>
-            <div style={{ fontSize: 12, color: COLORS.green, background: 'rgba(37,211,102,0.1)', padding: '6px 14px', borderRadius: 20, fontWeight: 700 }}>
-              Rolling Window: {matrixMonths[matrixMonths.length - 1]} → {matrixMonths[0]}
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 20 }}>
-            {[
-              { label: 'All Members', q: '' },
-              { label: '1500-2499 PV Regular', q: '1500 se 2499 pv' },
-              { label: '100-500 PV Grahak', q: '100 to 500 pv' },
-              { label: '0 PV Inactive', q: '0 pv' }
-            ].map((chip) => (
-              <button key={chip.label} type="button"
-                onClick={() => { setAssistantQuery(chip.q); assistantQueryRef.current = chip.q; loadAssistant(activeBuyerId, chip.q, sessionRef.current).catch(() => {}); }}
-                style={{ background: assistantQuery === chip.q ? COLORS.teal : '#1F2C34', color: assistantQuery === chip.q ? '#0B141A' : '#E9EDEF', border: `1px solid ${COLORS.line}`, borderRadius: 20, padding: '8px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-                {chip.label}
-              </button>
-            ))}
-          </div>
-
-          <div style={{ overflowX: 'auto', border: '1px solid #202C33', borderRadius: 16, background: '#111B21', maxWidth: '100%', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 13, whiteSpace: 'nowrap' }}>
-              <thead>
-                <tr style={{ background: '#1F2C34', color: COLORS.slate, borderBottom: '1px solid #202C33' }}>
-                  <th style={{ padding: '14px 20px', position: 'sticky', left: 0, background: '#1F2C34', zIndex: 3, minWidth: 220, boxShadow: '2px 0 8px rgba(0,0,0,0.3)' }}>Member Name & ID</th>
-                  <th style={{ padding: '14px 16px', minWidth: 100 }}>District</th>
-                  {matrixMonths.map((m, idx) => (
-                    <th key={m} style={{ padding: '14px 16px', textAlign: 'right', minWidth: 105, color: idx === 0 ? COLORS.green : '#E9EDEF', fontWeight: idx === 0 ? 900 : 600, background: idx === 0 ? 'rgba(37,211,102,0.08)' : 'transparent' }}>
-                      {m}{idx === 0 ? ' (Current)' : ''}
-                    </th>
-                  ))}
-                  <th style={{ padding: '14px 20px', textAlign: 'center', position: 'sticky', right: 0, background: '#1F2C34', zIndex: 3, minWidth: 120, boxShadow: '-2px 0 8px rgba(0,0,0,0.3)' }}>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loadingAssistant ? (
-                  <tr><td colSpan={matrixMonths.length + 3} style={{ textAlign: 'center', padding: 50, color: COLORS.slate }}>
-                    <div style={{ display: 'inline-block', width: 24, height: 24, border: `3px solid ${COLORS.green}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'lifelinesSpin 0.8s linear infinite' }} />
-                    <div style={{ marginTop: 12 }}>Loading 12-month records...</div>
-                  </td></tr>
-                ) : matrixData.length > 0 ? matrixData.map((row, idx) => {
-                  const rowBg = idx % 2 === 0 ? '#111B21' : '#16222A';
-                  const wa = toWhatsappNumber(row.mobile_no);
-                  const dialable = String(row.mobile_no || '').replace(/\D/g, '');
-                  return (
-                    <tr key={row.buyer_id} style={{ borderBottom: '1px solid #202C33', background: rowBg }}>
-                      <td style={{ padding: '14px 20px', position: 'sticky', left: 0, background: rowBg, zIndex: 2, boxShadow: '2px 0 8px rgba(0,0,0,0.2)' }}>
-                        <div style={{ fontWeight: 800 }}>{row.name}</div>
-                        <div style={{ fontSize: 11, color: COLORS.slate, marginTop: 2 }}>ID: {row.buyer_id}{row.leg_type ? ` • ${row.leg_type}` : ''}</div>
-                      </td>
-                      <td style={{ padding: '14px 16px', color: COLORS.slate }}>{row.district || '—'}</td>
-                      {matrixMonths.map((m, mIdx) => {
-                        const pv = row.monthly_pv?.[m] ?? (mIdx === 0 ? row.current_month_pv || 0 : 0);
-                        const isCurrent = mIdx === 0;
-                        return (
-                          <td key={m} style={{ padding: '14px 16px', textAlign: 'right', fontWeight: isCurrent ? 800 : pv > 0 ? 600 : 400, color: isCurrent ? COLORS.green : pv > 0 ? '#E9EDEF' : COLORS.slate, background: isCurrent ? 'rgba(37,211,102,0.04)' : 'transparent' }}>
-                            {formatNumber(pv)} PV
-                          </td>
-                        );
-                      })}
-                      <td style={{ padding: '14px 20px', textAlign: 'center', position: 'sticky', right: 0, background: rowBg, zIndex: 2, boxShadow: '-2px 0 8px rgba(0,0,0,0.2)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'center', gap: 8 }}>
-                          {dialable.length >= 10 ? (
-                            <a href={`tel:${dialable}`} title="Call" style={{ width: 32, height: 32, borderRadius: '50%', background: '#1F2C34', color: COLORS.green, display: 'grid', placeItems: 'center', textDecoration: 'none' }}>
-                              <Phone size={14} />
-                            </a>
-                          ) : (
-                            <span title="Mobile number not available" style={{ width: 32, height: 32, borderRadius: '50%', background: '#1F2C34', color: COLORS.slate, display: 'grid', placeItems: 'center', opacity: 0.4 }}>
-                              <Phone size={14} />
-                            </span>
-                          )}
-                          {wa ? (
-                            <a href={`https://wa.me/${wa}?text=${encodeURIComponent(`Namaste ${row.name} ji! RCM team business update.`)}`} target="_blank" rel="noreferrer" title="WhatsApp"
-                              style={{ width: 32, height: 32, borderRadius: '50%', background: COLORS.green, color: '#0B141A', display: 'grid', placeItems: 'center', textDecoration: 'none' }}>
-                              <MessageCircle size={14} />
-                            </a>
-                          ) : (
-                            <span title="Mobile number not available" style={{ width: 32, height: 32, borderRadius: '50%', background: '#1F2C34', color: COLORS.slate, display: 'grid', placeItems: 'center', opacity: 0.4 }}>
-                              <MessageCircle size={14} />
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                }) : (
-                  <tr><td colSpan={matrixMonths.length + 3} style={{ textAlign: 'center', padding: 40, color: COLORS.slate }}>
-                    {crawlRunning ? 'Team is still being synced...' : 'No records found matching this filter.'}
-                  </td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* MEMBER DRAWER */}
-      {drawerOpen && selectedMember && (
-        <div onClick={() => setDrawerOpen(false)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'flex-end', zIndex: 100 }}>
-          <div onClick={(e) => e.stopPropagation()}
-            style={{ width: 'min(420px, 92vw)', background: '#111B21', borderLeft: '1px solid #202C33', height: '100%', padding: 28, boxSizing: 'border-box', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-              <div style={{ fontSize: 18, fontWeight: 800 }}>Member Profile Inspection</div>
-              <button type="button" onClick={() => setDrawerOpen(false)} style={{ background: 'transparent', border: 'none', color: COLORS.slate, cursor: 'pointer' }}>
-                <X size={22} />
-              </button>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', marginBottom: 24 }}>
-              <div style={{ marginBottom: 12 }}>
-                <Avatar name={selectedMember.name} id={selectedMember.buyer_id} photoUrl={selectedMember.photo_url}
-                  color={Number(selectedMember.status) === 0 ? COLORS.red : Number(selectedMember.self_pv) > 0 ? COLORS.green : COLORS.slate} size={76} fontSize={24} />
-              </div>
-              <div style={{ fontSize: 20, fontWeight: 900 }}>{selectedMember.name}</div>
-              <div style={{ fontSize: 13, color: COLORS.slate, marginTop: 3 }}>
-                Buyer ID: <span style={{ color: '#E9EDEF', fontWeight: 700 }}>{selectedMember.buyer_id}</span>
-              </div>
-              <div style={{ marginTop: 8, background: Number(selectedMember.status) === 0 ? 'rgba(239,68,68,0.1)' : 'rgba(37,211,102,0.1)', color: Number(selectedMember.status) === 0 ? COLORS.red : COLORS.green, padding: '4px 12px', borderRadius: 12, fontSize: 11, fontWeight: 800 }}>
-                {Number(selectedMember.status) === 0 ? 'Terminated' : formatKyc(selectedMember.kyc_status)}
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 24 }}>
-              {[
-                { label: 'Self Purchase', value: `${formatNumber(selectedMember.self_pv)} PV`, color: COLORS.green },
-                { label: 'Re-Purchase Amt', value: `₹${formatNumber(selectedMember.repurchase_amt)}` },
-                { label: 'Group Volume', value: `${formatNumber(selectedMember.total_group_pv)} PV` },
-                { label: 'Direct Downlines', value: formatNumber(selectedMember.children_count) },
-                { label: 'Join Date', value: formatJoinDate(selectedMember.join_date), small: true },
-                { label: 'District / State', value: [selectedMember.district, selectedMember.state].filter(Boolean).join(', ') || '—', small: true }
-              ].map((item) => (
-                <div key={item.label} style={{ background: '#1F2C34', borderRadius: 12, padding: 14, border: `1px solid ${COLORS.line}` }}>
-                  <div style={{ fontSize: 11, color: COLORS.slate }}>{item.label}</div>
-                  <div style={{ fontSize: item.small ? 13 : 16, fontWeight: item.small ? 700 : 800, color: item.color || '#E9EDEF', marginTop: 4 }}>{item.value}</div>
+            <div className="ll-stats">
+              {stats.map((s) => (
+                <div key={s.label} className="ll-card ll-stat">
+                  <div className="ico">{s.icon}</div>
+                  <div className="l">{s.label}</div>
+                  <div className="v" style={s.color ? { color: s.color } : undefined}>{s.value}</div>
+                  <div className="n">{s.note}</div>
                 </div>
               ))}
             </div>
 
-            <div style={{ display: 'flex', gap: 10, flexDirection: 'column' }}>
-              {memberPhone ? (
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <a href={`tel:${memberPhone}`} style={{ flex: 1, background: '#1F2C34', border: `1px solid ${COLORS.line}`, color: '#E9EDEF', padding: 12, borderRadius: 12, textDecoration: 'none', fontWeight: 700, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                    <Phone size={16} /> Call
-                  </a>
-                  <a href={`https://wa.me/${memberPhone}?text=${encodeURIComponent(`Namaste ${selectedMember.name} ji! Connecting regarding your RCM business updates.`)}`} target="_blank" rel="noreferrer"
-                    style={{ flex: 1, background: COLORS.green, color: '#0B141A', padding: 12, borderRadius: 12, textDecoration: 'none', fontWeight: 800, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                    <MessageCircle size={16} /> WhatsApp
-                  </a>
+            <div className="ll-card ll-sec">
+              <div className="ll-sechd">
+                <div>
+                  <h3>Direct leg heads</h3>
+                  <p>Group volume of each direct leg. Tap a leg to open its tree.</p>
                 </div>
-              ) : (
-                <div style={{ fontSize: 12, color: COLORS.slate, textAlign: 'center' }}>Mobile number not available for this member.</div>
-              )}
-              <button type="button" onClick={() => setDrawerOpen(false)}
-                style={{ width: '100%', background: '#1F2C34', border: `1px solid ${COLORS.line}`, color: COLORS.slate, padding: 12, borderRadius: 12, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
-                Close Profile
-              </button>
+                <button type="button" className="ll-btn" onClick={() => { setNav({ path: [], idx: 0 }); setActiveTab('tree'); }}>
+                  <span>Open full tree</span><ArrowUpRight size={15} />
+                </button>
+              </div>
+              <div className="ll-legs">
+                {directLegs.length > 0 ? directLegs.map((leg, i) => {
+                  const letter = leg.leg || String.fromCharCode(65 + i);
+                  const headId = leg.head_id || leg.buyer_id;
+                  return (
+                    <button type="button" key={headId || i} className="ll-leg" onClick={() => openLeg(leg, i)}>
+                      <div style={{ minWidth: 0 }}>
+                        <span className="ll-chip t">Leg {letter}</span>
+                        <div style={{ fontSize: 16, fontWeight: 800, marginTop: 6, overflow: 'hidden', textOverflow: 'ellipsis' }}>{leg.head_name || leg.name}</div>
+                        <div style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>ID {headId}</div>
+                      </div>
+                      <div style={{ fontSize: 19, fontWeight: 800, color: COLORS.green, whiteSpace: 'nowrap' }}>{formatNumber(leg.pv)} PV</div>
+                    </button>
+                  );
+                }) : <div className="ll-empty" style={{ gridColumn: '1 / -1' }}>{booting ? 'Loading...' : 'No direct leg volume yet.'}</div>}
+              </div>
             </div>
+          </div>
+        )}
+
+        {/* REPORTS */}
+        {activeTab === 'assistant' && (
+          <div className="ll-card ll-sec" style={{ marginTop: 0 }}>
+            <div className="ll-sechd">
+              <div>
+                <h3>12-month performance</h3>
+                <p>Rolling purchase volume. Older months fill in as monthly syncs accumulate.</p>
+              </div>
+              <span className="ll-chip g">{matrixMonths[matrixMonths.length - 1]} to {matrixMonths[0]}</span>
+            </div>
+
+            <div className="ll-chips">
+              {[
+                { label: 'All members', q: '' },
+                { label: '1500-2499 PV Regular', q: '1500 se 2499 pv' },
+                { label: '100-500 PV Grahak', q: '100 to 500 pv' },
+                { label: '0 PV Inactive', q: '0 pv' }
+              ].map((c) => (
+                <button key={c.label} type="button" className={`ll-fchip${assistantQuery === c.q ? ' on' : ''}`}
+                  onClick={() => { setAssistantQuery(c.q); assistantQueryRef.current = c.q; loadAssistant(activeBuyerId, c.q, sessionRef.current); }}>
+                  {c.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="ll-tw">
+              <table className="ll-tbl">
+                <thead>
+                  <tr>
+                    <th className="sl">Member</th>
+                    <th>District</th>
+                    {matrixMonths.map((m, i) => (
+                      <th key={m} className="num" style={i === 0 ? { color: COLORS.green } : undefined}>{m}{i === 0 ? ' (Now)' : ''}</th>
+                    ))}
+                    <th className="sr" style={{ textAlign: 'center' }}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loadingAssistant ? (
+                    <tr><td colSpan={matrixMonths.length + 3} className="ll-empty">
+                      <div style={{ display: 'inline-block', width: 22, height: 22, border: `3px solid ${COLORS.green}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'llSpin .8s linear infinite' }} />
+                      <div style={{ marginTop: 10 }}>Loading records...</div>
+                    </td></tr>
+                  ) : pagedRows.length > 0 ? (
+                    pagedRows.map((row) => <MatrixRow key={row.buyer_id} row={row} months={matrixMonths} />)
+                  ) : (
+                    <tr><td colSpan={matrixMonths.length + 3} className="ll-empty">
+                      {crawlRunning ? 'Team is still syncing...' : 'No records match this filter.'}
+                    </td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {matrixData.length > MATRIX_PAGE && (
+              <div className="ll-pager">
+                <span>{matrixPage * MATRIX_PAGE + 1}-{Math.min((matrixPage + 1) * MATRIX_PAGE, matrixData.length)} of {formatNumber(matrixData.length)}</span>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button type="button" className="ll-btn" disabled={matrixPage === 0} onClick={() => setMatrixPage((p) => p - 1)}>Previous</button>
+                  <button type="button" className="ll-btn" disabled={(matrixPage + 1) * MATRIX_PAGE >= matrixData.length} onClick={() => setMatrixPage((p) => p + 1)}>Next</button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* FULL-SCREEN TREE */}
+      {activeTab === 'tree' && activeBuyerId && (
+        <TreeScreen
+          trail={trail} idx={Math.min(nav.idx, trail.length - 1)} setIdx={setIdx} onPush={pushNodes}
+          getKids={getKids} ensureKids={ensureKids} retry={retryKids} isLoading={isLoading} isFailed={isFailed}
+          crawlRunning={crawlRunning} onClose={() => setActiveTab('overview')} onProfile={openMemberDetails}
+          search={search} setSearch={setSearch} results={searchResults} searching={searching} onPickResult={pickSearchResult}
+        />
+      )}
+      {activeTab === 'tree' && !activeBuyerId && (
+        <div className="ll-wrap"><div className="ll-card ll-empty">Connect your RCM account to open the tree.</div></div>
+      )}
+
+      {/* MEMBER DRAWER / BOTTOM SHEET */}
+      {drawerOpen && selectedMember && (
+        <div className="ll-ov" onClick={() => setDrawerOpen(false)}>
+          <div className="ll-dr" onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+              <div style={{ fontSize: 17, fontWeight: 800 }}>Member profile</div>
+              <button type="button" className="ll-btn ic" aria-label="Close" onClick={() => setDrawerOpen(false)}><X size={18} /></button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', marginBottom: 18 }}>
+              <Avatar name={selectedMember.name} id={selectedMember.buyer_id} photoUrl={selectedMember.photo_url}
+                color={Number(selectedMember.status) === 0 ? COLORS.red : Number(selectedMember.self_pv) > 0 ? COLORS.green : COLORS.slate} size={76} fontSize={24} />
+              <div style={{ fontSize: 19, fontWeight: 800, marginTop: 10 }}>{selectedMember.name}</div>
+              <div style={{ fontSize: 13, color: '#64748B', marginTop: 3 }}>Buyer ID {selectedMember.buyer_id}</div>
+              <span className={`ll-chip ${Number(selectedMember.status) === 0 ? 'r' : 'g'}`} style={{ marginTop: 8 }}>
+                {Number(selectedMember.status) === 0 ? 'Terminated' : formatKyc(selectedMember.kyc_status)}
+              </span>
+            </div>
+            <div className="ll-grid2" style={{ marginBottom: 18 }}>
+              {[
+                { k: 'Self purchase', v: `${formatNumber(selectedMember.self_pv)} PV` },
+                { k: 'Re-purchase amount', v: `₹${formatNumber(selectedMember.repurchase_amt)}` },
+                { k: 'Group volume', v: `${formatNumber(selectedMember.total_group_pv)} PV` },
+                { k: 'Direct downlines', v: formatNumber(selectedMember.children_count) },
+                { k: 'Join date', v: formatJoinDate(selectedMember.join_date) },
+                { k: 'District / State', v: [selectedMember.district, selectedMember.state].filter(Boolean).join(', ') || '—' }
+              ].map((it) => (
+                <div key={it.k} className="ll-kv"><div className="k">{it.k}</div><div className="v">{it.v}</div></div>
+              ))}
+            </div>
+            {memberPhone ? (
+              <div style={{ display: 'flex', gap: 10 }}>
+                <a className="ll-btn" style={{ flex: 1 }} href={`tel:+${memberPhone}`}><Phone size={16} />Call</a>
+                <a className="ll-btn p" style={{ flex: 1, background: COLORS.green, borderColor: COLORS.green }} target="_blank" rel="noreferrer"
+                  href={`https://wa.me/${memberPhone}?text=${encodeURIComponent(`Namaste ${selectedMember.name} ji! Connecting regarding your RCM business updates.`)}`}>
+                  <MessageCircle size={16} />WhatsApp
+                </a>
+              </div>
+            ) : <div style={{ fontSize: 12, color: '#64748B', textAlign: 'center' }}>Mobile number not available for this member.</div>}
           </div>
         </div>
       )}
 
       {/* CONNECT MODAL */}
       {showSyncModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(11,20,26,0.95)', backdropFilter: 'blur(10px)', display: 'grid', placeItems: 'center', padding: 20, zIndex: 110 }}>
-          <div style={{ width: 'min(460px, 96vw)', background: '#111B21', border: `1px solid ${COLORS.line}`, borderRadius: 24, padding: 36, boxShadow: '0 24px 60px rgba(0,0,0,0.8)', position: 'relative' }}>
+        <div className="ll-ov c">
+          <div className="ll-modal">
             {activeBuyerId && (
-              <button type="button" onClick={() => setShowSyncModal(false)} aria-label="Close"
-                style={{ position: 'absolute', top: 16, right: 16, background: 'transparent', border: 'none', color: COLORS.slate, cursor: 'pointer' }}>
-                <X size={20} />
+              <button type="button" className="ll-btn ic" aria-label="Close" onClick={() => setShowSyncModal(false)} style={{ position: 'absolute', top: 14, right: 14, border: 0 }}>
+                <X size={18} />
               </button>
             )}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 24 }}>
-              <div style={{ width: 50, height: 50, borderRadius: 14, background: COLORS.green, display: 'grid', placeItems: 'center', color: '#0B141A' }}>
-                <ShieldCheck size={28} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 22 }}>
+              <div style={{ width: 46, height: 46, borderRadius: 14, background: '#111827', display: 'grid', placeItems: 'center', color: '#fff' }}>
+                <ShieldCheck size={24} />
               </div>
               <div>
-                <div style={{ fontSize: 22, fontWeight: 900 }}>RCM Enterprise Workspace</div>
-                <div style={{ fontSize: 13, color: COLORS.slate }}>Connect with your own RCM account</div>
+                <div style={{ fontSize: 19, fontWeight: 800 }}>Connect RCM account</div>
+                <div style={{ fontSize: 13, color: '#64748B' }}>Use your own RCM login</div>
               </div>
             </div>
-
-            <div style={{ display: 'grid', gap: 16 }}>
+            <div style={{ display: 'grid', gap: 14 }}>
               <div>
-                <label htmlFor="ll-buyer" style={{ display: 'block', fontSize: 12, color: COLORS.slate, marginBottom: 6, fontWeight: 700 }}>RCM Buyer ID</label>
-                <input id="ll-buyer" value={loginId} onChange={(e) => setLoginId(e.target.value.replace(/\D/g, ''))}
-                  inputMode="numeric" autoComplete="username" placeholder="Enter your RCM Buyer ID" style={inputStyle} />
+                <label htmlFor="ll-buyer" style={{ display: 'block', fontSize: 12, color: '#64748B', marginBottom: 6, fontWeight: 700 }}>RCM Buyer ID</label>
+                <input id="ll-buyer" className="ll-in" value={loginId} onChange={(e) => setLoginId(e.target.value.replace(/\D/g, ''))}
+                  inputMode="numeric" autoComplete="username" placeholder="Enter your Buyer ID" />
               </div>
               <div>
-                <label htmlFor="ll-pass" style={{ display: 'block', fontSize: 12, color: COLORS.slate, marginBottom: 6, fontWeight: 700 }}>RCM Password</label>
-                <input id="ll-pass" value={password} onChange={(e) => setPassword(e.target.value)} type="password"
-                  autoComplete="current-password" placeholder="Enter RCM Password" style={inputStyle}
+                <label htmlFor="ll-pass" style={{ display: 'block', fontSize: 12, color: '#64748B', marginBottom: 6, fontWeight: 700 }}>RCM Password</label>
+                <input id="ll-pass" className="ll-in" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password" placeholder="Enter your password"
                   onKeyDown={(e) => { if (e.key === 'Enter' && !isConnecting) handleSyncConnect(); }} />
               </div>
-
-              {formError && (
-                <div style={{ background: '#2C1B1B', border: '1px solid rgba(239,68,68,0.4)', color: '#FCA5A5', borderRadius: 10, padding: '10px 14px', fontSize: 13 }}>
-                  {formError}
-                </div>
-              )}
-
-              <button type="button" onClick={handleSyncConnect} disabled={isConnecting}
-                style={{ background: COLORS.teal, color: '#0B141A', border: 'none', borderRadius: 12, padding: 14, fontSize: 15, fontWeight: 900, cursor: isConnecting ? 'wait' : 'pointer', marginTop: 10, opacity: isConnecting ? 0.7 : 1 }}>
-                {isConnecting ? 'Verifying & Unlocking Overview...' : 'Connect & Unlock Executive Overview'}
+              {formError && <div className="ll-err">{formError}</div>}
+              <button type="button" className="ll-btn p" style={{ height: 48, fontSize: 14 }} onClick={handleSyncConnect} disabled={isConnecting}>
+                {isConnecting ? 'Verifying...' : 'Connect and sync'}
               </button>
-              <div style={{ fontSize: 11, color: COLORS.slate, textAlign: 'center' }}>
-                Your password is used only to log in to RCM and is never stored.
+              <div style={{ fontSize: 11, color: '#64748B', textAlign: 'center' }}>
+                Your password is only used to log in to RCM and is never stored.
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* LIVE TELEMETRY */}
       {activeBuyerId && <SyncPill buyerId={activeBuyerId} onComplete={handleSyncComplete} />}
     </div>
   );
