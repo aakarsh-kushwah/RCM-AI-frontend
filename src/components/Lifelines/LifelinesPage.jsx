@@ -13,10 +13,10 @@ import {
 const ACTIVE_ID_KEY = 'rcm_active_buyer_id';
 const COLORS = { green: '#16A34A', red: '#DC2626', slate: '#94A3B8' };
 const TREE_PAGE = 40;      // direct children rendered per "page" inside the tree
-const CAP = 4;             // children shown per node on deeper levels (rest = "+N")
-const MAX_DEPTH = 6;       // max levels auto-opened under the focused member
-const MATRIX_PAGE = 50;    // table rows rendered per page
-const MAX_PARALLEL = 4;    // max simultaneous tree requests from one browser
+const CAP = 4;              // children shown per node on deeper levels (rest = "+N")
+const MAX_DEPTH = 6;        // max levels auto-opened under the focused member
+const MATRIX_PAGE = 50;     // table rows rendered per page
+const MAX_PARALLEL = 4;     // max simultaneous tree requests from one browser
 
 // ---------------------------------------------------------------------------
 // Helpers (module level: created once, never per render)
@@ -114,12 +114,14 @@ const CSS = `
 .ll-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:6px;margin-bottom:16px}
 .ll-tab{height:44px;border:0;border-radius:12px;background:transparent;color:var(--mu);font-weight:700;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
 .ll-tab.on{background:var(--pri);color:#fff}
-.ll-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}
-.ll-stat{padding:18px;display:flex;flex-direction:column;gap:6px}
+.ll-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
+.ll-stat{padding:18px;display:flex;flex-direction:column;gap:4px}
 .ll-stat .ico{width:38px;height:38px;border-radius:11px;background:#F1F5F9;display:grid;place-items:center;color:var(--pri);margin-bottom:6px}
-.ll-stat .v{font-size:30px;font-weight:800;letter-spacing:-.5px}
+.ll-stat .v{font-size:26px;font-weight:800;letter-spacing:-.5px}
 .ll-stat .l{font-size:13px;color:var(--mu);font-weight:600}
-.ll-stat .n{font-size:12px;color:var(--mu)}
+.ll-stat .n{font-size:11.5px;color:var(--mu)}
+.ll-stat .sub-v{font-size:17px;font-weight:800;color:var(--gr);margin-top:6px}
+.ll-stat .split-row{display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding-top:8px;border-top:1px solid #F1F5F9;font-size:11.5px;font-weight:700}
 .ll-sec{padding:20px;margin-top:16px}
 .ll-sec h3{margin:0;font-size:18px}.ll-sec p{margin:3px 0 0;color:var(--mu);font-size:13px}
 .ll-sechd{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px}
@@ -206,7 +208,7 @@ const CSS = `
 .ll-tag{margin-top:3px;font-size:9px;font-weight:800;padding:1px 6px;border-radius:999px;background:#F1F5F9;color:var(--mu);white-space:nowrap}
 .ll-tag.g{background:#DCFCE7;color:#15803D}.ll-tag.r{background:#FEE2E2;color:#B91C1C}
 .ll-kidhint{font-size:9px;color:#0369A1;font-weight:800;margin-top:2px}
-.ll-more{min-width:34px;height:34px;padding:0 8px;border-radius:17px;border:1.5px dashed #94A3B8;background:#fff;color:var(--mu);font-size:11px;font-weight:800;cursor:pointer;display:grid;place-items:center;position:relative;z-index:1}
+.ll-more{min-width:34px;height:34px;padding:0 8px;border-radius:17px;border:1.5px dashed #94A3B8;background:#fff;color:var(--mu);font-size:11px;font-weight:800;cursor:grid;place-items:center;position:relative;z-index:1}
 .ll-rail{position:fixed;right:2px;top:50%;transform:translateY(-50%);height:min(60vh,400px);width:54px;z-index:60;touch-action:none;cursor:ns-resize;user-select:none}
 .ll-rtrack{position:absolute;left:25px;top:16px;bottom:16px;width:4px;border-radius:4px;background:#E2E8F0}
 .ll-rfill{position:absolute;left:0;top:0;width:100%;border-radius:4px;background:var(--pri)}
@@ -227,7 +229,7 @@ const CSS = `
   .ll-tab .t{font-size:12px}
   .ll-tab{gap:5px;font-size:12px}
   .ll-stats{grid-template-columns:1fr 1fr;gap:10px}
-  .ll-stat{padding:14px}.ll-stat .v{font-size:23px}
+  .ll-stat{padding:14px}.ll-stat .v{font-size:20px}
   .ll-sec{padding:14px}
   .ll-sbox{width:auto;flex:1}
   .ll-ov{align-items:flex-end}
@@ -252,7 +254,7 @@ const Avatar = memo(function Avatar({ name, id, photoUrl, color, size = 56, font
 });
 
 // ---------------------------------------------------------------------------
-// Live sync pill. Socket events are throttled so a flood of messages never re-renders the page.
+// Live sync pill
 // ---------------------------------------------------------------------------
 function SyncPill({ buyerId, onComplete }) {
   const [t, setT] = useState(null);
@@ -313,7 +315,6 @@ function SyncPill({ buyerId, onComplete }) {
 // ---------------------------------------------------------------------------
 // Tree pieces
 // ---------------------------------------------------------------------------
-// Border colour rule: Terminated = red (whole box + label), bought this month (self PV > 0) = green, otherwise grey.
 const getStatus = (n) => {
   const ring = getRing(n);
   if (ring.label === 'Terminated') return { ...ring, cls: 'r', tag: 'Terminated' };
@@ -328,7 +329,6 @@ const Branch = ({ index, count }) => (
   </>
 );
 
-// Decides how many levels fit on this screen and which parents still need their children loaded.
 function buildPlan(focus, getKids, availW, slot, visible, crawl) {
   const need = [];
   let level = [focus];
@@ -351,9 +351,9 @@ function buildPlan(focus, getKids, availW, slot, visible, crawl) {
         slots += take + (d > 1 && kids.length > cap ? 1 : 0);
       }
     }
-    if (d > 2 && unknown) break;                    // wait for data before deciding on a 3rd+ level
+    if (d > 2 && unknown) break;
     if (slots === 0) break;
-    if (d > 2 && slots * slot > availW) break;      // deeper levels only while they fit on screen
+    if (d > 2 && slots * slot > availW) break;
     maxLevel = d;
     widest = Math.max(widest, slots);
     level = next;
@@ -403,8 +403,6 @@ function Subtree({ node, chain, index, count, level, plan, getKids, onPick }) {
   );
 }
 
-// Depth scrubber (like a video seek bar): drag up = collapse back through the uplines, drag down = open again.
-// The thumb follows the finger smoothly and the tree updates live while dragging.
 function DepthRail({ trail, idx, onChange }) {
   const trackRef = useRef(null);
   const draggingRef = useRef(false);
@@ -459,7 +457,6 @@ function TreeScreen({
   const dirRef = useRef('');
   const lastRef = useRef({ fid, idx });
 
-  // animation direction is decided once per focus change (so later data refreshes don't restart it)
   if (lastRef.current.fid !== fid) {
     dirRef.current = idx > lastRef.current.idx ? 'grow' : 'shrink';
     lastRef.current = { fid, idx };
@@ -482,7 +479,6 @@ function TreeScreen({
   const plan = buildPlan(focus, getKids, availW, slot, visible, crawlRunning);
   const needKey = plan.need.join(',');
 
-  // load only what the plan says is needed for what is on screen
   useEffect(() => {
     if (needKey) needKey.split(',').forEach((id) => ensureKids(id));
   }, [needKey, ensureKids]);
@@ -496,7 +492,7 @@ function TreeScreen({
 
   const st = getStatus(focus);
   const shownKids = kids ? kids.slice(0, visible) : [];
-  const leftMode = plan.widest * slot > availW;   // too wide for the screen: upline sits at the start and slides away with the swipe
+  const leftMode = plan.widest * slot > availW;
   const ancestors = trail.slice(Math.max(0, idx - 2), idx);
   const hiddenAbove = Math.max(0, idx - 2);
   const selfPv = Number(focus.self_pv ?? focus.current_pv ?? 0);
@@ -572,7 +568,7 @@ function TreeScreen({
               <button type="button" className="inf" aria-label="View profile" onClick={() => onProfile(focus)}><Info size={14} /></button>
               <Avatar name={focus.name} id={fid} photoUrl={focus.photo_url} color={st.color} size={40} fontSize={13} />
               <div className="nm">{focus.name || `Associate #${fid}`}{idx === 0 ? ' (You)' : ''}</div>
-              <div className="id">ID {fid}{focus.highest_pin ? ` • ${focus.highest_pin}` : ''}</div>
+              <div className="id">ID {fid}{focus.max_pin ? ` • ${focus.max_pin}` : ''}{focus.curr_pin && ` • ${focus.curr_pin}`}</div>
               <div style={{ display: 'flex', gap: 4, marginTop: 4, flexWrap: 'wrap', justifyContent: 'center' }}>
                 <span className={`ll-tag ${st.cls}`} style={{ marginTop: 0 }}>{st.cls === 'r' ? 'Terminated' : `Self ${formatNumber(selfPv)} PV`}</span>
                 {kids && <span className="ll-tag" style={{ marginTop: 0 }}>{kids.length} direct</span>}
@@ -620,7 +616,7 @@ function TreeScreen({
 }
 
 // ---------------------------------------------------------------------------
-// Report table row (memoised so paging/filtering never re-renders unchanged rows)
+// Report table row
 // ---------------------------------------------------------------------------
 const MatrixRow = memo(function MatrixRow({ row, months }) {
   const wa = toWhatsappNumber(row.mobile_no);
@@ -656,7 +652,7 @@ const MatrixRow = memo(function MatrixRow({ row, months }) {
 });
 
 // ---------------------------------------------------------------------------
-// Page
+// Main Page Component
 // ---------------------------------------------------------------------------
 export default function LifelinesPage() {
   const [initialId] = useState(() => localStorage.getItem(ACTIVE_ID_KEY) || localStorage.getItem('rcm_buyer_id') || '');
@@ -675,7 +671,6 @@ export default function LifelinesPage() {
   const [overview, setOverview] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
 
-  // Tree navigation: path = nodes below root, idx = where we currently stand (0 = root).
   const [nav, setNav] = useState({ path: [], idx: 0 });
   const [, setVer] = useState(0);
   const [search, setSearch] = useState('');
@@ -696,22 +691,20 @@ export default function LifelinesPage() {
   const assistantQueryRef = useRef('');
   const lastCompleteRef = useRef(0);
   const syncCompleteRef = useRef(null);
-  const kidsRef = useRef(new Map());       // parentId -> children[]
-  const inflightRef = useRef(new Map());   // parentId -> Promise (dedupes simultaneous taps)
+  const kidsRef = useRef(new Map());
+  const inflightRef = useRef(new Map());
   const failedRef = useRef(new Set());
   const bumpTimerRef = useRef(null);
 
   useEffect(() => { activeIdRef.current = activeBuyerId; }, [activeBuyerId]);
   useEffect(() => { assistantQueryRef.current = assistantQuery; }, [assistantQuery]);
 
-  // Batch re-renders: many children arriving together cause ONE render, not dozens.
   const scheduleRender = useCallback(() => {
     if (bumpTimerRef.current) return;
     bumpTimerRef.current = setTimeout(() => { bumpTimerRef.current = null; setVer((v) => v + 1); }, 60);
   }, []);
   useEffect(() => () => clearTimeout(bumpTimerRef.current), []);
 
-  // ----- tree data (cache + in-flight dedupe + concurrency limit) -----
   const getKids = useCallback((id) => kidsRef.current.get(String(id)), []);
   const isLoading = useCallback((id) => inflightRef.current.has(String(id)), []);
   const isFailed = useCallback((id) => failedRef.current.has(String(id)), []);
@@ -727,7 +720,7 @@ export default function LifelinesPage() {
       .then((json) => {
         if (sid !== sessionRef.current) return null;
         if (json?.success && Array.isArray(json.data)) {
-          kidsRef.current.set(pid, json.data);   // only successful results are cached
+          kidsRef.current.set(pid, json.data);
           return json.data;
         }
         failedRef.current.add(pid);
@@ -824,7 +817,6 @@ export default function LifelinesPage() {
 
   useEffect(() => {
     if (initialId) loadAll(initialId); else setShowSyncModal(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleSyncComplete = useCallback(() => {
@@ -836,7 +828,6 @@ export default function LifelinesPage() {
   }, [loadAll]);
   useEffect(() => { syncCompleteRef.current = handleSyncComplete; }, [handleSyncComplete]);
 
-  // Fallback polling (socket is the main channel): slower, and stops when tab is hidden.
   useEffect(() => {
     if (!syncing || !activeBuyerId) return undefined;
     const sid = sessionRef.current;
@@ -888,7 +879,6 @@ export default function LifelinesPage() {
     return () => clearTimeout(t);
   }, [notice]);
 
-  // Lock page scroll behind full-screen tree
   useEffect(() => {
     if (activeTab !== 'tree') return undefined;
     const prev = document.body.style.overflow;
@@ -903,7 +893,6 @@ export default function LifelinesPage() {
     setIsConnecting(true);
     setFormError('');
     try {
-      // Log in FIRST. A wrong password must not wipe the data that is already on screen.
       const json = await syncLifelines(id, password);
       const token = json?.lifelinesToken || json?.token;
       if (!json?.success || !token) throw new Error(json?.message || 'RCM connection failed.');
@@ -947,11 +936,15 @@ export default function LifelinesPage() {
     }
   }, []);
 
-  // ----- derived data -----
+  // ----- derived metrics -----
   const ovData = overview || {};
   const totalNetworkPv = ovData.total_pv ?? ovData.totals?.totalPv ?? 0;
   const selfPurchasePv = ovData.self_pv ?? ovData.totals?.selfPv ?? 0;
-  const activeCount = ovData.active_purchasers ?? ovData.totals?.activePurchasers ?? 0;
+  const totalTeamRepurchaseAmt = ovData.total_repurchase_amt ?? ovData.totals?.totalRepurchaseAmt ?? 0;
+  const selfRepurchaseAmt = ovData.self_repurchase_amt ?? ovData.repurchase_amt ?? 0;
+  const activeCount = ovData.active_purchasers ?? ovData.totals?.activePurchasers ?? ovData.totals?.active ?? 0;
+  const inactiveCount = ovData.inactive_members ?? ovData.totals?.inactive ?? ovData.totals?.zeroPv ?? 0;
+  const terminatedCount = ovData.terminated_members ?? ovData.totals?.terminated ?? 0;
   const totalTeamCount = ovData.total_team ?? ovData.totals?.totalMembers ?? 0;
   const directLegs = ovData.directLegs || ovData.legs || [];
   const rootIdentity = ovData.identity || {};
@@ -993,13 +986,6 @@ export default function LifelinesPage() {
   );
   const memberPhone = toWhatsappNumber(selectedMember?.mobile || selectedMember?.mobile_no);
 
-  const stats = [
-    { icon: <TrendingUp size={19} />, label: 'Total Network Turnover', value: `${formatNumber(totalNetworkPv)} PV`, note: 'Official portal turnover', color: COLORS.green },
-    { icon: <Wallet size={19} />, label: 'Your Self Purchase', value: `${formatNumber(selfPurchasePv)} PV`, note: 'Personal monthly consumption' },
-    { icon: <UserCheck size={19} />, label: 'Active Purchasers', value: formatNumber(activeCount), note: 'Members billing above 0 PV', color: COLORS.green },
-    { icon: <Users size={19} />, label: 'Total Downline Team', value: formatNumber(totalTeamCount), note: crawlRunning ? 'Deep sync in progress...' : 'Members across all legs' }
-  ];
-
   return (
     <div className="ll">
       <style>{CSS}</style>
@@ -1020,8 +1006,10 @@ export default function LifelinesPage() {
               {activeBuyerId && (
                 <div className="ll-sub">
                   <span>ID {activeBuyerId}</span>
-                  {rootIdentity.highest_pin && <span className="ll-chip g">{rootIdentity.highest_pin}</span>}
+                  {rootIdentity.max_pin && <span className="ll-chip g">{rootIdentity.max_pin}</span>}
                   {rootIdentity.kyc_status && <span className="ll-chip t">KYC {formatKyc(rootIdentity.kyc_status)}</span>}
+                  {rootIdentity.curr_pin && <span className="ll-chip t">Current Pin: {rootIdentity.curr_pin}</span>}
+                  {rootIdentity.join_date && <span className="ll-chip t">Joined: {formatJoinDate(rootIdentity.join_date)}</span>}
                 </div>
               )}
             </div>
@@ -1062,15 +1050,48 @@ export default function LifelinesPage() {
                 {activeBuyerId ? 'No data synced yet. Tap "Re-sync from RCM" to fetch live data.' : 'Connect your RCM account to see live metrics.'}
               </div>
             )}
+            
+            {/* 4 OVERVIEW CARDS */}
             <div className="ll-stats">
-              {stats.map((s) => (
-                <div key={s.label} className="ll-card ll-stat">
-                  <div className="ico">{s.icon}</div>
-                  <div className="l">{s.label}</div>
-                  <div className="v" style={s.color ? { color: s.color } : undefined}>{s.value}</div>
-                  <div className="n">{s.note}</div>
+              {/* Card 1: Total Network Turnover */}
+              <div className="ll-card ll-stat">
+                <div className="ico"><TrendingUp size={19} /></div>
+                <div className="l">Total Network Turnover</div>
+                <div className="v">₹ {formatNumber(totalTeamRepurchaseAmt)}</div>
+                <div className="n">Total team purchase (₹)</div>
+                <div className="sub-v">{formatNumber(totalNetworkPv)} PV</div>
+                <div className="n">Official portal turnover</div>
+              </div>
+
+              {/* Card 2: Your Self Purchase */}
+              <div className="ll-card ll-stat">
+                <div className="ico"><Wallet size={19} /></div>
+                <div className="l">Your Self Purchase</div>
+                <div className="v">₹ {formatNumber(selfRepurchaseAmt)}</div>
+                <div className="n">Personal consumption (₹)</div>
+                <div className="sub-v">{formatNumber(selfPurchasePv)} PV</div>
+                <div className="n">Personal monthly consumption</div>
+              </div>
+
+              {/* Card 3: Active Purchasers & Breakdown */}
+              <div className="ll-card ll-stat">
+                <div className="ico"><UserCheck size={19} /></div>
+                <div className="l">Active Purchasers</div>
+                <div className="v" style={{ color: COLORS.green }}>{formatNumber(activeCount)}</div>
+                <div className="n">Members billing above 0 PV</div>
+                <div className="split-row">
+                  <span style={{ color: '#D97706' }}>Inactive: {formatNumber(inactiveCount)}</span>
+                  <span style={{ color: COLORS.red }}>Terminated: {formatNumber(terminatedCount)}</span>
                 </div>
-              ))}
+              </div>
+
+              {/* Card 4: Total Downline Team */}
+              <div className="ll-card ll-stat">
+                <div className="ico"><Users size={19} /></div>
+                <div className="l">Total Downline Team</div>
+                <div className="v">{formatNumber(totalTeamCount)}</div>
+                <div className="n">{crawlRunning ? 'Deep sync in progress...' : 'Members across all legs'}</div>
+              </div>
             </div>
 
             <div className="ll-card ll-sec">
@@ -1202,11 +1223,14 @@ export default function LifelinesPage() {
             </div>
             <div className="ll-grid2" style={{ marginBottom: 18 }}>
               {[
+                { k: 'Current Pin', v: selectedMember.curr_pin || '—' },
+                { k: 'Highest Pin', v: selectedMember.max_pin || '—' },
+                { k: 'KYC Status', v: formatKyc(selectedMember.kyc_status) },
+                { k: 'Join date', v: formatJoinDate(selectedMember.join_date) },
                 { k: 'Self purchase', v: `${formatNumber(selectedMember.self_pv)} PV` },
                 { k: 'Re-purchase amount', v: `₹${formatNumber(selectedMember.repurchase_amt)}` },
                 { k: 'Group volume', v: `${formatNumber(selectedMember.total_group_pv)} PV` },
                 { k: 'Direct downlines', v: formatNumber(selectedMember.children_count) },
-                { k: 'Join date', v: formatJoinDate(selectedMember.join_date) },
                 { k: 'District / State', v: [selectedMember.district, selectedMember.state].filter(Boolean).join(', ') || '—' }
               ].map((it) => (
                 <div key={it.k} className="ll-kv"><div className="k">{it.k}</div><div className="v">{it.v}</div></div>
