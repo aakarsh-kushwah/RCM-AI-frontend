@@ -115,7 +115,7 @@ const logoutLifelines = async () => {
 const getLifelinesOverview = (buyerId) => defaultApi.get(`/overview/${buyerId}`);
 const getTreeChildren = (buyerId, parentId) => defaultApi.get(`/tree-children?buyerId=${buyerId}&parentId=${parentId}`);
 const getMemberFullProfile = (buyerId, memberId) => defaultApi.get(`/member/${memberId}?rootBuyerId=${buyerId}`);
-const getAssistantQuery = (buyerId, query) => defaultApi.get(`/assistant-query?buyerId=${buyerId}&q=${encodeURIComponent(query || 'all')}`);
+const getAssistantQuery = (buyerId, query, monthKey) => defaultApi.get(`/assistant-query?buyerId=${buyerId}&q=${encodeURIComponent(query || 'all')}${monthKey ? `&monthKey=${monthKey}` : ''}`);
 const getSyncStatus = (buyerId) => defaultApi.get(`/status/${buyerId}`);
 const searchLifelines = (rootBuyerId, searchQuery, limit = 20) => defaultApi.get(`/search?rootBuyerId=${rootBuyerId}&q=${encodeURIComponent(searchQuery)}&limit=${limit}`);
 const updateCustomPhoto = (buyerId, customPhotoUrl) => defaultApi.post('/photo', { buyerId, custom_photo_url: customPhotoUrl });
