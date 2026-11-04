@@ -1,18 +1,20 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import {
   ShieldCheck, Activity, TreePine, Sparkles, RefreshCw, LogOut, Phone,
-  MessageCircle, X, ArrowUpRight, Users, TrendingUp, UserCheck, Wallet
+  MessageCircle, X, ArrowUpRight, Users, TrendingUp, UserCheck, Wallet, UserPlus
 } from 'lucide-react';
 import socketService from '../../services/socketService';
 import {
   syncLifelines, logoutLifelines, getLifelinesOverview,
-  getAssistantQuery, getSyncStatus
+  getAssistantQuery, getSyncStatus, getNewJoinings
 } from '../../services/lifelinesApiClient';
-import BrandLogo from '../BrandLogo/BrandLogo';   // line 11
-import TreestructureUI from './Treestructureui';  // line 12
+import BrandLogo from '../BrandLogo/BrandLogo';
+import TreestructureUI from './Treestructureui';
+
 const ACTIVE_ID_KEY = 'rcm_active_buyer_id';
 const COLORS = { green: '#16A34A', red: '#DC2626', slate: '#94A3B8', mu: '#64748B' };
-const MATRIX_PAGE = 50;     // table rows rendered per page
+const MATRIX_PAGE = 50;     // report table rows rendered per page
+const JOIN_PAGE = 30;       // joining cards rendered per "show more"
 const RCM_ORIGIN = 'https://www.rcmworld.com';
 
 // ---------------------------------------------------------------------------
@@ -66,7 +68,10 @@ const getActiveSocket = () => {
   return socketService?.getSocket?.() || socketService?.socket || null;
 };
 
-// ---- Overview payload normaliser ----
+// ---- New Joinings request ----
+const requestNewJoinings = (id) => getNewJoinings(id);
+
+// ---- Payload normalisers ----
 const normalizeLeg = (l, i) => {
   const rawId = l.distno ?? l.head_id ?? l.buyer_id ?? l.buyerId;
   const letter = l.leg || String(l.leg_type || '').replace(/^leg\s*/i, '') || String.fromCharCode(65 + i);
@@ -79,12 +84,7 @@ const normalizeLeg = (l, i) => {
     pin: l.pin_level ?? l.pinLevel ?? l.highest_pin ?? l.max_pin ?? l.curr_pin ?? null,
     pv: Number(l.pv ?? l.total_leg_subtree_pv ?? 0),
     repurchase_amt: Number(l.repurchase_amt ?? l.total_leg_repurchase_amt ?? 0),
-    self_pv: Number(l.self_pv ?? 0),
-    self_repurchase_amt: Number(l.self_repurchase_amt ?? 0),
-    members: Number(l.members ?? l.total_members ?? 0),
-    active_purchasers: Number(l.active_purchasers ?? 0),
-    inactive_members: Number(l.inactive_members ?? 0),
-    terminated_members: Number(l.terminated_members ?? 0)
+    self_pv: Number(l.self_pv ?? 0)
   };
 };
 
@@ -107,15 +107,34 @@ const normalizeOverview = (d) => {
     totalPv: Number(d.totalPv ?? d.total_pv ?? t.totalPv ?? 0),
     selfPv: Number(d.selfPv ?? d.self_pv ?? t.selfPv ?? 0),
     selfRepurchaseAmt: Number(d.selfRepurchaseAmt ?? d.self_repurchase_amt ?? d.repurchase_amt ?? 0),
-    totalTeamRepurchaseAmt: Number(d.totalTeamRepurchaseAmt ?? d.total_repurchase_amt ?? t.totalRepurchaseAmt ?? 0),
+    totalTeamRepurchaseAmt: Number(
+      d.totalTeamRepurchaseAmt ?? d.total_team_repurchase_amt ?? d.total_repurchase_amt ?? t.totalRepurchaseAmt ?? 0
+    ),
     totalTeam: Number(d.total_team ?? t.totalMembers ?? 0),
     activeCount: Number(d.active_purchasers ?? t.activePurchasers ?? t.active ?? 0),
     inactiveCount: Number(d.inactive_members ?? t.inactive ?? t.zeroPv ?? 0),
     terminatedCount: Number(d.terminated_members ?? t.terminated ?? 0),
-    directLegs: legsRaw.map(normalizeLeg),
-    monthlyHistory: Array.isArray(d.monthlyHistory) ? d.monthlyHistory : []
+    directLegs: legsRaw.map(normalizeLeg)
   };
 };
+
+const normalizeJoinings = (json) => {
+  const data = Array.isArray(json?.data) ? json.data : [];
+  const months = Array.isArray(json?.months) ? json.months : [];
+  const counts = { ...(json?.monthCounts || {}) };
+  if (Object.keys(counts).length === 0) {
+    data.forEach((m) => { counts[m.month_label] = (counts[m.month_label] || 0) + 1; });
+  }
+  return {
+    data,
+    months,
+    monthCounts: counts,
+    total: Number(json?.totalNewJoinings ?? data.length),
+    error: false
+  };
+};
+
+const EMPTY_JOININGS = { data: [], months: [], monthCounts: {}, total: 0, error: true };
 
 // ---------------------------------------------------------------------------
 // Styles
@@ -134,7 +153,7 @@ const CSS = `
 .ll-who{display:flex;align-items:center;gap:14px;min-width:0}
 .ll-h1{font-size:20px;font-weight:800;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ll-sub{font-size:12.5px;color:var(--mu);margin-top:3px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.ll-chip{display:inline-flex;align-items:center;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;background:#F1F5F9;color:var(--mu)}
+.ll-chip{display:inline-flex;align-items:center;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;background:#F1F5F9;color:var(--mu);white-space:nowrap}
 .ll-chip.g{background:#DCFCE7;color:#15803D}.ll-chip.r{background:#FEE2E2;color:#B91C1C}.ll-chip.t{background:#E0F2FE;color:#0369A1}.ll-chip.a{background:#FEF3C7;color:#B45309}
 .ll-acts{display:flex;gap:8px;flex-wrap:wrap}
 .ll-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:40px;padding:0 16px;border-radius:12px;border:1px solid var(--bd);background:#fff;color:var(--tx);font-weight:700;font-size:13px;cursor:pointer;text-decoration:none;transition:background .15s}
@@ -143,8 +162,8 @@ const CSS = `
 .ll-btn.d{color:var(--rd);border-color:#FECACA;background:#FEF2F2}
 .ll-btn.ic{width:40px;padding:0}
 .ll-btn:focus-visible,.ll-tab:focus-visible,.ll-leg:focus-visible{outline:2px solid #6366F1;outline-offset:2px}
-.ll-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:6px;margin-bottom:16px}
-.ll-tab{height:44px;border:0;border-radius:12px;background:transparent;color:var(--mu);font-weight:700;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
+.ll-tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:6px;margin-bottom:16px}
+.ll-tab{height:44px;border:0;border-radius:12px;background:transparent;color:var(--mu);font-weight:700;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;padding:0 4px}
 .ll-tab.on{background:var(--pri);color:#fff}
 .ll-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
 .ll-stat{padding:18px;display:flex;flex-direction:column;gap:4px}
@@ -153,7 +172,7 @@ const CSS = `
 .ll-stat .l{font-size:13px;color:var(--mu);font-weight:600}
 .ll-stat .n{font-size:11.5px;color:var(--mu)}
 .ll-stat .sub-v{font-size:17px;font-weight:800;color:var(--gr);margin-top:6px}
-.ll-stat .split-row{display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding-top:8px;border-top:1px solid #F1F5F9;font-size:11.5px;font-weight:700}
+.ll-stat .badges{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid #F1F5F9}
 .ll-sec{padding:20px;margin-top:16px}
 .ll-sec h3{margin:0;font-size:18px}.ll-sec p{margin:3px 0 0;color:var(--mu);font-size:13px}
 .ll-sechd{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px}
@@ -162,16 +181,9 @@ const CSS = `
 .ll-treebtn:disabled{opacity:.5;cursor:not-allowed}
 .ll-treebtn .ico{width:44px;height:44px;border-radius:13px;background:var(--pri);color:#fff;display:grid;place-items:center;flex:none}
 .ll-legs{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,340px),1fr));gap:12px}
-.ll-leg{border:1px solid var(--bd);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;cursor:pointer;background:#fff;text-align:left;width:100%}
+.ll-leg{border:1px solid var(--bd);border-radius:14px;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;gap:10px;cursor:pointer;background:#fff;text-align:left;width:100%}
 .ll-leg:hover{background:#F8FAFC}
-.ll-leg-top{display:flex;justify-content:space-between;align-items:center;gap:10px}
-.ll-leg-stats{display:flex;gap:6px;flex-wrap:wrap;padding-top:10px;border-top:1px solid #F1F5F9}
-.ll-hist{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,230px),1fr));gap:12px}
-.ll-mcard{border:1px solid var(--bd);border-radius:14px;padding:14px 16px;background:#fff}
-.ll-mcard.live{border-color:#BBF7D0;background:#F0FDF4}
-.ll-mcard.nodata{background:#F8FAFC}
-.ll-mrow{display:flex;justify-content:space-between;gap:8px;font-size:12.5px;margin-top:6px;color:var(--mu)}
-.ll-mrow b{color:var(--tx);font-weight:800}
+.ll-legav{width:44px;height:44px;border-radius:50%;background:#DCFCE7;color:#15803D;border:2px solid var(--gr);display:grid;place-items:center;font-weight:800;font-size:18px;flex:none}
 .ll-empty{padding:22px;text-align:center;color:var(--mu);font-size:14px}
 .ll-av{border-radius:50%;background:#F1F5F9;display:flex;align-items:center;justify-content:center;overflow:hidden;flex:none;font-weight:800}
 .ll-av img{width:100%;height:100%;object-fit:cover}
@@ -188,7 +200,7 @@ const CSS = `
 .ll-tbl .sr{position:sticky;right:0;z-index:1;box-shadow:-2px 0 6px rgba(15,23,42,.05)}
 .ll-tbl th.sr{z-index:3}
 .ll-tbl .num{text-align:right}
-.ll-round{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;text-decoration:none;background:#F1F5F9;color:var(--gr)}
+.ll-round{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;text-decoration:none;background:#F1F5F9;color:var(--gr);flex:none}
 .ll-round.wa{background:var(--gr);color:#fff}.ll-round.off{opacity:.35;color:var(--mu)}
 .ll-pager{display:flex;justify-content:space-between;align-items:center;margin-top:12px;font-size:13px;color:var(--mu);gap:10px;flex-wrap:wrap}
 .ll-ov{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:100;display:flex;justify-content:flex-end}
@@ -200,6 +212,18 @@ const CSS = `
 .ll-pill{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;background:#fff;border:1.5px solid var(--bd);border-radius:16px;padding:12px 18px;z-index:120;box-shadow:0 12px 32px rgba(15,23,42,.18);display:flex;gap:12px;align-items:center;max-width:92vw}
 .ll-dot{width:10px;height:10px;border-radius:50%;flex:none}
 .ll-toast{background:#FEF2F2;border:1px solid #FECACA;color:#B91C1C;border-radius:12px;padding:10px 14px;margin-bottom:14px;font-size:13px;display:flex;justify-content:space-between;gap:10px}
+.ll-sumbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:16px 20px;margin-bottom:14px;background:linear-gradient(135deg,#ECFDF5,#F0F9FF);border:1px solid #BBF7D0;border-radius:18px}
+.ll-sumbar .big{font-size:26px;font-weight:800;color:#15803D;letter-spacing:-.5px}
+.ll-joins{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,360px),1fr));gap:12px}
+.ll-join{border:1px solid var(--bd);border-radius:16px;padding:14px 16px;background:#fff;display:flex;flex-direction:column;gap:10px;content-visibility:auto;contain-intrinsic-size:190px}
+.ll-join-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.ll-join-badges{display:flex;gap:6px;flex-wrap:wrap}
+.ll-rel{background:#F8FAFC;border:1px solid #F1F5F9;border-radius:12px;padding:9px 12px;font-size:12.5px;line-height:1.45}
+.ll-rel .k{color:var(--mu);font-size:11px;font-weight:700;display:block}
+.ll-rel .vv{font-weight:700;color:var(--tx);word-break:break-word}
+.ll-join-acts{display:flex;gap:8px;align-items:center}
+.ll-wabtn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 14px;border-radius:12px;background:var(--gr);color:#fff;font-weight:700;font-size:12.5px;text-decoration:none;flex:1}
+.ll-wabtn.off{background:#E2E8F0;color:#94A3B8;pointer-events:none}
 @keyframes llSpin{to{transform:rotate(360deg)}}
 @keyframes llPulse{0%,100%{opacity:1}50%{opacity:.35}}
 @media (max-width:760px){
@@ -212,20 +236,26 @@ const CSS = `
   .ll-stats{grid-template-columns:1fr 1fr;gap:10px}
   .ll-stat{padding:14px}.ll-stat .v{font-size:20px}
   .ll-sec{padding:14px}
+  .ll-sumbar{padding:14px}.ll-sumbar .big{font-size:22px}
+}
+@media (max-width:480px){
+  .ll-tab svg{display:none}
+  .ll-tab .t{font-size:11.5px;line-height:1.15}
+  .ll-stats{grid-template-columns:1fr}
 }
 `;
 
 // ---------------------------------------------------------------------------
-// Avatar
+// Avatar (no-referrer so RCM CDN images load, clean initials fallback on error)
 // ---------------------------------------------------------------------------
 const Avatar = memo(function Avatar({ name, id, photoUrl, color, size = 56, fontSize = 16 }) {
   const [failed, setFailed] = useState(false);
   const src = useMemo(() => cleanUrl(photoUrl), [photoUrl]);
-  useEffect(() => setFailed(false), [src]);
+  useEffect(() => { setFailed(false); }, [src]);
   return (
     <div className="ll-av" style={{ width: size, height: size, border: `${size < 44 ? 2 : 3}px solid ${color}`, color, fontSize }}>
       {src && !failed
-        ? <img src={src} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)} />
+        ? <img src={src} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} />
         : <span>{getInitials(name || id)}</span>}
     </div>
   );
@@ -330,6 +360,51 @@ const MatrixRow = memo(function MatrixRow({ row, months }) {
 });
 
 // ---------------------------------------------------------------------------
+// New joining card
+// ---------------------------------------------------------------------------
+const JoinCard = memo(function JoinCard({ member }) {
+  const wa = toWhatsappNumber(member.mobile_no);
+  const dial = String(member.mobile_no || '').replace(/\D/g, '');
+  const callable = dial.length >= 10;
+  const welcome = `Namaste ${member.name} ji! RCM family me aapka hardik swagat hai. Business shuru karne me kisi bhi help ki zarurat ho to mujhe zaroor batayein.`;
+  return (
+    <div className="ll-join">
+      <div className="ll-join-top">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+          <Avatar name={member.name} id={member.buyer_id} photoUrl={member.photo_url} color={COLORS.green} size={42} fontSize={14} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 15, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis' }}>{member.name}</div>
+            <div style={{ fontSize: 11.5, color: COLORS.mu, marginTop: 1 }}>ID {member.buyer_id}</div>
+          </div>
+        </div>
+      </div>
+      <div className="ll-join-badges">
+        {member.leg_type && <span className="ll-chip t">{member.leg_type}</span>}
+        <span className="ll-chip g">Joined: {formatJoinDate(member.join_date)}</span>
+        {member.status === 0 && <span className="ll-chip r">Terminated</span>}
+      </div>
+      <div className="ll-rel">
+        <span className="k">Proposer (ID Lagayi)</span>
+        <span className="vv">{member.proposer_name || '—'} ({member.proposer_id || '—'})</span>
+      </div>
+      <div className="ll-rel">
+        <span className="k">Sponsor (Kiske Niche)</span>
+        <span className="vv">{member.sponsor_name || '—'} ({member.sponsor_id || '—'})</span>
+      </div>
+      <div className="ll-join-acts">
+        {callable
+          ? <a className="ll-round" href={`tel:+${wa || dial}`} title="Call"><Phone size={15} /></a>
+          : <span className="ll-round off"><Phone size={15} /></span>}
+        {wa
+          ? <a className="ll-wabtn" target="_blank" rel="noreferrer"
+            href={`https://wa.me/${wa}?text=${encodeURIComponent(welcome)}`}><MessageCircle size={15} />WhatsApp Welcome</a>
+          : <span className="ll-wabtn off"><MessageCircle size={15} />WhatsApp Welcome</span>}
+      </div>
+    </div>
+  );
+});
+
+// ---------------------------------------------------------------------------
 // Main Page Component
 // ---------------------------------------------------------------------------
 export default function LifelinesPage() {
@@ -349,10 +424,11 @@ export default function LifelinesPage() {
   const [overview, setOverview] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
 
-  // tree screen (lives in TreestructureUI.jsx)
-  const [treeStart, setTreeStart] = useState(null);   // leg head to open directly, or null = from the top
-  const [treeRefresh, setTreeRefresh] = useState(0);  // bump => tree clears cache and reloads
+  // tree screen (lives in Treestructureui.jsx)
+  const [treeStart, setTreeStart] = useState(null);
+  const [treeRefresh, setTreeRefresh] = useState(0);
 
+  // reports
   const [assistantQuery, setAssistantQuery] = useState('');
   const [reportSearch, setReportSearch] = useState('');
   const [matrixData, setMatrixData] = useState([]);
@@ -363,12 +439,19 @@ export default function LifelinesPage() {
   const [selectedMonth, setSelectedMonth] = useState(() => String(new Date().getMonth() + 1).padStart(2, '0'));
   const [selectedLegFilter, setSelectedLegFilter] = useState('all');
 
+  // new joinings
+  const [joinings, setJoinings] = useState(null);       // null = not loaded yet
+  const [loadingJoinings, setLoadingJoinings] = useState(false);
+  const [joinFilter, setJoinFilter] = useState('all');  // 'all' | 0 | 1 | 2 (month index)
+  const [joinVisible, setJoinVisible] = useState(JOIN_PAGE);
+
   const monthKey = `${selectedYear}${selectedMonth}`;
 
   const sessionRef = useRef(0);
   const activeIdRef = useRef(activeBuyerId);
   const assistantQueryRef = useRef('');
-  const assistantReqRef = useRef(0);   // only the newest reports request may update the table
+  const assistantReqRef = useRef(0);
+  const joinReqRef = useRef(0);
   const lastCompleteRef = useRef(0);
   const syncCompleteRef = useRef(null);
   const reportTimerRef = useRef(null);
@@ -381,6 +464,8 @@ export default function LifelinesPage() {
     sessionRef.current += 1;
     setOverview(null);
     setMatrixData([]);
+    setJoinings(null);
+    setJoinFilter('all');
     setTreeStart(null);
     setAssistantQuery('');
     setReportSearch('');
@@ -430,11 +515,31 @@ export default function LifelinesPage() {
     }
   }, []);
 
+  const loadJoinings = useCallback(async (id, sid) => {
+    if (!id) return;
+    joinReqRef.current += 1;
+    const req = joinReqRef.current;
+    setLoadingJoinings(true);
+    try {
+      const json = await requestNewJoinings(id);
+      if (sid !== sessionRef.current || req !== joinReqRef.current) return;
+      setJoinings(json?.success ? normalizeJoinings(json) : EMPTY_JOININGS);
+    } catch (e) {
+      if (sid !== sessionRef.current || req !== joinReqRef.current) return;
+      setJoinings(EMPTY_JOININGS);
+      if (e.status === 401) setShowSyncModal(true);
+    } finally {
+      if (sid === sessionRef.current && req === joinReqRef.current) setLoadingJoinings(false);
+    }
+  }, []);
+
+  // Overview first (instant), reports in parallel. Joinings are fetched lazily when that tab opens.
   const loadAll = useCallback(async (id) => {
     if (!id) return;
     const sid = sessionRef.current;
     setLoadError('');
     setTreeRefresh((v) => v + 1);
+    setJoinings(null); // stale -> re-fetched automatically if the joinings tab is open / opened later
     try {
       await Promise.allSettled([
         loadOverview(id, sid),
@@ -445,10 +550,18 @@ export default function LifelinesPage() {
     }
   }, [loadOverview, loadAssistant, selectedYear, selectedMonth]);
 
+  // Page mount: go straight to the overview API (password modal only if there is no saved account)
   useEffect(() => {
     if (initialId) loadAll(initialId); else setShowSyncModal(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Lazy-load joinings when its tab is opened
+  useEffect(() => {
+    if (activeTab === 'joinings' && activeBuyerId && joinings === null && !loadingJoinings) {
+      loadJoinings(activeBuyerId, sessionRef.current);
+    }
+  }, [activeTab, activeBuyerId, joinings, loadingJoinings, loadJoinings]);
 
   const handleSyncComplete = useCallback(() => {
     const now = Date.now();
@@ -530,14 +643,11 @@ export default function LifelinesPage() {
   const ov = overview || {};
   const totalNetworkPv = ov.totalPv ?? 0;
   const selfPurchasePv = ov.selfPv ?? 0;
-  const totalTeamRepurchaseAmt = ov.totalTeamRepurchaseAmt ?? 0;
-  const selfRepurchaseAmt = ov.selfRepurchaseAmt ?? 0;
   const activeCount = ov.activeCount ?? 0;
   const inactiveCount = ov.inactiveCount ?? 0;
   const terminatedCount = ov.terminatedCount ?? 0;
   const totalTeamCount = ov.totalTeam ?? 0;
   const directLegs = ov.directLegs || [];
-  const monthlyHistory = ov.monthlyHistory || [];
   const rootIdentity = ov.identity || {};
   const photoUrl = rootIdentity.photo_url || null;
   const crawlRunning = Boolean(syncing || ov.crawl?.running);
@@ -586,6 +696,28 @@ export default function LifelinesPage() {
     }, 400);
   };
 
+  // New Joinings: month filter (All / Current / Prev / 2 Months Ago)
+  const joinMonths = useMemo(() => joinings?.months || [], [joinings]);
+  const joinTabs = useMemo(() => {
+    const names = ['Current Month', 'Prev Month', '2 Months Ago'];
+    const tabs = [{ key: 'all', label: 'All', count: joinings?.total || 0 }];
+    names.forEach((name, i) => {
+      if (joinMonths[i]) {
+        tabs.push({ key: i, label: name, sub: joinMonths[i], count: joinings?.monthCounts?.[joinMonths[i]] || 0 });
+      }
+    });
+    return tabs;
+  }, [joinings, joinMonths]);
+
+  const joinList = useMemo(() => {
+    if (!joinings) return [];
+    if (joinFilter === 'all') return joinings.data;
+    const label = joinMonths[joinFilter];
+    return label ? joinings.data.filter((m) => m.month_label === label) : [];
+  }, [joinings, joinFilter, joinMonths]);
+
+  const visibleJoinings = useMemo(() => joinList.slice(0, joinVisible), [joinList, joinVisible]);
+
   const yearNow = new Date().getFullYear();
   const monthNow = new Date().getMonth() + 1;
   // never offer future months in the report picker
@@ -595,6 +727,8 @@ export default function LifelinesPage() {
   const rangeLabel = matrixMonths.length
     ? `${matrixMonths[matrixMonths.length - 1]?.split(' ').slice(0, 2).join(' ')} to ${matrixMonths[0]?.split(' ').slice(0, 2).join(' ')}`
     : '';
+
+  const showOverview = activeTab === 'overview' || activeTab === 'tree';
 
   return (
     <div className="ll">
@@ -647,12 +781,13 @@ export default function LifelinesPage() {
             </div>
           </div>
 
-          {/* TABS (Team Tree tab just opens the separate tree screen) */}
+          {/* TABS */}
           <div className="ll-card ll-tabs" role="tablist">
             {[
               { key: 'overview', label: 'Overview', icon: <Activity size={17} /> },
               { key: 'tree', label: 'Team Tree', icon: <TreePine size={17} /> },
-              { key: 'assistant', label: 'Reports', icon: <Sparkles size={17} /> }
+              { key: 'assistant', label: 'Reports', icon: <Sparkles size={17} /> },
+              { key: 'joinings', label: 'New Joinings 🆕', icon: <UserPlus size={17} /> }
             ].map((tab) => (
               <button key={tab.key} type="button" role="tab" aria-selected={activeTab === tab.key}
                 className={`ll-tab${activeTab === tab.key ? ' on' : ''}`}
@@ -663,7 +798,7 @@ export default function LifelinesPage() {
           </div>
 
           {/* OVERVIEW */}
-          {activeTab !== 'assistant' && (
+          {showOverview && (
             <div>
               {(!overview || overview.synced === false) && !booting && (
                 <div className="ll-card ll-empty" style={{ marginBottom: 14 }}>
@@ -672,40 +807,39 @@ export default function LifelinesPage() {
               )}
 
               <div className="ll-stats">
+                {/* Card 1: Total Network Turnover */}
                 <div className="ll-card ll-stat">
                   <div className="ico"><TrendingUp size={19} /></div>
                   <div className="l">Total Network Turnover</div>
-                  <div className="v">₹ {formatNumber(totalTeamRepurchaseAmt)}</div>
-                  <div className="n">Total team purchase (₹)</div>
-                  <div className="sub-v">{formatNumber(totalNetworkPv)} PV</div>
-                  <div className="n">Official portal turnover</div>
+                  <div className="v">₹ {Number(overview?.totalTeamRepurchaseAmt || overview?.total_team_repurchase_amt || 0).toLocaleString('en-IN')}</div>
+                  <div className="sub-v">{Number(overview?.totalPv || 0).toLocaleString('en-IN')} PV</div>
                 </div>
 
+                {/* Card 2: Your Self Purchase */}
                 <div className="ll-card ll-stat">
                   <div className="ico"><Wallet size={19} /></div>
                   <div className="l">Your Self Purchase</div>
-                  <div className="v">₹ {formatNumber(selfRepurchaseAmt)}</div>
-                  <div className="n">Personal consumption (₹)</div>
-                  <div className="sub-v">{formatNumber(selfPurchasePv)} PV</div>
-                  <div className="n">Personal monthly consumption</div>
+                  <div className="v">₹ {Number(overview?.selfRepurchaseAmt || overview?.self_repurchase_amt || 0).toLocaleString('en-IN')}</div>
+                  <div className="sub-v">{Number(overview?.selfPv || overview?.self_pv || 0).toLocaleString('en-IN')} PV</div>
                 </div>
 
+                {/* Card 3: Active Purchasers */}
                 <div className="ll-card ll-stat">
                   <div className="ico"><UserCheck size={19} /></div>
                   <div className="l">Active Purchasers</div>
-                  <div className="v" style={{ color: COLORS.green }}>{formatNumber(activeCount)}</div>
-                  <div className="n">Members billing above 0 PV</div>
-                  <div className="split-row">
-                    <span style={{ color: '#D97706' }}>Inactive: {formatNumber(inactiveCount)}</span>
-                    <span style={{ color: COLORS.red }}>Terminated: {formatNumber(terminatedCount)}</span>
+                  <div className="v" style={{ color: COLORS.green }}>{formatNumber(overview?.active_purchasers ?? activeCount)} Members Active</div>
+                  <div className="badges">
+                    <span className="ll-chip a">{formatNumber(overview?.inactive_members ?? inactiveCount)} Inactive (0 PV)</span>
+                    <span className="ll-chip r">{formatNumber(overview?.terminated_members ?? terminatedCount)} Terminated</span>
                   </div>
                 </div>
 
+                {/* Card 4: Total Downline Team */}
                 <div className="ll-card ll-stat">
                   <div className="ico"><Users size={19} /></div>
                   <div className="l">Total Downline Team</div>
-                  <div className="v">{formatNumber(totalTeamCount)}</div>
-                  <div className="n">{crawlRunning ? 'Deep sync in progress...' : 'Members across all legs'}</div>
+                  <div className="v">{Number(overview?.total_team || totalTeamCount || 0).toLocaleString('en-IN')} Members</div>
+                  {crawlRunning && <div className="n">Deep sync in progress...</div>}
                 </div>
               </div>
 
@@ -721,74 +855,31 @@ export default function LifelinesPage() {
                 <ArrowUpRight size={20} color={COLORS.mu} />
               </button>
 
-              {/* MONTHLY HISTORY */}
-              {monthlyHistory.length > 0 && (
-                <div className="ll-card ll-sec">
-                  <div className="ll-sechd">
-                    <div>
-                      <h3>Monthly performance</h3>
-                      <p>Group PV of the last months, split by your two legs.</p>
-                    </div>
-                  </div>
-                  <div className="ll-hist">
-                    {monthlyHistory.map((m) => (
-                      <div key={m.monthKey} className={`ll-mcard${m.isCurrent ? ' live' : ''}${m.hasData ? '' : ' nodata'}`}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                          <div style={{ fontSize: 15, fontWeight: 800 }}>{m.monthLabel || m.monthKey}</div>
-                          {m.isCurrent
-                            ? <span className="ll-chip g">Live</span>
-                            : <span className={`ll-chip ${m.hasData ? '' : 'a'}`}>{m.hasData ? 'Closed' : 'No data'}</span>}
-                        </div>
-                        {m.hasData ? (
-                          <>
-                            <div style={{ fontSize: 22, fontWeight: 800, marginTop: 8, color: COLORS.green }}>{formatNumber(m.totalPv)} PV</div>
-                            <div className="ll-mrow"><span>Self</span><b>{formatNumber(m.selfPv)} PV</b></div>
-                            <div className="ll-mrow"><span>Leg A{legA?.head_name ? ` • ${legA.head_name}` : ''}</span><b>{formatNumber(m.legAPv)} PV</b></div>
-                            <div className="ll-mrow"><span>Leg B{legB?.head_name ? ` • ${legB.head_name}` : ''}</span><b>{formatNumber(m.legBPv)} PV</b></div>
-                          </>
-                        ) : (
-                          <div style={{ fontSize: 12.5, color: '#64748B', marginTop: 10 }}>No snapshot saved for this month.</div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* DIRECT LEGS */}
+              {/* DIRECT LEG HEADS (clean) */}
               <div className="ll-card ll-sec">
                 <div className="ll-sechd">
                   <div>
                     <h3>Direct leg heads</h3>
-                    <p>Group volume of each direct leg. Tap a leg to open its tree.</p>
+                    <p>Team volume of each direct leg. Tap a leg to open its tree.</p>
                   </div>
                 </div>
                 <div className="ll-legs">
                   {directLegs.length > 0 ? directLegs.map((leg, i) => (
                     <button type="button" key={leg.head_id || i} className="ll-leg" onClick={() => openTree(leg)}>
-                      <div className="ll-leg-top">
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-                          <Avatar name={leg.head_name} id={leg.head_id} photoUrl={leg.photo_url} color={COLORS.green} size={42} fontSize={14} />
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                              <span className="ll-chip t">Leg {leg.leg}</span>
-                              {leg.pin && <span className="ll-chip g">{leg.pin}</span>}
-                            </div>
-                            <div style={{ fontSize: 15, fontWeight: 800, marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis' }}>{leg.head_name}</div>
-                            <div style={{ fontSize: 11, color: '#64748B', marginTop: 1 }}>ID {leg.head_id}</div>
-                          </div>
-                        </div>
-                        <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                          <div style={{ fontSize: 17, fontWeight: 800, color: COLORS.green }}>₹ {formatNumber(leg.repurchase_amt)}</div>
-                          <div style={{ fontSize: 12, color: '#64748B', fontWeight: 700 }}>{formatNumber(leg.pv)} PV</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                        <div className="ll-legav">{leg.leg}</div>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 15, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis' }}>{leg.head_name || `Leg ${leg.leg}`}</div>
+                          <div style={{ fontSize: 11.5, color: COLORS.mu, marginTop: 2 }}>ID {leg.head_id || '—'}</div>
                         </div>
                       </div>
-                      <div className="ll-leg-stats">
-                        <span className="ll-chip">Members {formatNumber(leg.members)}</span>
-                        <span className="ll-chip g">Active {formatNumber(leg.active_purchasers)}</span>
-                        <span className="ll-chip a">Inactive {formatNumber(leg.inactive_members)}</span>
-                        <span className="ll-chip r">Terminated {formatNumber(leg.terminated_members)}</span>
-                        <span className="ll-chip t">Self {formatNumber(leg.self_pv)} PV • ₹ {formatNumber(leg.self_repurchase_amt)}</span>
+                      <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <div style={{ fontSize: 12.5, color: COLORS.mu, fontWeight: 700 }}>
+                          Team PV: <span style={{ color: COLORS.green, fontWeight: 800 }}>{Number(leg.pv || 0).toLocaleString('en-IN')} PV</span>
+                        </div>
+                        <div style={{ fontSize: 12.5, color: COLORS.mu, fontWeight: 700, marginTop: 4 }}>
+                          Team Purchase: <span style={{ color: '#0F172A', fontWeight: 800 }}>₹ {Number(leg.repurchase_amt || 0).toLocaleString('en-IN')}</span>
+                        </div>
                       </div>
                     </button>
                   )) : <div className="ll-empty" style={{ gridColumn: '1 / -1' }}>{booting ? 'Loading...' : 'No direct leg volume yet.'}</div>}
@@ -810,7 +901,6 @@ export default function LifelinesPage() {
                   <select className="ll-in" aria-label="Year" style={{ width: 100, height: 36, fontSize: 13 }}
                     value={selectedYear} onChange={(e) => {
                       const y = e.target.value;
-                      // if the chosen month is in the future for that year, fall back to the current month
                       const m = Number(y) === yearNow && Number(selectedMonth) > monthNow ? String(monthNow).padStart(2, '0') : selectedMonth;
                       setSelectedYear(y);
                       setSelectedMonth(m);
@@ -911,10 +1001,64 @@ export default function LifelinesPage() {
               )}
             </div>
           )}
+
+          {/* NEW JOININGS */}
+          {activeTab === 'joinings' && (
+            <div>
+              <div className="ll-sumbar">
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.mu }}>New Associates in Last 3 Months</div>
+                  <div className="big">{loadingJoinings && !joinings ? '...' : formatNumber(joinings?.total || 0)}</div>
+                </div>
+                <button type="button" className="ll-btn" disabled={!activeBuyerId || loadingJoinings}
+                  onClick={() => { setJoinings(null); }}>
+                  <RefreshCw size={16} /><span className="t">Reload</span>
+                </button>
+              </div>
+
+              <div className="ll-chips">
+                {joinTabs.map((tb) => (
+                  <button key={String(tb.key)} type="button"
+                    className={`ll-fchip${joinFilter === tb.key ? ' on' : ''}`}
+                    onClick={() => { setJoinFilter(tb.key); setJoinVisible(JOIN_PAGE); }}>
+                    {tb.label}{tb.sub ? ` (${tb.sub})` : ''} • {formatNumber(tb.count)}
+                  </button>
+                ))}
+              </div>
+
+              {loadingJoinings && !joinings ? (
+                <div className="ll-card ll-empty">
+                  <div style={{ display: 'inline-block', width: 22, height: 22, border: `3px solid ${COLORS.green}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'llSpin .8s linear infinite' }} />
+                  <div style={{ marginTop: 10 }}>Loading new joinings...</div>
+                </div>
+              ) : joinList.length > 0 ? (
+                <>
+                  <div className="ll-joins">
+                    {visibleJoinings.map((m) => <JoinCard key={m.buyer_id} member={m} />)}
+                  </div>
+                  {joinList.length > joinVisible && (
+                    <div className="ll-pager" style={{ justifyContent: 'center' }}>
+                      <button type="button" className="ll-btn" onClick={() => setJoinVisible((v) => v + JOIN_PAGE)}>
+                        Show more ({formatNumber(joinList.length - joinVisible)} left)
+                      </button>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="ll-card ll-empty">
+                  {joinings?.error
+                    ? 'Could not load new joinings. Please tap Reload.'
+                    : crawlRunning
+                      ? 'Team is still syncing. New joinings will appear shortly.'
+                      : 'No new joinings found for this period.'}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* SEPARATE FULL-SCREEN TREE (TreestructureUI.jsx) */}
+      {/* SEPARATE FULL-SCREEN TREE (Treestructureui.jsx) */}
       {activeTab === 'tree' && activeBuyerId && (
         <TreestructureUI
           buyerId={activeBuyerId}
@@ -927,7 +1071,7 @@ export default function LifelinesPage() {
         />
       )}
 
-      {/* CONNECT MODAL */}
+      {/* CONNECT MODAL (only when there is no saved session, or token expired / re-sync tapped) */}
       {showSyncModal && (
         <div className="ll-ov c">
           <div className="ll-modal">

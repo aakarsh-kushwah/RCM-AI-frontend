@@ -1,277 +1,799 @@
 /* ==========================================================================
-   RCM AI — Login Page (light / "crystal clear" theme — matches the
-   dashboard's design tokens exactly: --u-bg, --u-primary, --u-surface…)
-
-   Everything is scoped under .rcmlp-* and .rcmlp-page — no global/html/body
-   selector — so this can never bleed into any other screen.
-
-   FIX NOTES (why this version stops the shifting/off-center bug):
-   - .rcmlp-page is `position: fixed; inset: 0`, not a normal flow element.
-     Centering no longer depends on the parent route wrapper's own layout
-     (flex/grid quirks, margins, a stray width on a parent div, etc.) — this
-     is what was pushing the card off to one side depending on the route
-     tree it mounted inside.
-   - Every element in the tree is forced to `box-sizing: border-box`, and
-     the page clips overflow — so the ambient glow, which is deliberately
-     larger than the viewport, can never create horizontal scroll/jitter.
-   - The Google button slot has a reserved `min-height`, so when Google's
-     SDK injects its iframe a beat after first paint, the card doesn't
-     suddenly grow/jump (that growth was very likely the "hilna" you saw).
+   Team Dekho – Login page
+   Light, luminous, premium. Pearl surfaces, an indigo→violet→aqua accent
+   and one warm champagne hairline. Prefix: tdlp-
    ========================================================================== */
 
-.rcmlp-page {
-  --lp-bg: #f6f6fb;
-  --lp-surface: #ffffff;
-  --lp-surface-alt: #f1f0fa;
-  --lp-border: #ececf3;
-  --lp-border-strong: #e0deec;
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Manrope:wght@400;500;600;700&display=swap');
 
-  --lp-text: #1b1b23;
-  --lp-text-dim: #6b6d80;
-  --lp-text-faint: #9a9cae;
-
-  --lp-primary: #5b2a9e;
-  --lp-primary-2: #7c3fd1;
-  --lp-primary-soft: rgba(91, 42, 158, 0.08);
-  --lp-teal: #0e9f8e;
-  --lp-teal-soft: rgba(14, 159, 142, 0.08);
-  --lp-rose: #d1483a;
-  --lp-rose-soft: rgba(209, 72, 58, 0.08);
-
-  --lp-radius: 14px;
-  --lp-radius-lg: 22px;
-  --lp-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 2px 8px rgba(16, 24, 40, 0.06);
-  --lp-shadow-lg: 0 24px 60px -20px rgba(91, 42, 158, 0.28), 0 2px 8px rgba(16, 24, 40, 0.06);
-
-  --lp-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --lp-ease: cubic-bezier(0.22, 1, 0.36, 1);
-
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100vw;
-  height: 100dvh;
-  padding: 24px;
-  background: var(--lp-bg);
-  color: var(--lp-text);
-  font-family: var(--lp-font);
-  overflow: hidden;
-  isolation: isolate;
-  -webkit-font-smoothing: antialiased;
+@property --tdlp-angle {
+    syntax: '<angle>';
+    inherits: false;
+    initial-value: 0deg;
 }
 
-.rcmlp-page,
-.rcmlp-page * {
-  box-sizing: border-box;
+.tdlp-page {
+    /* tokens */
+    --pearl: #f5f6fc;
+    --ink: #151a3a;
+    --ink-soft: #5b6285;
+    --line: rgba(120, 130, 190, 0.18);
+    --indigo: #4f6bff;
+    --violet: #9a5cff;
+    --aqua: #12c6d8;
+    --champagne: #e9c27a;
+    --danger: #d6385a;
+
+    --font-display: 'Sora', 'Manrope', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-body: 'Manrope', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+    --px: 50vw;
+    --py: 30vh;
+
+    position: fixed;
+    inset: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: none;
+    scrollbar-width: none;
+    background: var(--pearl);
+    color: var(--ink);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    isolation: isolate;
+}
+.tdlp-page::-webkit-scrollbar { display: none; }
+
+/* lock the document behind the login page so nothing scrolls up/down */
+html.tdlp-lock,
+html.tdlp-lock body {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
 }
 
-/* ---- Ambient field: soft purple/teal wash, deliberately oversized but
-   always clipped by .rcmlp-page's own overflow:hidden above. ---- */
-
-.rcmlp-field {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
+.tdlp-page *,
+.tdlp-page *::before,
+.tdlp-page *::after {
+    box-sizing: border-box;
 }
 
-.rcmlp-glow {
-  position: absolute;
-  left: 50%;
-  top: 40%;
-  width: min(760px, 140vw);
-  height: min(760px, 140vw);
-  transform: translate(-50%, -50%);
-  background: radial-gradient(
-    circle,
-    var(--lp-primary-soft) 0%,
-    var(--lp-teal-soft) 38%,
-    transparent 68%
-  );
-  filter: blur(10px);
+/* ==========================================================================
+   Atmosphere
+   ========================================================================== */
+
+.tdlp-bg {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    overflow: hidden;
+    background:
+        radial-gradient(1200px 700px at 8% -10%, #e4e9ff 0%, transparent 60%),
+        radial-gradient(900px 700px at 100% 110%, #d9f6fb 0%, transparent 60%),
+        var(--pearl);
 }
 
-/* ---- Card: white glass-clean panel, same family as the dashboard's
-   cards — a hairline accent bar on top is what pushes it from "clean"
-   to "expensive". ---- */
-
-.rcmlp-card {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  width: 100%;
-  max-width: 400px;
-  max-height: calc(100dvh - 48px);
-  overflow-y: auto;
-  padding: 40px 32px 32px;
-  border-radius: var(--lp-radius-lg);
-  background: var(--lp-surface);
-  border: 1px solid var(--lp-border);
-  box-shadow: var(--lp-shadow-lg);
-  animation: rcmlp-rise-in 420ms var(--lp-ease) both;
+.tdlp-orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(70px);
+    opacity: 0.55;
+    will-change: transform;
+}
+.tdlp-orb--1 {
+    width: 46vmax; height: 46vmax;
+    left: -14vmax; top: -16vmax;
+    background: radial-gradient(circle at 30% 30%, #8fa2ff, #c8b2ff 70%);
+    animation: tdlp-drift-a 26s ease-in-out infinite alternate;
+}
+.tdlp-orb--2 {
+    width: 38vmax; height: 38vmax;
+    right: -12vmax; bottom: -14vmax;
+    background: radial-gradient(circle at 60% 40%, #7fe3ee, #a9c4ff 70%);
+    animation: tdlp-drift-b 30s ease-in-out infinite alternate;
+}
+.tdlp-orb--3 {
+    width: 18vmax; height: 18vmax;
+    right: 24%; top: 6%;
+    background: radial-gradient(circle, #ffe3ae, transparent 70%);
+    opacity: 0.5;
+    animation: tdlp-drift-a 22s ease-in-out infinite alternate-reverse;
 }
 
-.rcmlp-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 14%;
-  right: 14%;
-  height: 3px;
-  border-radius: 0 0 3px 3px;
-  background: linear-gradient(90deg, var(--lp-primary), var(--lp-teal));
-  opacity: 0.9;
+@keyframes tdlp-drift-a {
+    to { transform: translate3d(6vmax, 5vmax, 0) scale(1.08); }
+}
+@keyframes tdlp-drift-b {
+    to { transform: translate3d(-6vmax, -4vmax, 0) scale(1.1); }
 }
 
-@keyframes rcmlp-rise-in {
-  from {
+.tdlp-grain {
+    position: absolute;
+    inset: 0;
+    opacity: 0.35;
+    mix-blend-mode: multiply;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.35  0 0 0 0 0.38  0 0 0 0 0.6  0 0 0 0.09 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+/* cursor spotlight */
+.tdlp-spot {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(420px circle at var(--px) var(--py), rgba(255, 255, 255, 0.75), transparent 65%);
     opacity: 0;
-    transform: translateY(10px) scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
+    transition: opacity 0.6s ease;
+}
+.tdlp-page.is-form .tdlp-spot { opacity: 1; }
+
+/* ==========================================================================
+   Layout
+   ========================================================================== */
+
+.tdlp-shell {
+    min-height: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr);
+    align-items: center;
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: clamp(20px, 4vw, 56px);
+    gap: clamp(24px, 5vw, 72px);
 }
 
-/* ---- Logo badge: soft glow ring behind the mark ---- */
-
-.rcmlp-logo-badge {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 64px;
-  height: 64px;
-  margin-bottom: 20px;
-  border-radius: 18px;
-  background: linear-gradient(155deg, #ffffff, var(--lp-surface-alt));
-  border: 1px solid var(--lp-border);
-  box-shadow: 0 10px 24px -8px rgba(91, 42, 158, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+.tdlp-side {
+    display: flex;
+    justify-content: center;
+    perspective: 1200px;
 }
 
-.rcmlp-logo {
-  width: 34px;
-  height: 34px;
-  object-fit: contain;
-}
+/* ==========================================================================
+   Showcase
+   ========================================================================== */
 
-.rcmlp-title {
-  margin: 0 0 8px;
-  font-size: 1.4rem;
-  font-weight: 700;
-  letter-spacing: -0.015em;
-  color: var(--lp-text);
-}
-
-.rcmlp-subtitle {
-  margin: 0 0 26px;
-  font-size: 0.9rem;
-  line-height: 1.55;
-  color: var(--lp-text-dim);
-  max-width: 300px;
-}
-
-/* ---- Error ---- */
-
-.rcmlp-error {
-  width: 100%;
-  margin-bottom: 16px;
-  padding: 10px 14px;
-  border-radius: 10px;
-  background: var(--lp-rose-soft);
-  border: 1px solid rgba(209, 72, 58, 0.22);
-  color: var(--lp-rose);
-  font-size: 0.85rem;
-  font-weight: 500;
-  animation: rcmlp-shake-in 260ms var(--lp-ease) both;
-}
-
-@keyframes rcmlp-shake-in {
-  from {
+.tdlp-showcase {
+    max-width: 560px;
     opacity: 0;
-    transform: translateY(-4px);
-  }
-  to {
+    transform: translateY(14px);
+    transition: opacity 0.9s ease 0.15s, transform 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) 0.15s;
+}
+.is-form .tdlp-showcase { opacity: 1; transform: none; }
+
+.tdlp-headline {
+    margin: 0 0 16px;
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: clamp(30px, 3.4vw, 46px);
+    line-height: 1.12;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    text-wrap: balance;
+}
+
+.tdlp-lead {
+    margin: 0 0 28px;
+    max-width: 46ch;
+    font-size: 16px;
+    line-height: 1.65;
+    color: var(--ink-soft);
+}
+
+.tdlp-net {
+    position: relative;
+    max-width: 480px;
+    padding: 22px 18px 10px;
+    border-radius: 28px;
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.42));
+    border: 1px solid rgba(255, 255, 255, 0.9);
+    box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.9) inset,
+        0 30px 60px -30px rgba(70, 84, 200, 0.35);
+    backdrop-filter: blur(14px) saturate(1.4);
+    -webkit-backdrop-filter: blur(14px) saturate(1.4);
+}
+
+.tdlp-net-svg { display: block; width: 100%; height: auto; overflow: visible; }
+
+.tdlp-link {
+    fill: none;
+    stroke: url(#tdlpLink);
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-dasharray: 4 6;
+    opacity: 0.7;
+    animation: tdlp-flow 2.4s linear infinite;
+    animation-delay: calc(var(--i) * -0.3s);
+}
+@keyframes tdlp-flow { to { stroke-dashoffset: -20; } }
+
+.tdlp-node-core {
+    fill: url(#tdlpNode);
+    stroke: #8e9dff;
+    stroke-width: 1.5;
+}
+.tdlp-node.tier-0 .tdlp-node-core { fill: var(--indigo); stroke: #fff; stroke-width: 3; }
+.tdlp-node.tier-1 .tdlp-node-core { stroke: var(--violet); }
+.tdlp-node.tier-2 .tdlp-node-core { stroke: var(--aqua); }
+
+.tdlp-node-halo {
+    fill: rgba(122, 108, 255, 0.14);
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: tdlp-pulse 3.2s ease-in-out infinite;
+    animation-delay: calc(var(--i) * 0.28s);
+}
+.tdlp-node.tier-2 .tdlp-node-halo { fill: rgba(18, 198, 216, 0.14); }
+
+@keyframes tdlp-pulse {
+    0%, 100% { transform: scale(0.8); opacity: 0.4; }
+    50% { transform: scale(1.15); opacity: 1; }
+}
+
+.tdlp-chip {
+    position: absolute;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 14px 8px 11px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid var(--line);
+    box-shadow: 0 12px 28px -14px rgba(60, 74, 190, 0.5);
+    animation: tdlp-bob 6s ease-in-out infinite;
+}
+.tdlp-chip svg { color: var(--indigo); }
+.tdlp-chip--a { left: -18px; top: 18%; }
+.tdlp-chip--b { right: -16px; top: 46%; animation-delay: -2s; }
+.tdlp-chip--b svg { color: var(--aqua); }
+.tdlp-chip--c { left: 12%; bottom: -16px; animation-delay: -4s; }
+.tdlp-chip--c svg { color: var(--violet); }
+
+@keyframes tdlp-bob {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-7px); }
+}
+
+/* ==========================================================================
+   Login card
+   ========================================================================== */
+
+.tdlp-card-wrap {
+    width: 100%;
+    max-width: 440px;
+    opacity: 0;
+    transform: translateY(28px) scale(0.97);
+    filter: blur(8px);
+    transition:
+        opacity 0.9s ease 0.2s,
+        transform 1s cubic-bezier(0.2, 0.8, 0.2, 1) 0.2s,
+        filter 0.9s ease 0.2s;
+}
+.is-form .tdlp-card-wrap { opacity: 1; transform: none; filter: none; }
+
+.tdlp-card {
+    --rx: 0deg;
+    --ry: 0deg;
+    --mx: 50%;
+    --my: 0%;
+    position: relative;
+    border-radius: 32px;
+    background: linear-gradient(165deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.7));
+    box-shadow:
+        0 1px 0 #fff inset,
+        0 2px 6px rgba(50, 60, 150, 0.06),
+        0 40px 80px -30px rgba(66, 80, 210, 0.45),
+        0 18px 36px -24px rgba(18, 198, 216, 0.4);
+    backdrop-filter: blur(26px) saturate(1.5);
+    -webkit-backdrop-filter: blur(26px) saturate(1.5);
+    transform: rotateX(var(--rx)) rotateY(var(--ry));
+    transition: transform 0.25s ease-out;
+    transform-style: preserve-3d;
+}
+
+/* the one memorable detail: a slow, travelling light along the card border */
+.tdlp-card-edge {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1.5px;
+    background:
+        conic-gradient(from var(--tdlp-angle),
+            rgba(255, 255, 255, 0) 0deg,
+            rgba(79, 107, 255, 0.9) 70deg,
+            rgba(154, 92, 255, 0.85) 130deg,
+            rgba(18, 198, 216, 0.9) 190deg,
+            rgba(233, 194, 122, 0.9) 230deg,
+            rgba(255, 255, 255, 0) 290deg,
+            rgba(255, 255, 255, 0) 360deg);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    animation: tdlp-spin 7s linear infinite;
+    pointer-events: none;
+}
+@keyframes tdlp-spin { to { --tdlp-angle: 360deg; } }
+
+/* pointer-following sheen */
+.tdlp-card-sheen {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: radial-gradient(340px circle at var(--mx) var(--my), rgba(255, 255, 255, 0.85), transparent 60%);
+    opacity: 0.7;
+    mix-blend-mode: soft-light;
+    pointer-events: none;
+}
+
+.tdlp-card-inner {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: clamp(28px, 5vw, 44px) clamp(22px, 5vw, 40px) clamp(24px, 4vw, 32px);
+}
+
+/* staggered entrance – plays once, when the form is revealed */
+.tdlp-r {
+    opacity: 0;
+    transform: translateY(14px);
+    transition: opacity 0.7s ease, transform 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+    transition-delay: 0s;
+}
+.is-form .tdlp-r {
     opacity: 1;
-    transform: translateY(0);
-  }
+    transform: none;
+    transition-delay: calc(450ms + var(--d, 0ms));
 }
 
-/* ---- Google button slot ----
-   min-height reserves the exact space Google's rendered pill button
-   occupies, so nothing in the card grows/jumps once the SDK's iframe
-   mounts a beat after first paint. */
+.tdlp-card-logo { margin-bottom: 4px; }
 
-.rcmlp-google-btn {
-  width: 100%;
-  min-height: 44px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  transition: transform 160ms var(--lp-ease);
+.tdlp-title {
+    margin: 22px 0 8px;
+    font-family: var(--font-display);
+    font-size: clamp(24px, 3vw, 30px);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--ink);
 }
 
-.rcmlp-google-btn:hover {
-  transform: translateY(-1px);
+.tdlp-subtitle {
+    margin: 0 0 26px;
+    max-width: 32ch;
+    font-size: 14.5px;
+    line-height: 1.6;
+    color: var(--ink-soft);
 }
 
-.rcmlp-fineprint {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  margin: 22px 0 0;
-  font-size: 0.74rem;
-  color: var(--lp-text-faint);
-  letter-spacing: 0.01em;
+/* ----- feedback ----- */
+.tdlp-error,
+.tdlp-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    width: 100%;
+    margin: 0 0 18px;
+    padding: 11px 14px;
+    border-radius: 14px;
+    font-size: 13.5px;
+    line-height: 1.45;
+    text-align: left;
+    animation: tdlp-pop 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+.tdlp-error svg,
+.tdlp-note svg { flex: none; margin-top: 1px; }
+
+.tdlp-error {
+    color: #8e1b38;
+    background: #fff0f3;
+    border: 1px solid #ffd0da;
+}
+.tdlp-note {
+    color: #6a4a07;
+    background: #fff8e8;
+    border: 1px solid #f6e2b0;
+}
+@keyframes tdlp-pop {
+    from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+    to { opacity: 1; transform: none; }
 }
 
-.rcmlp-fineprint svg {
-  flex-shrink: 0;
-  color: var(--lp-teal);
+/* ----- google button ----- */
+.tdlp-google {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    min-height: 44px;
+    padding: 6px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, rgba(79, 107, 255, 0.12), rgba(154, 92, 255, 0.12), rgba(18, 198, 216, 0.14));
+    transition: box-shadow 0.35s ease, transform 0.35s ease;
+}
+.tdlp-google:hover {
+    box-shadow: 0 14px 30px -14px rgba(79, 107, 255, 0.55);
+}
+.tdlp-google > div:first-child {
+    transition: opacity 0.3s ease, filter 0.3s ease;
+}
+.tdlp-google.is-busy > div:first-child,
+.tdlp-google.is-disabled > div:first-child {
+    opacity: 0.35;
+    filter: grayscale(0.6);
+    pointer-events: none;
+}
+.tdlp-google.is-disabled { cursor: not-allowed; }
+
+.tdlp-busy {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink);
+    border-radius: inherit;
+    overflow: hidden;
+}
+.tdlp-busy::after {
+    content: '';
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, var(--indigo), var(--violet), var(--aqua), transparent);
+    background-size: 50% 100%;
+    background-repeat: no-repeat;
+    animation: tdlp-sweep 1.1s ease-in-out infinite;
+}
+.tdlp-busy-dot {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    border: 2px solid rgba(79, 107, 255, 0.25);
+    border-top-color: var(--indigo);
+    animation: tdlp-rotate 0.8s linear infinite;
+}
+@keyframes tdlp-sweep {
+    from { background-position: -60% 0; }
+    to { background-position: 160% 0; }
+}
+@keyframes tdlp-rotate { to { transform: rotate(360deg); } }
+
+/* ----- trust row ----- */
+.tdlp-trust {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px 16px;
+    margin: 24px 0 0;
+    padding-top: 20px;
+    width: 100%;
+    border-top: 1px solid var(--line);
+}
+.tdlp-trust span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--ink-soft);
+}
+.tdlp-trust svg { color: var(--indigo); }
+.tdlp-trust span:nth-child(2) svg { color: var(--violet); }
+.tdlp-trust span:nth-child(3) svg { color: var(--aqua); }
+
+.tdlp-fineprint {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 16px 0 0;
+    font-size: 12px;
+    color: #8a91b3;
+}
+.tdlp-fineprint svg { color: var(--champagne); }
+
+/* ==========================================================================
+   Intro splash
+   ========================================================================== */
+
+.tdlp-splash {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    background:
+        radial-gradient(900px 600px at 50% 40%, #ffffff 0%, rgba(255, 255, 255, 0) 70%),
+        linear-gradient(160deg, #eef1ff 0%, #f8f9ff 45%, #e6faff 100%);
+    transition:
+        opacity 0.8s ease,
+        transform 0.9s cubic-bezier(0.6, 0, 0.2, 1),
+        filter 0.8s ease;
+}
+.tdlp-splash.is-leaving {
+    opacity: 0;
+    transform: scale(1.12);
+    filter: blur(14px);
+    pointer-events: none;
 }
 
-/* ---- Responsive ---- */
-
-@media (max-width: 420px) {
-  .rcmlp-page {
-    padding: 16px;
-  }
-
-  .rcmlp-card {
-    padding: 30px 22px 26px;
-    border-radius: 18px;
-  }
-
-  .rcmlp-title {
-    font-size: 1.22rem;
-  }
-
-  .rcmlp-logo-badge {
-    width: 56px;
-    height: 56px;
-  }
+.tdlp-splash-stage {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: min(78vw, 420px);
+    aspect-ratio: 1;
 }
 
-@media (min-width: 720px) {
-  .rcmlp-card {
-    max-width: 420px;
-    padding: 46px 40px 36px;
-  }
+/* orbit ring that draws itself around the logo */
+.tdlp-orbit {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    animation: tdlp-orbit-turn 9s linear infinite;
+}
+.tdlp-orbit-track {
+    fill: none;
+    stroke: rgba(120, 130, 200, 0.18);
+    stroke-width: 1;
+}
+.tdlp-orbit-draw {
+    fill: none;
+    stroke: url(#tdlpRing);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-dasharray: 880;
+    stroke-dashoffset: 880;
+    transform: rotate(-90deg);
+    transform-origin: 160px 160px;
+    animation: tdlp-draw 1.7s cubic-bezier(0.6, 0.1, 0.2, 1) 0.2s forwards;
+}
+.tdlp-orbit-nodes circle {
+    fill: #fff;
+    stroke: var(--indigo, #4f6bff);
+    stroke-width: 2;
+    opacity: 0;
+    animation: tdlp-node-in 0.5s ease forwards;
+}
+.tdlp-orbit-nodes circle:nth-child(1) { animation-delay: 0.9s; }
+.tdlp-orbit-nodes circle:nth-child(2) { animation-delay: 1.1s; stroke: #9a5cff; }
+.tdlp-orbit-nodes circle:nth-child(3) { animation-delay: 1.3s; stroke: #12c6d8; }
+
+@keyframes tdlp-draw { to { stroke-dashoffset: 0; } }
+@keyframes tdlp-orbit-turn { to { transform: rotate(360deg); } }
+@keyframes tdlp-node-in {
+    from { opacity: 0; transform: scale(0); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+.tdlp-splash-logo {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    transform: scale(1.35);
+}
+/* adapt the shared BrandLogo to a stacked, centred splash layout */
+.tdlp-splash-logo .tdlogo {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    text-align: center;
+}
+.tdlp-splash-logo .tdlogo-text { align-items: center; text-align: center; }
+
+.tdlp-splash-logo .tdlogo-mark {
+    animation: tdlp-mark-in 1.1s cubic-bezier(0.2, 0.9, 0.2, 1.15) 0.25s both;
+}
+.tdlp-splash-logo .tdlogo-team {
+    display: inline-block;
+    animation: tdlp-word-l 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) 0.9s both;
+}
+.tdlp-splash-logo .tdlogo-dekho {
+    display: inline-block;
+    animation: tdlp-word-r 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) 1.05s both;
+}
+.tdlp-splash-logo .tdlogo-tag {
+    animation: tdlp-fade-up 0.8s ease 1.6s both;
+}
+
+@keyframes tdlp-mark-in {
+    from { opacity: 0; transform: scale(0.2) rotate(-90deg); filter: blur(10px); }
+    to { opacity: 1; transform: none; filter: none; }
+}
+@keyframes tdlp-word-l {
+    from { opacity: 0; transform: translateX(-26px); filter: blur(8px); letter-spacing: 0.3em; }
+    to { opacity: 1; transform: none; filter: none; letter-spacing: inherit; }
+}
+@keyframes tdlp-word-r {
+    from { opacity: 0; transform: translateX(26px); filter: blur(8px); letter-spacing: 0.3em; }
+    to { opacity: 1; transform: none; filter: none; letter-spacing: inherit; }
+}
+@keyframes tdlp-fade-up {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: none; }
+}
+
+/* thin loading line at the bottom of the splash */
+.tdlp-splash-bar {
+    position: absolute;
+    left: 50%;
+    bottom: 9vh;
+    width: min(220px, 50vw);
+    height: 3px;
+    margin-left: calc(min(220px, 50vw) / -2);
+    border-radius: 3px;
+    background: rgba(120, 130, 200, 0.16);
+    overflow: hidden;
+}
+.tdlp-splash-bar::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #4f6bff, #9a5cff, #12c6d8);
+    transform: translateX(-100%);
+    animation: tdlp-bar 2.7s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+@keyframes tdlp-bar { to { transform: translateX(0); } }
+
+/* ==========================================================================
+   Mobile & tablet  –  full-bleed luminous hero + bottom sheet
+   (no boxed white card, no white rim, no page scroll)
+   ========================================================================== */
+
+@media (max-width: 960px) {
+    /* vivid, bright (not dark) full-screen backdrop */
+    .tdlp-bg {
+        background:
+            radial-gradient(120% 60% at 50% 0%, rgba(255, 255, 255, 0.1), transparent 60%),
+            linear-gradient(168deg, #5b6dff 0%, #8d5bff 46%, #16bfd9 100%);
+    }
+    .tdlp-orb { filter: blur(60px); }
+    .tdlp-orb--1 { background: radial-gradient(circle at 30% 30%, #b9c4ff, #d8c2ff 70%); opacity: 0.5; }
+    .tdlp-orb--2 { background: radial-gradient(circle at 60% 40%, #86f1f7, #8fb4ff 70%); opacity: 0.55; }
+    .tdlp-orb--3 { background: radial-gradient(circle, #ffe2a6, transparent 70%); opacity: 0.65; right: 6%; top: 3%; }
+    .tdlp-grain { mix-blend-mode: soft-light; opacity: 0.6; }
+    .tdlp-spot { display: none; }
+
+    .tdlp-shell {
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        max-width: none;
+        padding: 0;
+        gap: 0;
+    }
+
+    /* hero (top) */
+    .tdlp-showcase {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        max-width: none;
+        padding: calc(env(safe-area-inset-top, 0px) + 28px) 28px 28px;
+        text-align: center;
+    }
+    .tdlp-headline {
+        margin-bottom: 10px;
+        max-width: 18ch;
+        font-size: clamp(24px, 7.2vw, 34px);
+        color: #fff;
+        text-shadow: 0 2px 24px rgba(40, 30, 140, 0.35);
+    }
+    .tdlp-lead {
+        margin: 0 auto 6px;
+        max-width: 34ch;
+        font-size: 15.5px;
+        line-height: 1.6;
+        color: #fff;
+        text-shadow: 0 1px 14px rgba(40, 30, 140, 0.45);
+    }
+    .tdlp-net {
+        width: min(100%, 340px);
+        margin: 14px auto 0;
+        padding: 0;
+        background: none;
+        border: 0;
+        box-shadow: none;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+    .tdlp-chip { display: none; }
+    .tdlp-link { stroke: #fff; stroke-opacity: 0.8; }
+    .tdlp-node .tdlp-node-core { fill: #fff; stroke: rgba(255, 255, 255, 0.7); }
+    .tdlp-node.tier-0 .tdlp-node-core { fill: #fff; stroke: #ffe2a6; stroke-width: 4; }
+    .tdlp-node .tdlp-node-halo { fill: rgba(255, 255, 255, 0.2); }
+
+    /* login sheet (bottom) */
+    .tdlp-side { display: block; width: 100%; perspective: none; }
+    .tdlp-card-wrap {
+        max-width: 560px;
+        margin: 0 auto;
+        opacity: 1;
+        filter: none;
+        transform: translateY(105%);
+        transition: transform 1.05s cubic-bezier(0.2, 0.85, 0.2, 1) 0.25s;
+    }
+    .is-form .tdlp-card-wrap { transform: none; }
+
+    .tdlp-card {
+        border-radius: 32px 32px 0 0;
+        background: linear-gradient(180deg, #ffffff 0%, #f7f8ff 100%);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+        transform: none;
+        transition: none;
+        box-shadow: 0 -24px 60px -24px rgba(36, 30, 130, 0.55);
+    }
+    .tdlp-card-edge,
+    .tdlp-card-sheen { display: none; }
+    .tdlp-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 14%;
+        right: 14%;
+        height: 2px;
+        border-radius: 2px;
+        background: linear-gradient(90deg, transparent, #e9c27a, transparent);
+    }
+    .tdlp-card-inner {
+        padding: 30px 24px calc(22px + env(safe-area-inset-bottom, 0px));
+    }
+    .tdlp-title { margin-top: 18px; font-size: 26px; }
+    .tdlp-subtitle { margin-bottom: 22px; font-size: 15.5px; color: #4a5174; }
+    .tdlp-trust span { font-size: 13.5px; color: #3f4768; }
+    .tdlp-fineprint { font-size: 13px; color: #5d658a; }
+    .tdlp-error, .tdlp-note { font-size: 14.5px; }
+    .tdlp-busy { font-size: 15px; }
+}
+
+/* shorter screens: keep the sheet fully visible, drop the extras */
+@media (max-width: 960px) and (max-height: 760px) {
+    .tdlp-lead { display: none; }
+}
+@media (max-width: 960px) and (max-height: 640px) {
+    .tdlp-net { display: none; }
+    .tdlp-showcase { padding-top: 16px; padding-bottom: 16px; }
+    .tdlp-card-inner { padding-top: 22px; }
+    .tdlp-trust { margin-top: 16px; padding-top: 14px; }
+}
+
+/* ==========================================================================
+   Accessibility
+   ========================================================================== */
+
+.tdlp-page :focus-visible {
+    outline: 3px solid rgba(79, 107, 255, 0.55);
+    outline-offset: 3px;
+    border-radius: 12px;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .rcmlp-card,
-  .rcmlp-error {
-    animation: none;
-  }
-  .rcmlp-google-btn {
-    transition: none;
-  }
+    .tdlp-page *,
+    .tdlp-page *::before,
+    .tdlp-page *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+        transition-delay: 0s !important;
+    }
+    .tdlp-card { transform: none; }
+}
+
+@media (prefers-contrast: more) {
+    .tdlp-subtitle,
+    .tdlp-lead,
+    .tdlp-trust span { color: #2c3354; }
 }

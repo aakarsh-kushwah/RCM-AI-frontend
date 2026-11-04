@@ -401,10 +401,20 @@ const UserDashboard = () => {
         </div>
 
         <div className="rcmud-identity">
-          <span className="rcmud-avatar">{initial}</span>
+          {user?.user_image ? (
+            <img src={user.user_image} alt="User Profile" className="rcmud-avatar rcmud-avatar--image" />
+          ) : (
+            <span className="rcmud-avatar">{initial}</span>
+          )}
           <span className="rcmud-identity-text">
             <span className="rcmud-identity-name">{firstName}</span>
             <span className="rcmud-identity-role">{role}</span>
+            {user?.pin_data?.current_pin_name?.pin_description && (
+              <span className="rcmud-identity-pin">Current Pin: {user.pin_data.current_pin_name.pin_description}</span>
+            )}
+            {user?.pin_data?.max_pin_name?.pin_description && (
+              <span className="rcmud-identity-pin">Max Pin: {user.pin_data.max_pin_name.pin_description}</span>
+            )}
           </span>
         </div>
 
@@ -462,16 +472,30 @@ const UserDashboard = () => {
                 aria-label="Account menu"
                 aria-expanded={profileOpen}
               >
-                {initial}
+                {user?.user_image ? (
+                  <img src={user.user_image} alt="User Profile" className="rcmud-avatar rcmud-avatar--image" />
+                ) : (
+                  initial
+                )}
               </button>
 
               {profileOpen && (
                 <div className="rcmud-profile-sheet">
                   <div className="rcmud-profile-head">
-                    <span className="rcmud-avatar">{initial}</span>
+                    {user?.user_image ? (
+                      <img src={user.user_image} alt="User Profile" className="rcmud-avatar rcmud-avatar--image" />
+                    ) : (
+                      <span className="rcmud-avatar">{initial}</span>
+                    )}
                     <span>
                       <strong>{firstName}</strong>
                       <em>{role}</em>
+                      {user?.pin_data?.current_pin_name?.pin_description && (
+                        <span className="rcmud-identity-pin">Current Pin: {user.pin_data.current_pin_name.pin_description}</span>
+                      )}
+                      {user?.pin_data?.max_pin_name?.pin_description && (
+                        <span className="rcmud-identity-pin">Max Pin: {user.pin_data.max_pin_name.pin_description}</span>
+                      )}
                     </span>
                     <button type="button" className="rcmud-sheet-close" onClick={() => setProfileOpen(false)} aria-label="Close">
                       <X size={16} />

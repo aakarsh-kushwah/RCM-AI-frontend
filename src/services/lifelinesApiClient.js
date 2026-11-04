@@ -113,6 +113,14 @@ const logoutLifelines = async () => {
 };
 
 const getLifelinesOverview = (buyerId) => defaultApi.get(`/overview/${buyerId}`);
+const getNewJoinings = (buyerId, { months = 3, monthKey, limit } = {}, opts) => {
+  const parts = [];
+  if (months !== undefined) parts.push(`months=${months}`);
+  if (monthKey) parts.push(`monthKey=${encodeURIComponent(monthKey)}`);
+  if (limit) parts.push(`limit=${limit}`);
+  const qs = parts.length > 0 ? `?${parts.join('&')}` : '';
+  return defaultApi.get(`/new-joinings/${buyerId}${qs}`, opts);
+};
 const getTreeChildren = (buyerId, parentId) => defaultApi.get(`/tree-children?buyerId=${buyerId}&parentId=${parentId}`);
 const getMemberFullProfile = (buyerId, memberId) => defaultApi.get(`/member/${memberId}?rootBuyerId=${buyerId}`);
 const getAssistantQuery = (buyerId, query, monthKey) => defaultApi.get(`/assistant-query?buyerId=${buyerId}&q=${encodeURIComponent(query || 'all')}${monthKey ? `&monthKey=${monthKey}` : ''}`);
@@ -131,6 +139,7 @@ export {
   syncLifelines,
   logoutLifelines,
   getLifelinesOverview,
+  getNewJoinings,
   getTreeChildren,
   getMemberFullProfile,
   getAssistantQuery,

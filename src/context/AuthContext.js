@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import axios from 'axios';
 import { googleLogout } from '@react-oauth/google';
@@ -160,6 +159,27 @@ export const AuthProvider = ({ children }) => {
         keepAliveSession();
     }, [API_URL]);
 
+    const fetchUserProfileData = async () => {
+        try {
+            const response = await axios.get(`${API_URL}/api/user/cart/user-data`);
+            const { user_image, pin_data } = response.data.data;
+            setUser(prevUser => {
+                const updatedUser = { ...prevUser, user_image, pin_data };
+                localStorage.setItem('user', JSON.stringify(updatedUser));
+                return updatedUser;
+            });
+        } catch (error) {
+            console.error("Failed to fetch user profile data:", error);
+            // Optionally handle error, e.g., set default values or show a message
+        }
+    };
+
+    useEffect(() => {
+        if (accessToken && user && !user.user_image) {
+            fetchUserProfileData();
+        }
+    }, [accessToken, user]);
+
     const login = (userData, newAccessToken, newRefreshToken) => {
         const userWithApproval = { ...userData, isApproved: userData.isApproved || false };
         localStorage.setItem('auth_token', newAccessToken);
@@ -168,6 +188,7 @@ export const AuthProvider = ({ children }) => {
         localStorage.setItem('user', JSON.stringify(userWithApproval));
         setAccessToken(newAccessToken);
         setUser(userWithApproval);
+        fetchUserProfileData(); // Fetch profile data immediately after login
     };
 
     const logout = async () => {
