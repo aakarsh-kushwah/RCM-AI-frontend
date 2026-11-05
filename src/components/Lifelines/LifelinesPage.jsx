@@ -9,7 +9,7 @@ import {
   getAssistantQuery, getSyncStatus, getNewJoinings
 } from '../../services/lifelinesApiClient';
 import BrandLogo from '../BrandLogo/BrandLogo';
-import TreestructureUI from './Treestructureui';
+import TeamTree from './TeamTree';
 
 const ACTIVE_ID_KEY = 'rcm_active_buyer_id';
 const COLORS = { green: '#16A34A', red: '#DC2626', slate: '#94A3B8', mu: '#64748B' };
@@ -1060,7 +1060,7 @@ export default function LifelinesPage() {
 
       {/* SEPARATE FULL-SCREEN TREE (Treestructureui.jsx) */}
       {activeTab === 'tree' && activeBuyerId && (
-        <TreestructureUI
+        <TeamTree
           buyerId={activeBuyerId}
           rootInfo={treeRootInfo}
           startNode={treeStart}

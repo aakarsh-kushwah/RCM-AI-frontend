@@ -1,77 +1,119 @@
-import React, { useEffect, useState } from 'react';
+/**
+ * @file SplashScreen.jsx
+ * @description Team Dekho app-open splash: the animated logo intro (same look as the login theme).
+ *
+ * Usage (parent decides when to show it):
+ *   if (showSplash) return <SplashScreen onComplete={() => setShowSplash(false)} />;
+ *
+ * Behaviour
+ *  - Plays the logo motion, then dissolves and calls `onComplete` once.
+ *  - Tap / click / any key skips straight to the exit.
+ *  - With "reduce motion" turned on it shows briefly and leaves quickly.
+ *  - Marks the login intro as already seen, so the logo is not played a second time on /login.
+ *  - Only transform / opacity animate, so it stays smooth on budget phones.
+ */
+
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import BrandLogo from '../BrandLogo/BrandLogo'; // same logo the login page uses (adjust the path if needed)
 import './SplashScreen.css';
 
-const SplashScreen = ({ onComplete }) => {
-  const [isExiting, setIsExiting] = useState(false);
+const HOLD_MS = 2700; // how long the logo motion plays
+const EXIT_MS = 700; // dissolve time (keep in sync with CSS)
+const REDUCED_HOLD_MS = 700;
+const INTRO_KEY = 'td_intro_seen_v1'; // same key as LoginPage, so its own intro is skipped
 
-  useEffect(() => {
-    // 🔥 2.3 Seconds ka Hold (Animation complete hone ke liye)
-    const timer = setTimeout(() => {
-      setIsExiting(true); // Exit Animation Start
-      
-      // 0.6s Exit transition ke baad parent ko batayein
-      setTimeout(() => {
-        onComplete(); 
-      }, 600); 
+const prefersReducedMotion = () =>
+    typeof window !== 'undefined' &&
+    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
-    }, 2300); 
+const SplashScreen = ({ onComplete, holdMs }) => {
+    const [leaving, setLeaving] = useState(false);
+    const doneRef = useRef(false);
+    const onCompleteRef = useRef(onComplete);
 
-    return () => clearTimeout(timer);
-  }, [onComplete]);
+    // always call the latest callback without restarting the timers
+    useEffect(() => {
+        onCompleteRef.current = onComplete;
+    });
 
-  return (
-    <div className={`splash-master ${isExiting ? 'splash-exit' : ''}`}>
-      
-      {/* 🌌 Background Energy Mesh */}
-      <div className="energy-mesh"></div>
-      <div className="glow-orb top-left"></div>
-      <div className="glow-orb bottom-right"></div>
+    const leave = useCallback(() => setLeaving(true), []);
 
-      <div className="splash-center-content">
-        
-        {/* 🔥 3D LOGO REVEAL */}
-        <div className="logo-holo-container">
-            <div className="spinning-ring"></div>
-            <div className="logo-glass">
-                <img 
-                    src="https://i.ibb.co/GrMTmd0/Gemini-Generated-Image-q98hyq98hyq98hyq-removebg-preview-removebg-preview.png" 
-                    alt="RCM AI" 
-                    className="hero-logo"
-                />
+    // Lock page scroll, paint the page behind the splash, and mark the intro as seen
+    useEffect(() => {
+        const root = document.documentElement;
+        root.classList.add('tdsp-lock');
+        try {
+            sessionStorage.setItem(INTRO_KEY, '1');
+        } catch {
+            /* storage blocked – harmless */
+        }
+        return () => root.classList.remove('tdsp-lock');
+    }, []);
+
+    // Timeline: hold -> leave -> notify parent (once)
+    useEffect(() => {
+        const hold = prefersReducedMotion() ? REDUCED_HOLD_MS : (holdMs ?? HOLD_MS);
+        const t = setTimeout(leave, hold);
+        return () => clearTimeout(t);
+    }, [holdMs, leave]);
+
+    useEffect(() => {
+        if (!leaving) return undefined;
+        const t = setTimeout(() => {
+            if (doneRef.current) return;
+            doneRef.current = true;
+            onCompleteRef.current?.();
+        }, prefersReducedMotion() ? 0 : EXIT_MS);
+        return () => clearTimeout(t);
+    }, [leaving]);
+
+    // Any key skips
+    useEffect(() => {
+        window.addEventListener('keydown', leave);
+        return () => window.removeEventListener('keydown', leave);
+    }, [leave]);
+
+    return (
+        <div
+            className={`tdsp-root ${leaving ? 'is-leaving' : ''}`}
+            onClick={leave}
+            role="status"
+            aria-label="Loading Team Dekho"
+        >
+            {/* Atmosphere */}
+            <div className="tdsp-bg" aria-hidden="true">
+                <span className="tdsp-orb tdsp-orb--1" />
+                <span className="tdsp-orb tdsp-orb--2" />
+                <span className="tdsp-orb tdsp-orb--3" />
+                <span className="tdsp-grain" />
             </div>
-        </div>
 
-        {/* 🚀 BRAND TEXT ANIMATION */}
-        <div className="text-content">
-            <h1 className="hero-title">
-                <span className="slide-up d-1">R</span>
-                <span className="slide-up d-2">C</span>
-                <span className="slide-up d-3">M</span>
-                <span className="spacer"></span>
-                <span className="slide-up d-4 highlight">A</span>
-                <span className="slide-up d-5 highlight">I</span>
-            </h1>
-            
-            {/* ✨ "Next Generation" Badge */}
-            <div className="dev-badge-container">
-                <div className="dev-line"></div>
-                <p className="dev-text">DEVELOPED BY NEXT GENERATION</p>
-                <div className="dev-line"></div>
+            <div className="tdsp-stage">
+                <svg className="tdsp-orbit" viewBox="0 0 320 320" aria-hidden="true">
+                    <defs>
+                        <linearGradient id="tdspRing" x1="0" y1="0" x2="1" y2="1">
+                            <stop offset="0%" stopColor="#4f6bff" />
+                            <stop offset="55%" stopColor="#9a5cff" />
+                            <stop offset="100%" stopColor="#12c6d8" />
+                        </linearGradient>
+                    </defs>
+                    <circle className="tdsp-orbit-track" cx="160" cy="160" r="140" />
+                    <circle className="tdsp-orbit-draw" cx="160" cy="160" r="140" />
+                    <g className="tdsp-orbit-nodes">
+                        <circle cx="160" cy="20" r="5" />
+                        <circle cx="281" cy="230" r="5" />
+                        <circle cx="39" cy="230" r="5" />
+                    </g>
+                </svg>
+
+                <div className="tdsp-logo">
+                    <BrandLogo tagline />
+                </div>
             </div>
+
+            <span className="tdsp-bar" aria-hidden="true" />
         </div>
-
-        {/* ⏳ High-Speed Laser Loader */}
-        <div className="laser-loader">
-            <div className="laser-beam"></div>
-        </div>
-
-      </div>
-
-      <div className="version-info">
-        v2.0 • Enterprise Edition
-      </div>
-    </div>
-  );
+    );
 };
 
 export default SplashScreen;

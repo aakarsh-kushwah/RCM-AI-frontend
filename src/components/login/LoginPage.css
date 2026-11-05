@@ -401,43 +401,103 @@ html.tdlp-lock body {
     to { opacity: 1; transform: none; }
 }
 
-/* ----- google button ----- */
+/* ----- google button (custom visual + invisible real Google button on top) ----- */
 .tdlp-google {
     position: relative;
-    display: flex;
-    justify-content: center;
     width: 100%;
-    min-height: 44px;
-    padding: 6px;
-    border-radius: 999px;
-    background: linear-gradient(90deg, rgba(79, 107, 255, 0.12), rgba(154, 92, 255, 0.12), rgba(18, 198, 216, 0.14));
-    transition: box-shadow 0.35s ease, transform 0.35s ease;
 }
-.tdlp-google:hover {
-    box-shadow: 0 14px 30px -14px rgba(79, 107, 255, 0.55);
+.tdlp-gshell {
+    position: relative;
+    width: 100%;
+    max-width: 400px;
+    height: 56px;
+    margin: 0 auto;
 }
-.tdlp-google > div:first-child {
-    transition: opacity 0.3s ease, filter 0.3s ease;
-}
-.tdlp-google.is-busy > div:first-child,
-.tdlp-google.is-disabled > div:first-child {
-    opacity: 0.35;
-    filter: grayscale(0.6);
-    pointer-events: none;
-}
-.tdlp-google.is-disabled { cursor: not-allowed; }
 
-.tdlp-busy {
+.tdlp-gbtn {
     position: absolute;
     inset: 0;
     display: flex;
     align-items: center;
     justify-content: center;
+    gap: 14px;
+    border: 2px solid transparent;
+    border-radius: 999px;
+    font-family: var(--font-body);
+    font-size: 16.5px;
+    font-weight: 700;
+    letter-spacing: -0.005em;
+    color: #1d2246;
+    background:
+        linear-gradient(#ffffff, #ffffff) padding-box,
+        linear-gradient(90deg, var(--indigo), var(--violet), var(--aqua)) border-box;
+    box-shadow: 0 16px 32px -14px rgba(79, 107, 255, 0.65);
+    animation: tdlp-glow 2.8s ease-in-out infinite;
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+    pointer-events: none;
+}
+.tdlp-g { width: 26px; height: 26px; flex: none; }
+
+@keyframes tdlp-glow {
+    0%, 100% { box-shadow: 0 16px 32px -14px rgba(79, 107, 255, 0.65), 0 0 0 0 rgba(79, 107, 255, 0.28); }
+    50% { box-shadow: 0 16px 32px -14px rgba(79, 107, 255, 0.65), 0 0 0 9px rgba(79, 107, 255, 0); }
+}
+
+.tdlp-gshell:hover .tdlp-gbtn { transform: translateY(-2px); box-shadow: 0 22px 38px -14px rgba(79, 107, 255, 0.75); }
+.tdlp-gshell:active .tdlp-gbtn { transform: scale(0.985); }
+.tdlp-gshell:focus-within .tdlp-gbtn { outline: 3px solid rgba(79, 107, 255, 0.5); outline-offset: 3px; }
+
+/* real Google button: invisible, stretched to cover our button so every tap reaches it */
+.tdlp-ghit {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    overflow: hidden;
+    border-radius: 999px;
+    opacity: 0.01;
+    cursor: pointer;
+}
+.tdlp-ghit-inner {
+    width: 100%;
+    transform: scaleY(1.45);
+    transform-origin: top left;
+}
+
+.tdlp-google.is-busy .tdlp-ghit,
+.tdlp-google.is-disabled .tdlp-ghit { pointer-events: none; }
+.tdlp-google.is-busy .tdlp-gbtn,
+.tdlp-google.is-disabled .tdlp-gbtn { opacity: 0.4; filter: grayscale(0.6); animation: none; }
+.tdlp-google.is-disabled .tdlp-gshell { cursor: not-allowed; }
+
+/* thin travelling line under the button */
+.tdlp-gline {
+    display: block;
+    width: 70%;
+    height: 2px;
+    margin: 18px auto 0;
+    border-radius: 2px;
+    background: linear-gradient(90deg, transparent 0%, #4f6bff 25%, #9a5cff 50%, #12c6d8 75%, transparent 100%);
+    background-size: 200% 100%;
+    opacity: 0.85;
+    animation: tdlp-line 3.2s linear infinite;
+}
+@keyframes tdlp-line {
+    from { background-position: 200% 0; }
+    to { background-position: -200% 0; }
+}
+
+.tdlp-busy {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     gap: 10px;
-    font-size: 14px;
-    font-weight: 600;
+    font-size: 15px;
+    font-weight: 700;
     color: var(--ink);
-    border-radius: inherit;
+    border-radius: 999px;
     overflow: hidden;
 }
 .tdlp-busy::after {
@@ -451,7 +511,7 @@ html.tdlp-lock body {
     animation: tdlp-sweep 1.1s ease-in-out infinite;
 }
 .tdlp-busy-dot {
-    width: 14px; height: 14px;
+    width: 15px; height: 15px;
     border-radius: 50%;
     border: 2px solid rgba(79, 107, 255, 0.25);
     border-top-color: var(--indigo);
@@ -768,6 +828,31 @@ html.tdlp-lock body {
     .tdlp-showcase { padding-top: 16px; padding-bottom: 16px; }
     .tdlp-card-inner { padding-top: 22px; }
     .tdlp-trust { margin-top: 16px; padding-top: 14px; }
+}
+
+/* ==========================================================================
+   Mobile refinements: less text, tree higher, taller sheet
+   ========================================================================== */
+
+@media (max-width: 960px) {
+    .tdlp-lead,
+    .tdlp-trust { display: none; }
+
+    .tdlp-showcase {
+        justify-content: flex-start;
+        padding-top: calc(env(safe-area-inset-top, 0px) + 5vh);
+    }
+    .tdlp-net { width: min(100%, 360px); margin-top: 24px; }
+
+    .tdlp-card { display: flex; flex-direction: column; min-height: 46vh; min-height: 46dvh; }
+    .tdlp-card-inner { flex: 1; justify-content: center; }
+    .tdlp-fineprint { margin-top: 14px; }
+}
+@media (max-width: 960px) and (max-height: 760px) {
+    .tdlp-net { width: min(100%, 290px); margin-top: 14px; }
+}
+@media (max-width: 960px) and (max-height: 640px) {
+    .tdlp-card { min-height: 0; }
 }
 
 /* ==========================================================================

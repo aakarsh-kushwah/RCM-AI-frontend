@@ -1,0 +1,850 @@
+/* ==========================================================================
+   Team Dekho – Team Tree
+   Pearl canvas, soft dot grid, status rings (green / grey / red), champagne accent.
+   Prefix: tdt-   Only transform/opacity are animated; blur is not used on the canvas.
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap');
+
+.tdt {
+    --bd: rgba(120, 130, 190, 0.22);
+    --tx: #151a3a;
+    --mu: #6b7296;
+    --pearl: #f4f5fc;
+    --indigo: #4f6bff;
+    --violet: #9a5cff;
+    --aqua: #12c6d8;
+    --champagne: #e9c27a;
+    --gr: #12a35e;
+    --rd: #e03655;
+    --sl: #9aa3bd;
+    --line: #c9d0ec;
+    --slot: 84px;
+    --upw: 156px;
+    --font-display: 'Sora', 'Manrope', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-body: 'Manrope', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    color: var(--tx);
+    background: var(--pearl);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+}
+.tdt,
+.tdt *,
+.tdt *::before,
+.tdt *::after { box-sizing: border-box; }
+.tdt button,
+.tdt input,
+.tdt select { font-family: inherit; }
+
+/* ---------- shared controls ---------- */
+.tdt-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    height: 38px;
+    padding: 0 14px;
+    border: 1px solid var(--bd);
+    border-radius: 13px;
+    background: #fff;
+    color: var(--tx);
+    font-size: 13.5px;
+    font-weight: 700;
+    text-decoration: none;
+    cursor: pointer;
+    box-shadow: 0 6px 14px -10px rgba(50, 62, 170, 0.5);
+    transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+.tdt-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 12px 20px -12px rgba(50, 62, 170, 0.6); }
+.tdt-btn:active:not(:disabled) { transform: scale(0.97); }
+.tdt-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.tdt-btn.ic { width: 40px; padding: 0; border-radius: 50%; }
+.tdt-btn.p {
+    color: #fff;
+    border-color: transparent;
+    background: linear-gradient(135deg, var(--indigo), var(--violet));
+    box-shadow: 0 12px 22px -12px rgba(79, 107, 255, 0.95);
+}
+.tdt-btn.big { flex: 1; height: 46px; border-radius: 16px; font-size: 14.5px; }
+.tdt-btn.wa { color: #fff; border-color: transparent; background: linear-gradient(135deg, #25d366, #12a35e); }
+
+.tdt :focus-visible { outline: 3px solid rgba(79, 107, 255, 0.55); outline-offset: 2px; }
+
+.tdt-link {
+    border: 0;
+    background: none;
+    padding: 4px 2px;
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--indigo);
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.tdt-field {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+}
+.tdt-field > svg { position: absolute; left: 12px; color: var(--mu); pointer-events: none; }
+.tdt-field input {
+    width: 100%;
+    height: 40px;
+    padding: 0 14px 0 36px;
+    border: 1px solid var(--bd);
+    border-radius: 13px;
+    background: #fff;
+    font-size: 14px;
+    color: var(--tx);
+    outline: none;
+}
+.tdt-field input:focus { border-color: var(--indigo); box-shadow: 0 0 0 4px rgba(79, 107, 255, 0.14); }
+.tdt-pvfield input { padding-left: 14px; padding-right: 40px; font-weight: 700; }
+.tdt-pvfield em { position: absolute; right: 12px; font-style: normal; font-size: 12px; font-weight: 800; color: var(--mu); }
+
+.tdt-select {
+    height: 40px;
+    max-width: 48%;
+    padding: 0 30px 0 12px;
+    border: 1px solid var(--bd);
+    border-radius: 13px;
+    background: #fff;
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--tx);
+    cursor: pointer;
+}
+
+.tdt-seg {
+    display: inline-flex;
+    padding: 3px;
+    border: 1px solid var(--bd);
+    border-radius: 14px;
+    background: #eef0fb;
+}
+.tdt-seg button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 11px;
+    background: transparent;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--mu);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.2s ease, color 0.2s ease;
+}
+.tdt-seg button.on { color: var(--indigo); background: #fff; box-shadow: 0 4px 10px -6px rgba(50, 62, 170, 0.6); }
+
+.tdt-chips { display: flex; flex-wrap: wrap; gap: 7px; }
+.tdt-chips.scroll { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.tdt-chips.scroll::-webkit-scrollbar { display: none; }
+.tdt-fchip {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 32px;
+    padding: 0 12px;
+    border: 1px solid var(--bd);
+    border-radius: 999px;
+    background: #fff;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--mu);
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+.tdt-fchip i { width: 9px; height: 9px; border-radius: 50%; }
+.tdt-fchip b { font-weight: 800; color: var(--tx); }
+.tdt-fchip.on { color: var(--indigo); border-color: rgba(79, 107, 255, 0.45); background: rgba(79, 107, 255, 0.08); }
+
+.tdt-av {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border-radius: 50%;
+    background: #f1f3fb;
+    font-family: var(--font-display);
+    font-weight: 600;
+}
+.tdt-av img { width: 100%; height: 100%; object-fit: cover; }
+
+.tdt-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 11px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 800;
+    background: #eef0fb;
+    color: var(--mu);
+}
+.tdt-chip.g { background: #dcf7e8; color: #0f7d49; }
+.tdt-chip.r { background: #ffe3e9; color: #b3243f; }
+
+.tdt-tag {
+    display: inline-flex;
+    align-items: center;
+    margin-top: 3px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 800;
+    white-space: nowrap;
+    background: #eef0fb;
+    color: var(--mu);
+}
+.tdt-tag.g { background: #dcf7e8; color: #0f7d49; }
+.tdt-tag.r { background: #ffe3e9; color: #b3243f; }
+
+.tdt-empty { padding: 28px 16px; text-align: center; font-size: 14px; line-height: 1.5; color: var(--mu); }
+
+/* ==========================================================================
+   Top bar, crumbs, tools
+   ========================================================================== */
+
+.tdt-top {
+    position: relative;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: calc(env(safe-area-inset-top, 0px) + 8px) 12px 8px;
+    background: rgba(255, 255, 255, 0.92);
+    border-bottom: 1px solid var(--bd);
+}
+.tdt-brand { flex: none; display: flex; align-items: center; }
+.tdt-brand .tdlogo { font-size: 11px; }
+.tdt-title {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tdt-sbox { position: relative; width: min(320px, 46vw); }
+.tdt-sbox > svg { position: absolute; left: 12px; top: 12px; color: var(--mu); pointer-events: none; }
+.tdt-in {
+    width: 100%;
+    height: 40px;
+    padding: 0 14px 0 36px;
+    border: 1px solid var(--bd);
+    border-radius: 13px;
+    background: #fff;
+    font-size: 14px;
+    color: var(--tx);
+    outline: none;
+}
+.tdt-in:focus { border-color: var(--indigo); box-shadow: 0 0 0 4px rgba(79, 107, 255, 0.14); }
+
+.tdt-sres {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 30;
+    width: min(360px, 92vw);
+    max-height: 340px;
+    overflow-y: auto;
+    border: 1px solid var(--bd);
+    border-radius: 18px;
+    background: #fff;
+    box-shadow: 0 30px 60px -24px rgba(40, 50, 160, 0.5);
+}
+.tdt-sres .it {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    border-bottom: 1px solid #f0f1fa;
+    cursor: pointer;
+}
+.tdt-sres .it:last-child { border-bottom: 0; }
+.tdt-sres .it:hover { background: #f7f8ff; }
+.tdt-sres .it > span { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.tdt-sres b { font-size: 14px; font-weight: 700; }
+.tdt-sres small { font-size: 12px; color: var(--mu); }
+.tdt-sres .msg { padding: 14px; font-size: 13px; color: var(--mu); }
+.tdt-sres .it.pv { background: linear-gradient(135deg, rgba(79, 107, 255, 0.08), rgba(18, 198, 216, 0.08)); }
+.tdt-sres .ico {
+    flex: none !important;
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 12px;
+    color: #fff;
+    background: linear-gradient(135deg, var(--indigo), var(--violet));
+}
+
+.tdt-toast {
+    position: absolute;
+    top: 64px;
+    left: 50%;
+    z-index: 70;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: 92vw;
+    padding: 10px 14px;
+    border: 1px solid #ffd0da;
+    border-radius: 14px;
+    background: #fff4f6;
+    color: #b3243f;
+    font-size: 13.5px;
+    font-weight: 600;
+    transform: translateX(-50%);
+    box-shadow: 0 16px 30px -18px rgba(180, 30, 60, 0.6);
+}
+.tdt-toast button { display: grid; place-items: center; padding: 0; border: 0; background: none; color: inherit; cursor: pointer; }
+
+.tdt-crumbbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.7);
+    border-bottom: 1px solid var(--bd);
+}
+.tdt-crumbbar .tdt-btn { height: 34px; padding: 0 11px; border-radius: 12px; }
+.tdt-crumbs { display: flex; align-items: center; gap: 5px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.tdt-crumbs::-webkit-scrollbar { display: none; }
+.tdt-crumb {
+    flex: none;
+    max-width: 140px;
+    padding: 6px 12px;
+    border: 1px solid var(--bd);
+    border-radius: 999px;
+    background: #fff;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--tx);
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.tdt-crumb.on { color: #fff; border-color: transparent; background: linear-gradient(135deg, var(--indigo), var(--violet)); }
+.tdt-crumb.fw { opacity: 0.5; border-style: dashed; }
+.tdt-sep { flex: none; font-size: 13px; color: var(--sl); }
+
+.tdt-tools {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    padding: 8px 12px;
+}
+.tdt-tools-right { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.tdt-tools .tdt-btn { height: 36px; }
+.tdt-legend { display: flex; align-items: center; gap: 14px; overflow-x: auto; scrollbar-width: none; }
+.tdt-legend::-webkit-scrollbar { display: none; }
+.tdt-legend span { display: inline-flex; align-items: center; gap: 6px; flex: none; font-size: 12.5px; font-weight: 700; color: var(--mu); }
+.tdt-legend i { width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 0 3px rgba(120, 130, 190, 0.14); }
+
+/* ==========================================================================
+   Stage (canvas)
+   ========================================================================== */
+
+.tdt-stage {
+    flex: 1;
+    overflow: auto;
+    padding: 14px 62px 96px 10px;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    background:
+        radial-gradient(760px 420px at 50% -6%, rgba(154, 160, 255, 0.2), transparent 70%),
+        radial-gradient(rgba(120, 130, 200, 0.2) 1px, transparent 1.4px) 0 0 / 22px 22px,
+        var(--pearl);
+}
+.tdt-inner { width: max-content; margin: 0 auto; display: flex; flex-direction: column; align-items: center; }
+.tdt-inner.left { margin: 0; align-items: flex-start; }
+.tdt-inner.legs { width: 100%; max-width: 1080px; }
+.tdt-inner.grow .tdt-row { transform-origin: 50% 0; animation: tdt-grow 0.2s ease-out; }
+.tdt-inner.grow .tdt-legs { animation: tdt-grow 0.22s ease-out; transform-origin: 50% 0; }
+.tdt-inner.shrink { transform-origin: 50% 0; animation: tdt-shrink 0.2s ease-out; }
+@keyframes tdt-grow { from { opacity: 0; transform: scaleY(0.6) translateY(-6px); } to { opacity: 1; transform: none; } }
+@keyframes tdt-shrink { from { opacity: 0.3; transform: scale(1.05); } to { opacity: 1; transform: none; } }
+
+.tdt-up { width: var(--upw); display: flex; flex-direction: column; align-items: center; }
+.tdt-vline { width: 0; height: var(--h, 18px); border-left: 2px solid var(--line); }
+
+.tdt-apill {
+    width: var(--upw);
+    height: 36px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 0 8px;
+    border: 2px solid var(--fc, var(--sl));
+    border-radius: 12px;
+    background: #fff;
+    font-size: 11.5px;
+    font-weight: 800;
+    text-align: left;
+    color: var(--tx);
+    cursor: pointer;
+}
+.tdt-apill.t { background: #fff3f5; }
+.tdt-apill .n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* focused member: the hero of the screen */
+.tdt-fcard {
+    position: relative;
+    width: var(--upw);
+    padding: 12px 8px 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    border: 2px solid transparent;
+    border-radius: 22px;
+    background:
+        linear-gradient(165deg, #ffffff, #f4f5ff) padding-box,
+        linear-gradient(135deg, var(--fc, var(--sl)), var(--indigo) 55%, var(--aqua)) border-box;
+    box-shadow: 0 0 0 5px var(--fs, rgba(154, 163, 189, 0.2)), 0 24px 40px -22px rgba(50, 62, 170, 0.55);
+}
+.tdt-fcard.t {
+    background:
+        linear-gradient(165deg, #fff8f9, #ffeef1) padding-box,
+        linear-gradient(135deg, var(--rd), #ff8aa0) border-box;
+}
+.tdt-fcard .nm {
+    max-width: 100%;
+    margin-top: 7px;
+    font-family: var(--font-display);
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.tdt-fcard .id { margin-top: 2px; font-size: 11px; color: var(--mu); }
+.tdt-fcard .inf {
+    position: absolute;
+    top: 7px;
+    right: 7px;
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: #eef0fb;
+    color: var(--mu);
+    cursor: pointer;
+}
+.tdt-stats { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; margin-top: 5px; }
+.tdt-stats .tdt-tag { margin-top: 0; }
+
+.tdt-loading { display: flex; align-items: center; gap: 10px; padding: 24px; font-size: 14px; color: var(--mu); }
+.tdt-spin {
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(79, 107, 255, 0.2);
+    border-top-color: var(--indigo);
+    border-radius: 50%;
+    animation: tdt-rotate 0.8s linear infinite;
+}
+@keyframes tdt-rotate { to { transform: rotate(360deg); } }
+.tdt-fail { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 20px; font-size: 14px; color: #b3243f; text-align: center; }
+.tdt-note {
+    margin-top: 16px;
+    padding: 12px 18px;
+    border: 1px dashed var(--line);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.7);
+    font-size: 14px;
+    color: var(--mu);
+}
+
+/* ---------- tree ---------- */
+.tdt-row { display: flex; align-items: flex-start; position: relative; }
+.tdt-spine { position: absolute; top: 0; height: 0; border-top: 2px solid var(--line); }
+.tdt-col { --stub: 20px; position: relative; display: flex; flex-direction: column; align-items: center; padding: var(--stub) 4px 0; }
+.tdt-st { position: absolute; top: 0; left: 50%; height: var(--stub); border-left: 2px solid var(--line); }
+.tdt-hl { position: absolute; top: 0; left: 0; right: 0; border-top: 2px solid var(--line); }
+.tdt-hl.f { left: 50%; }
+.tdt-hl.l { right: 50%; }
+
+.tdt-node {
+    position: relative;
+    z-index: 1;
+    width: calc(var(--slot) - 8px);
+    padding: 7px 3px 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    border: 2px solid var(--fc, var(--sl));
+    border-radius: 16px;
+    background: #fff;
+    box-shadow: 0 0 0 3px var(--fs, transparent), 0 12px 20px -14px rgba(50, 62, 170, 0.55);
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.tdt-node:hover { transform: translateY(-2px); }
+.tdt-node:active { transform: scale(0.95); }
+.tdt-node.t { background: #fff3f5; }
+.tdt-node .nm {
+    max-width: 100%;
+    margin-top: 5px;
+    font-size: 11px;
+    font-weight: 800;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.tdt-node .id { font-size: 9.5px; line-height: 1.2; color: var(--mu); }
+.tdt-kidhint { margin-top: 3px; font-size: 10px; font-weight: 800; color: var(--indigo); }
+.tdt-more {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    min-width: 36px;
+    height: 36px;
+    padding: 0 10px;
+    border: 1.5px dashed var(--sl);
+    border-radius: 18px;
+    background: #fff;
+    font-size: 11.5px;
+    font-weight: 800;
+    color: var(--mu);
+    cursor: pointer;
+}
+
+/* depth rail */
+.tdt-rail {
+    position: fixed;
+    right: 2px;
+    top: 50%;
+    z-index: 60;
+    width: 54px;
+    height: min(60vh, 400px);
+    transform: translateY(-50%);
+    touch-action: none;
+    cursor: ns-resize;
+    user-select: none;
+}
+.tdt-rtrack { position: absolute; left: 25px; top: 16px; bottom: 16px; width: 4px; border-radius: 4px; background: #dfe3f5; }
+.tdt-rfill { position: absolute; left: 0; top: 0; width: 100%; border-radius: 4px; background: linear-gradient(180deg, var(--indigo), var(--violet)); }
+.tdt-tick { position: absolute; left: -3px; width: 10px; height: 10px; border: 2px solid #c9d0ec; border-radius: 50%; background: #fff; transform: translateY(-50%); }
+.tdt-tick.on { border-color: var(--indigo); }
+.tdt-thumb {
+    position: absolute;
+    left: -11px;
+    width: 26px;
+    height: 26px;
+    border: 3px solid #fff;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--indigo), var(--violet));
+    box-shadow: 0 6px 14px -4px rgba(79, 107, 255, 0.8);
+    transform: translateY(-50%);
+}
+.tdt-thumb.s { transition: top 0.15s; }
+.tdt-bubble {
+    position: absolute;
+    right: 30px;
+    max-width: 60vw;
+    padding: 7px 11px;
+    border-radius: 12px;
+    background: #151a3a;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
+    transform: translateY(-50%);
+}
+
+/* ==========================================================================
+   Legs view
+   ========================================================================== */
+
+.tdt-legs { width: 100%; margin-top: 18px; }
+.tdt-legs-head h3 { margin: 0; font-family: var(--font-display); font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+.tdt-legs-head p { margin: 3px 0 12px; font-size: 13.5px; color: var(--mu); }
+.tdt-legs-tools { display: flex; gap: 8px; margin-bottom: 10px; }
+.tdt-legs .tdt-chips { margin-bottom: 14px; }
+
+.tdt-legs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 12px; }
+.tdt-leg {
+    position: relative;
+    border: 2px solid var(--fc, var(--sl));
+    border-radius: 22px;
+    background: #fff;
+    box-shadow: 0 0 0 3px var(--fs, transparent), 0 16px 26px -18px rgba(50, 62, 170, 0.6);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.tdt-leg.t { background: #fff3f5; }
+@media (hover: hover) and (pointer: fine) {
+    .tdt-leg:hover { transform: translateY(-4px); box-shadow: 0 0 0 4px var(--fs, transparent), 0 26px 36px -20px rgba(50, 62, 170, 0.7); }
+}
+.tdt-leg-main {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    width: 100%;
+    padding: 16px 10px 14px;
+    border: 0;
+    border-radius: inherit;
+    background: none;
+    color: inherit;
+    text-align: center;
+    cursor: pointer;
+}
+.tdt-leg-badge {
+    position: absolute;
+    top: 9px;
+    left: 9px;
+    display: grid;
+    place-items: center;
+    min-width: 26px;
+    height: 26px;
+    padding: 0 7px;
+    border-radius: 9px;
+    font-family: var(--font-display);
+    font-size: 12px;
+    font-weight: 700;
+    color: #fff;
+    background: linear-gradient(135deg, var(--indigo), var(--violet));
+}
+.tdt-leg-name {
+    max-width: 100%;
+    margin-top: 6px;
+    font-family: var(--font-display);
+    font-size: 14px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.tdt-leg-id { font-size: 11.5px; color: var(--mu); }
+.tdt-leg-meta { margin-top: 3px; font-size: 11.5px; font-weight: 700; color: var(--indigo); }
+.tdt-leg-find {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: #eef0fb;
+    color: var(--mu);
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease;
+}
+.tdt-leg-find:hover { color: #fff; background: var(--indigo); }
+
+/* ==========================================================================
+   Find members panel
+   ========================================================================== */
+
+.tdt-xov {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    background: rgba(21, 26, 58, 0.45);
+}
+.tdt-xp {
+    width: 100%;
+    max-width: 900px;
+    display: flex;
+    flex-direction: column;
+    background: var(--pearl);
+    animation: tdt-sheet 0.28s cubic-bezier(0.2, 0.85, 0.2, 1);
+}
+@keyframes tdt-sheet { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
+@media (min-width: 900px) {
+    .tdt-xov { align-items: center; padding: 28px; }
+    .tdt-xp { max-height: 100%; border-radius: 30px; overflow: hidden; box-shadow: 0 50px 90px -30px rgba(30, 40, 150, 0.7); }
+}
+
+.tdt-xhead {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: calc(env(safe-area-inset-top, 0px) + 12px) 14px 10px;
+    background: #fff;
+    border-bottom: 1px solid var(--bd);
+}
+.tdt-xtitle { flex: 1; min-width: 0; }
+.tdt-xtitle h3 { margin: 0; font-family: var(--font-display); font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+.tdt-xtitle p { margin: 2px 0 0; font-size: 13px; color: var(--mu); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.tdt-xprog { position: relative; display: flex; align-items: center; gap: 10px; padding: 9px 14px; background: #fff; border-bottom: 1px solid var(--bd); }
+.tdt-xmsg { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; color: var(--mu); }
+.tdt-xbar { position: absolute; left: 0; right: 0; bottom: -1px; height: 3px; overflow: hidden; opacity: 0; }
+.tdt-xprog.run .tdt-xbar { opacity: 1; }
+.tdt-xbar::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    width: 40%;
+    background: linear-gradient(90deg, transparent, var(--indigo), var(--violet), var(--aqua), transparent);
+    animation: tdt-sweep 1.2s ease-in-out infinite;
+}
+@keyframes tdt-sweep { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
+
+.tdt-xfilters { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; background: rgba(255, 255, 255, 0.65); border-bottom: 1px solid var(--bd); }
+.tdt-xrow2 { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.tdt-xrow2 .tdt-chips { flex: 1; min-width: 0; }
+
+.tdt-xsum { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 14px; font-size: 13px; color: var(--mu); }
+.tdt-xsum-text { min-width: 0; }
+.tdt-xsum-text strong { color: var(--tx); font-weight: 800; }
+.tdt-xsum-text em { display: block; font-style: normal; font-size: 12px; color: var(--indigo); font-weight: 700; }
+
+.tdt-xlist { position: relative; flex: 1; min-height: 0; overflow-y: auto; padding: 0 12px calc(16px + env(safe-area-inset-bottom, 0px)); overscroll-behavior: contain; }
+.tdt-xspacer { position: relative; }
+.tdt-xrow {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: calc(76px - 8px);
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 0 12px;
+    border: 1px solid var(--bd);
+    border-left: 4px solid var(--fc, var(--sl));
+    border-radius: 18px;
+    background: #fff;
+    box-shadow: 0 10px 18px -16px rgba(50, 62, 170, 0.6);
+    cursor: pointer;
+}
+.tdt-xrow.t { background: #fff3f5; }
+.tdt-xrow:hover { background: #f8f9ff; }
+.tdt-xrow.t:hover { background: #ffecef; }
+.tdt-xmain { flex: 1; min-width: 0; }
+.tdt-xname { font-size: 14.5px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tdt-xsub { margin-top: 2px; font-size: 12px; color: var(--mu); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tdt-xpv {
+    flex: none;
+    padding: 5px 11px;
+    border-radius: 999px;
+    font-size: 12.5px;
+    font-weight: 800;
+    background: #eef0fb;
+    color: var(--mu);
+}
+.tdt-xpv.g { background: #dcf7e8; color: #0f7d49; }
+.tdt-xpv.r { background: #ffe3e9; color: #b3243f; }
+.tdt-xloc {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: #eef0fb;
+    color: var(--indigo);
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease;
+}
+.tdt-xloc:hover { color: #fff; background: var(--indigo); }
+
+/* ==========================================================================
+   Member profile
+   ========================================================================== */
+
+.tdt-ov { position: fixed; inset: 0; z-index: 120; display: flex; justify-content: flex-end; background: rgba(21, 26, 58, 0.5); }
+.tdt-dr {
+    width: min(440px, 100%);
+    height: 100%;
+    padding: 22px;
+    overflow-y: auto;
+    background: linear-gradient(180deg, #eef0ff 0, #fff 190px);
+    animation: tdt-drawer 0.28s cubic-bezier(0.2, 0.85, 0.2, 1);
+}
+@keyframes tdt-drawer { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+.tdt-dr-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.tdt-dr-title { font-family: var(--font-display); font-size: 17px; font-weight: 600; }
+.tdt-dr-who { display: flex; flex-direction: column; align-items: center; gap: 4px; margin-bottom: 18px; text-align: center; }
+.tdt-dr-name { margin-top: 8px; font-family: var(--font-display); font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+.tdt-dr-id { margin-bottom: 6px; font-size: 13px; color: var(--mu); }
+.tdt-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px; }
+.tdt-kv { padding: 12px; border: 1px solid var(--bd); border-radius: 16px; background: #fff; box-shadow: 0 10px 18px -16px rgba(50, 62, 170, 0.6); }
+.tdt-kv .k { font-size: 12px; color: var(--mu); }
+.tdt-kv .v { margin-top: 3px; font-size: 15px; font-weight: 800; word-break: break-word; }
+.tdt-dr-actions { display: flex; gap: 10px; }
+.tdt-dr-note { text-align: center; font-size: 13px; color: var(--mu); }
+
+/* ==========================================================================
+   Responsive + motion
+   ========================================================================== */
+
+@media (min-width: 761px) {
+    .tdt { --slot: 112px; --upw: 204px; }
+}
+@media (max-width: 520px) {
+    .tdt-title { display: none; }
+    .tdt-sbox { flex: 1; width: auto; }
+    .tdt-brand .tdlogo-name { font-size: 1.2em; }
+}
+@media (max-width: 760px) {
+    .tdt-btn .t { display: none; }
+    .tdt-btn.ic { width: 40px; }
+    .tdt-legs-tools { flex-wrap: wrap; }
+    .tdt-select { max-width: 100%; }
+    .tdt-ov { align-items: flex-end; }
+    .tdt-dr { width: 100%; height: auto; max-height: 90vh; border-radius: 26px 26px 0 0; animation-name: tdt-sheet; }
+    .tdt-stage { padding-right: 58px; }
+}
+@media (max-width: 900px) {
+    .tdt-xov { padding: 0; }
+}
+@media (max-width: 380px) {
+    .tdt-legs-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .tdt-xpv { padding: 4px 9px; font-size: 12px; }
+}
+
+@media (prefers-contrast: more) {
+    .tdt-leg-id, .tdt-xsub, .tdt-fcard .id, .tdt-node .id, .tdt-legend span { color: #2c3354; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tdt *,
+    .tdt *::before,
+    .tdt *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+    }
+}
