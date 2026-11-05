@@ -2,8 +2,8 @@
   "name": "TeamDekho",
   "short_name": "TeamDekho",
   "description": "TeamDekho - Your AI Assistant for Team Management and Business Network",
-  
-  "gcm_sender_id": "103953800507",  
+
+  "gcm_sender_id": "103953800507",
 
   "start_url": "/?source=pwa",
   "scope": "/",
@@ -12,22 +12,41 @@
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],
 
-  "background_color": "#050F33",
-  "theme_color": "#004c99",
+  "background_color": "#f5f6fc",
+  "theme_color": "#f5f6fc",
 
   "orientation": "portrait",
 
   "icons": [
     {
-      "src": "/rcm_logo.png",
+      "src": "/icons/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
-      "src": "/rcm_logo.png",
+      "src": "/icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
     }
   ],
 
