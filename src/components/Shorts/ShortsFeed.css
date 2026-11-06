@@ -1,5 +1,8 @@
 /* ==========================================================================
-   ShortsFeed.css  (v6) - Instagram-native Reels / Shorts layout
+   ShortsFeed.css  (v7) - Instagram-native Reels / Shorts layout
+
+   v7: video fills the whole screen like Instagram (cover), YouTube's own overlay
+   strips are clipped away, bottom-left shows the channel only (title on tap).
 
    z-index map inside a slide (all siblings share the scroller stacking context):
      1  .rf-poster          poster image (cover)
@@ -20,6 +23,8 @@ body.rf-body {
 .rf-root {
   --rf-h: 100vh;
   --rf-stage-w: min(100vw, calc(var(--rf-h) * 9 / 16));
+  /* Width of the 9:16 picture that COVERS the screen (never narrower than the stage). */
+  --rf-cover-w: calc(var(--rf-h) * 9 / 16);
 
   --rf-accent: #0a84ff;
   --rf-like: #ff3040;
@@ -106,11 +111,18 @@ body.rf-body {
   transform: translateX(-50%);
 }
 
+/*
+ * A slot is INVISIBLE until the engine adds .is-shown, and the engine adds it only while
+ * that reel is the active one AND really playing. Parked / paused / loading iframes stay
+ * hidden (the poster shows), so YouTube's centre play button and title bar are never seen.
+ * overflow:hidden clips the oversized iframe below to the screen.
+ */
 .rf-slot {
   position: absolute !important;
   inset: 0 !important;
   width: 100% !important;
   height: 100% !important;
+  overflow: hidden !important;
   opacity: 0;
   pointer-events: none !important;
 }
@@ -119,12 +131,19 @@ body.rf-body {
   opacity: 1 !important;
 }
 
+/*
+ * Cover-fit + clip. The iframe is as wide as the cover picture and 2 x 130px taller than a
+ * 9:16 frame. The video sits in the middle (width-limited), and YouTube's own title strip
+ * (top) and "more videos" / controls strip (bottom) fall into the extra 130px bands, which
+ * the slot's overflow:hidden cuts off. On tall phones the sides are cropped, like Instagram.
+ */
 .rf-slot iframe {
   position: absolute !important;
   top: 50% !important;
   left: 50% !important;
-  width: 100% !important;
-  height: 100% !important;
+  width: var(--rf-cover-w) !important;
+  max-width: none !important;
+  height: calc(var(--rf-cover-w) * 16 / 9 + 260px) !important;
   border: none !important;
   pointer-events: none !important;
   transform: translate(-50%, -50%) !important;
@@ -164,23 +183,27 @@ body.rf-body {
   pointer-events: none !important;
 }
 
-/* z 1: poster. hqdefault is 4:3 with baked side bars: cover crops to the real 9:16 strip. */
+/*
+ * z 1: poster, full-screen cover like the video. hqdefault is 4:3 with baked side bars;
+ * object-fit:cover on a 9:16 box crops to the real picture. Shown while the video is not yet
+ * playing (and whenever the reel is paused).
+ */
 .rf-poster {
   position: absolute;
-  top: 50%;
-  left: 0;
+  top: 0;
+  left: 50%;
   z-index: 1;
-  width: 100%;
-  max-height: 100%;
-  aspect-ratio: 9 / 16;
+  width: var(--rf-cover-w);
+  max-width: none;
+  height: 100%;
   object-fit: cover;
   background: #000;
-  transform: translateY(-50%);
+  transform: translateX(-50%);
   pointer-events: none;
   user-select: none;
 }
 
-/* z 2: native <video> (Instagram reels) */
+/* z 2: native <video> (Instagram reels), full-screen cover */
 .rf-ig-video,
 .rf-native-video {
   position: absolute;
@@ -231,8 +254,8 @@ body.rf-body {
 
 .rf-scrim--bottom {
   bottom: 0;
-  height: 240px;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0.3) 55%, transparent);
+  height: 200px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.68), rgba(0, 0, 0, 0.26) 55%, transparent);
 }
 
 /* z 4: gesture layer */
@@ -250,7 +273,7 @@ body.rf-body {
 .rf-fail {
   position: absolute;
   right: 72px;
-  bottom: calc(150px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(110px + env(safe-area-inset-bottom, 0px));
   left: 14px;
   z-index: 5;
   display: flex;
@@ -461,7 +484,7 @@ body.rf-body {
   animation: rf-heart-pop 0.45s var(--rf-spring);
 }
 
-/* Rotating audio / channel disc */
+/* Rotating channel disc */
 .rf-disc-btn {
   padding: 10px 0 0;
   cursor: pointer;
@@ -491,7 +514,7 @@ body.rf-body {
 }
 
 /* --------------------------------------------------------------------------
-   z 6: bottom-left creator metadata (transparent, text-shadow only)
+   z 6: bottom-left = CHANNEL ONLY (title is hidden until the viewer taps "Title")
    -------------------------------------------------------------------------- */
 
 .rf-meta {
@@ -507,12 +530,13 @@ body.rf-body {
 .rf-clean-meta {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: 8px;
   width: 100%;
   background: none;
 }
 
-/* Row 1: avatar, verified, handle, follow pill */
+/* Row 1: avatar, name, verified, follow pill */
 .rf-creator {
   display: flex;
   flex-direction: row;
@@ -611,95 +635,81 @@ body.rf-body {
   border-color: rgba(255, 255, 255, 0.3);
 }
 
-/* Row 2: caption. NO box, NO border, NO background: only a text-shadow. */
-.rf-caption {
-  display: block;
-  max-width: 100%;
-  padding: 0;
+/* Row 2: tiny "Title" chip. Tap to read the title + description. */
+.rf-readmore {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 8px 4px 12px;
   margin: 0;
-  color: #fff;
-  text-align: left;
-  cursor: pointer;
-  background: none !important;
-  border: none !important;
-  box-shadow: none !important;
-}
-
-.rf-caption-text {
-  background: none !important;
-  border: none !important;
-  color: #fff !important;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
-  font-size: 13.5px;
-  line-height: 1.4;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  overflow-wrap: anywhere;
-}
-
-.rf-caption-more {
-  display: inline-block;
-  font-size: 13.5px;
+  font-size: 12.5px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.78);
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.92);
+  cursor: pointer;
+  background: rgba(0, 0, 0, 0.32);
+  border: 0;
+  border-radius: 999px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  transition: background 0.18s ease, transform 0.15s var(--rf-spring);
 }
 
-.rf-caption.is-open {
+.rf-readmore:active {
+  transform: scale(0.94);
+}
+
+.rf-readmore svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* Expanded: readable panel (dark glass so it works on bright videos too) */
+.rf-readpanel {
+  width: 100%;
+  max-height: 34vh;
   max-height: 34dvh;
+  padding: 10px 12px 8px;
   overflow-y: auto;
   overscroll-behavior: contain;
   touch-action: pan-y;
   scrollbar-width: none;
+  background: rgba(0, 0, 0, 0.56);
+  border-radius: 14px;
+  animation: rf-panel-in 0.18s ease-out;
 }
 
-.rf-caption.is-open::-webkit-scrollbar {
+.rf-readpanel::-webkit-scrollbar {
   display: none;
 }
 
-.rf-caption.is-open .rf-caption-text {
-  display: block;
-  -webkit-line-clamp: unset;
-  line-clamp: unset;
-  overflow: visible;
+.rf-read-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
-.rf-caption-desc {
-  display: block;
-  margin-top: 6px;
+.rf-read-desc {
+  margin: 6px 0 0;
   font-size: 13.5px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.9);
   overflow-wrap: anywhere;
   white-space: pre-wrap;
-  color: rgba(255, 255, 255, 0.92);
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
 }
 
-/* Row 3: audio ticker */
-.rf-sound-line {
-  display: flex;
-  align-items: center;
-  max-width: min(100%, 240px);
-  overflow: hidden;
-  color: rgba(255, 255, 255, 0.92);
-  -webkit-mask-image: linear-gradient(to right, transparent, #000 5%, #000 90%, transparent);
-  mask-image: linear-gradient(to right, transparent, #000 5%, #000 90%, transparent);
-}
-
-.rf-marquee {
-  overflow: hidden;
-  white-space: nowrap;
-}
-
-.rf-marquee span {
-  display: inline-block;
-  padding-left: 100%;
+.rf-read-details {
+  padding: 8px 0 2px;
+  margin: 0;
   font-size: 12.5px;
-  font-weight: 500;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
-  animation: rf-marquee 10s linear infinite;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.72);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  background: none;
+  border: 0;
 }
 
 /* --------------------------------------------------------------------------
@@ -1448,9 +1458,9 @@ body.rf-body {
   100% { opacity: 0; transform: translate(-50%, -50%) translate(var(--tx), var(--ty)) scale(0.3); }
 }
 
-@keyframes rf-marquee {
-  from { transform: translateX(0); }
-  to { transform: translateX(-50%); }
+@keyframes rf-panel-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
 }
 
 @keyframes rf-spin {

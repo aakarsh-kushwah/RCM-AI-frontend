@@ -45,6 +45,8 @@
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.3",
-    "@testing-library/user-event": "^14.6.8"
+    "@testing-library/user-event": "^14.6.8",
+    "opentype.js": "^2.0.0",
+    "sharp": "^0.35.5"
   }
 }

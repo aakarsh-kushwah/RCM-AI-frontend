@@ -1,28 +1,28 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './ShortsFeed.css';
 
 /* ---------------------------------------------------------------------------
- * ReelsFeed (v6) - unified 9:16 vertical feed for YouTube Shorts + Instagram Reels
+ * ReelsFeed (v7) - unified 9:16 vertical feed for YouTube Shorts + Instagram Reels
  *
- * v6 changes
- *  - Top bar: Back arrow only. The top-right speaker button and the "Reels"
- *    title are gone. The centre play/pause pulse is gone.
- *  - Single tap: playing -> pause + mute, paused -> play + unmute.
- *    (Exception: if the browser blocked sound on autoplay, the first tap turns
- *    sound on instead of pausing, otherwise sound could never be enabled.)
- *  - Double tap: heart burst + like.
- *  - Rapid-swipe protection: the UI follows the scroll position immediately, but
- *    playback (YouTube loadVideoById, <video> mount/src, seen pings) follows a
- *    SETTLED index. During a flick only the settled slide is loaded.
- *  - Inactive slides render no metadata at all (no double usernames).
- *  - Bottom-left block: avatar + @handle + verified + Follow pill, 2-line caption
- *    (tap for ...more), audio ticker. No white box.
- *  - A reel whose video fails is never removed or skipped: poster stays, with
- *    Retry / Open original.
+ * v7 changes (instant play + clean screen)
+ *  - INSTANT START: the first YouTube iframe is created and starts loading the moment
+ *    the feed mounts. It no longer waits for iframe_api.js; the API is attached to the
+ *    already-loading iframe afterwards (control only). Reels are also cached locally
+ *    (stale-while-revalidate), so the 2nd open starts the video before the network answers.
+ *  - NO YOUTUBE UI EVER: a YouTube iframe is shown ONLY while it is the active reel AND
+ *    actually playing. Parked / paused / buffering-at-start iframes stay invisible (the
+ *    poster shows instead), so YouTube's centre play button, title bar and "more videos"
+ *    layer can never appear. The iframe is also oversized and clipped (CSS), so even its
+ *    top title strip and bottom strip are cut off.
+ *  - Bottom-left block: channel only (avatar, name, verified, Follow). The title is hidden;
+ *    tap "Title" to read it (and description). Audio ticker removed.
+ *  - Instagram <video>: the next reel preloads, so swiping is instant.
  *
- * YouTube  : persistent POOL of 3 IFrame API players, re-used with loadVideoById().
- * Instagram: native HTML5 <video playsInline loop preload="auto"> (direct URL or
- *            the /api/shorts/ig-stream/:shortcode 302 endpoint).
+ * Kept from v6: single tap = pause/mute <-> play/unmute, double tap = like, hold = pause,
+ * rapid-swipe protection (play follows a SETTLED index), failed videos are never skipped.
+ *
+ * YouTube  : persistent POOL of 3 players, re-used with loadVideoById().
+ * Instagram: native HTML5 <video playsInline loop> (direct URL or ig-stream endpoint).
  * ------------------------------------------------------------------------- */
 
 /* ---------- configuration ---------- */
@@ -42,6 +42,8 @@ const ALLOW_EMBED_FALLBACK = false;
 const SUBS_KEY = 'rcm_reels_follows';
 const BOOKMARKS_KEY = 'rcm_reels_bookmarks';
 const MUTE_KEY = 'shorts_muted';
+const CACHE_KEY = 'rcm_reels_cache_v2';
+const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // a cached first page is good for 6 hours
 
 const ACTIVE_THRESHOLD = 0.6;
 const HOLD_MS = 220;
@@ -151,6 +153,34 @@ function persistMuted(muted) {
   } catch (e) {
     /* storage unavailable */
   }
+}
+
+/** First page of reels from the last visit (already normalised). Lets the video start instantly. */
+function readFeedCache() {
+  try {
+    const raw = window.localStorage.getItem(CACHE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.items) || Date.now() - Number(parsed.t) > CACHE_TTL_MS) return [];
+    return parsed.items.filter((r) => r && r.id && (r.videoId || r.directVideo));
+  } catch (e) {
+    return [];
+  }
+}
+
+function writeFeedCache(items) {
+  try {
+    window.localStorage.setItem(CACHE_KEY, JSON.stringify({ t: Date.now(), items: items.slice(0, PAGE_SIZE) }));
+  } catch (e) {
+    /* storage full or unavailable: caching is optional */
+  }
+}
+
+/** Fresh server page vs. what is already on screen. */
+function mergeFresh(prev, fresh, userMoved) {
+  if (!userMoved) return fresh.length > 0 ? fresh : prev; // nothing watched yet: show the newest feed
+  const seen = new Set(prev.map((r) => r.id));
+  return [...prev, ...fresh.filter((r) => !seen.has(r.id))]; // never yank the reel under the user's thumb
 }
 
 /* ---------- data normalisation ---------- */
@@ -466,11 +496,44 @@ export function ensureYT() {
   return ytPromise;
 }
 
+/**
+ * Call this as early as you can (e.g. on pointer-down / hover of the "Reels" card on the
+ * dashboard, or when the Reels route is prefetched). It only warms up connections and the
+ * YouTube API script, so the first video starts a few hundred ms sooner.
+ */
+export function warmUpReels() {
+  addPreconnect('https://www.youtube.com');
+  addPreconnect('https://i.ytimg.com');
+  addPreconnect('https://www.google.com');
+  ensureYT();
+}
+
 /* ---------------------------------------------------------------------------
  * Player pool engine (YouTube only). Plain functions, state lives in a ctx
  * object so React re-renders can never disturb playback.
  * `props.activeIndex` here is the SETTLED play index, not the raw scroll index.
+ *
+ * Each slot owns ONE <iframe> that we create ourselves (so it starts loading at once)
+ * and the YT.Player API is attached to it as soon as iframe_api.js is available.
  * ------------------------------------------------------------------------- */
+
+function embedSrc(videoId, autoplay) {
+  const params = new URLSearchParams({
+    autoplay: autoplay ? '1' : '0',
+    mute: '1',
+    controls: '0',
+    playsinline: '1',
+    rel: '0',
+    modestbranding: '1',
+    iv_load_policy: '3',
+    cc_load_policy: '0',
+    disablekb: '1',
+    fs: '0',
+    enablejsapi: '1',
+    origin: window.location.origin,
+  });
+  return `https://www.youtube.com/embed/${encodeURIComponent(videoId)}?${params.toString()}`;
+}
 
 function createCtx() {
   const ctx = {
@@ -486,13 +549,16 @@ function createCtx() {
     const slot = {
       id: i,
       el: null,
+      iframe: null,
       player: null,
       ready: false,
       reelId: null,
       videoId: null,
       loadedId: null,
+      autoplayed: false,
       state: -1,
       firstFrame: false,
+      shown: false,
       mutedNow: true,
       wasActive: false,
       needsRewind: false,
@@ -521,33 +587,46 @@ function isActiveSlot(ctx, slot) {
   return Boolean(reel && slot.reelId === reel.id);
 }
 
-function revealSlot(slot) {
-  if (slot.el) slot.el.classList.add('is-shown');
+/**
+ * The ONLY place that decides whether a YouTube iframe is visible.
+ * Visible = active reel + really playing + not paused. Everything else (parked on the first
+ * frame, paused, ended, cued, loading) stays invisible and the poster shows instead, which is
+ * why YouTube's own centre play button / title bar / "more videos" can never be seen.
+ * Mid-play buffering keeps the current picture so there is no flicker.
+ */
+function updateShown(ctx, slot) {
+  if (!slot.el) return;
+  let show = false;
+  if (slot.reelId && slot.firstFrame && !ctx.props.paused && isActiveSlot(ctx, slot)) {
+    if (slot.state === 1) show = true;
+    else if (slot.state === 3) show = slot.shown;
+  }
+  slot.shown = show;
+  slot.el.classList.toggle('is-shown', show);
 }
 
-function createPlayer(ctx, slot) {
-  if (slot.player || !ctx.YT || !slot.el || !slot.videoId) return;
-  const host = document.createElement('div');
-  slot.el.appendChild(host);
+/** Create the iframe right away (no API needed). It begins loading / playing immediately. */
+function createFrame(ctx, slot, autoplay) {
+  if (slot.iframe || !slot.el || !slot.videoId) return;
+  const frame = document.createElement('iframe');
+  frame.id = `rf-yt-${slot.id}`;
+  frame.src = embedSrc(slot.videoId, autoplay);
+  frame.allow = 'autoplay; encrypted-media; picture-in-picture';
+  frame.setAttribute('frameborder', '0');
+  frame.setAttribute('tabindex', '-1');
+  frame.setAttribute('aria-hidden', 'true');
+  frame.setAttribute('title', '');
+  slot.el.appendChild(frame);
+  slot.iframe = frame;
   slot.loadedId = slot.videoId;
+  slot.autoplayed = autoplay;
+}
+
+/** Hand the already-loading iframe to the YouTube API (control only). */
+function attachPlayer(ctx, slot) {
+  if (slot.player || !ctx.YT || !slot.iframe) return;
   try {
-    slot.player = new ctx.YT.Player(host, {
-      width: '100%',
-      height: '100%',
-      videoId: slot.videoId,
-      playerVars: {
-        autoplay: 1,
-        mute: 1,
-        controls: 0,
-        playsinline: 1,
-        rel: 0,
-        modestbranding: 1,
-        iv_load_policy: 3,
-        disablekb: 1,
-        fs: 0,
-        enablejsapi: 1,
-        origin: window.location.origin,
-      },
+    slot.player = new ctx.YT.Player(slot.iframe, {
       events: {
         onReady: () => onSlotReady(ctx, slot),
         onStateChange: (e) => onSlotState(ctx, slot, e),
@@ -563,9 +642,15 @@ function onSlotReady(ctx, slot) {
   slot.ready = true;
   call(slot, 'mute');
   slot.mutedNow = true;
-  if (slot.videoId && slot.loadedId !== slot.videoId) {
+  if (slot.videoId && (slot.loadedId !== slot.videoId || !slot.autoplayed)) {
+    // The iframe was created without autoplay (or for an older reel): load the right video now.
     slot.loadedId = slot.videoId;
+    slot.autoplayed = true;
     call(slot, 'loadVideoById', { videoId: slot.videoId, startSeconds: 0 });
+  } else {
+    // The iframe has been playing since before the API attached: pick up its current state.
+    const st = call(slot, 'getPlayerState');
+    if (typeof st === 'number' && st !== -1) onSlotState(ctx, slot, { data: st });
   }
   applySlot(ctx, slot);
 }
@@ -581,13 +666,9 @@ function onSlotState(ctx, slot, e) {
   if (s === 1) {
     if (!slot.firstFrame) {
       slot.firstFrame = true;
-      // Preloaded neighbour: park it on its first frame (no seek = no re-buffer).
+      // Preloaded neighbour: park it on its first frame (no seek = no re-buffer). It stays invisible.
       if (!active) call(slot, 'pauseVideo');
     }
-    revealSlot(slot);
-  } else if (s === 3) {
-    const t = call(slot, 'getCurrentTime');
-    if (slot.el && !(t > 0.5)) slot.el.classList.remove('is-shown');
   } else if (s === 0 && active) {
     call(slot, 'seekTo', 0, true); // loop like Reels
     call(slot, 'playVideo');
@@ -606,7 +687,7 @@ function onSlotError(ctx, slot, e) {
   if (slot.reelId && ctx.cb.onBad) ctx.cb.onBad(slot.reelId, code);
 }
 
-function applySlot(ctx, slot) {
+function applySlotCore(ctx, slot) {
   if (!slot.reelId) return;
   const active = isActiveSlot(ctx, slot);
   const wasActive = slot.wasActive;
@@ -663,6 +744,11 @@ function applySlot(ctx, slot) {
   else if (!shouldPlay && (slot.state === 1 || slot.state === 3)) call(slot, 'pauseVideo');
 }
 
+function applySlot(ctx, slot) {
+  applySlotCore(ctx, slot);
+  updateShown(ctx, slot);
+}
+
 function releaseSlot(slot) {
   call(slot, 'mute');
   call(slot, 'pauseVideo');
@@ -670,6 +756,7 @@ function releaseSlot(slot) {
   slot.reelId = null;
   slot.state = -1;
   slot.firstFrame = false;
+  slot.shown = false;
   slot.wasActive = false;
   if (slot.el) {
     slot.el.classList.remove('is-shown');
@@ -678,10 +765,11 @@ function releaseSlot(slot) {
   }
 }
 
-function assignSlot(ctx, slot, reel) {
+function assignSlot(ctx, slot, reel, isActive) {
   slot.reelId = reel.id;
   slot.videoId = reel.videoId;
   slot.firstFrame = false;
+  slot.shown = false;
   slot.state = -1;
   slot.retried = false;
   slot.wasActive = false;
@@ -692,9 +780,15 @@ function assignSlot(ctx, slot, reel) {
     call(slot, 'mute');
     slot.mutedNow = true;
     slot.loadedId = reel.videoId;
+    slot.autoplayed = true;
     call(slot, 'loadVideoById', { videoId: reel.videoId, startSeconds: 0 });
+  } else if (slot.iframe && !slot.player) {
+    // The API has not attached yet: simply point the iframe at the new video.
+    slot.loadedId = reel.videoId;
+    slot.autoplayed = Boolean(isActive || ctx.YT);
+    slot.iframe.src = embedSrc(reel.videoId, slot.autoplayed);
   }
-  // If the player is not ready yet, onSlotReady loads slot.videoId.
+  // Player exists but is not ready yet: onSlotReady loads slot.videoId.
 }
 
 /** Only YouTube reels (with a videoId) are ever handed to the pool. */
@@ -739,7 +833,7 @@ function syncPool(ctx, settled = false) {
       return;
     }
     const free = ctx.slots.find((s) => !s.reelId);
-    if (free) assignSlot(ctx, free, reels[idxOf.get(id)]);
+    if (free) assignSlot(ctx, free, reels[idxOf.get(id)], id === activeId);
   });
   clearTimeout(ctx.settleTimer);
   if (deferred) ctx.settleTimer = setTimeout(() => syncPool(ctx, true), PRELOAD_SETTLE_MS);
@@ -750,7 +844,9 @@ function syncPool(ctx, settled = false) {
       s.el.style.visibility = 'hidden';
       return;
     }
-    if (!s.player) createPlayer(ctx, s);
+    // The iframe is created at once (no API needed); the API attaches to it when available.
+    if (!s.iframe) createFrame(ctx, s, s.reelId === activeId || Boolean(ctx.YT));
+    if (ctx.YT && !s.player) attachPlayer(ctx, s);
     s.el.style.visibility = 'visible';
     s.el.style.transform = `translateY(calc(var(--rf-h) * ${idxOf.get(s.reelId)}))`;
     applySlot(ctx, s);
@@ -838,7 +934,13 @@ function PlayerPool({ reels, activeIndex, muted, paused, onBad, onForceMute, onP
         } catch (e) {
           /* already gone */
         }
+        try {
+          if (s.iframe && s.iframe.parentNode) s.iframe.parentNode.removeChild(s.iframe);
+        } catch (e) {
+          /* already gone */
+        }
         s.player = null;
+        s.iframe = null;
         s.ready = false;
       });
     },
@@ -1066,8 +1168,6 @@ function Skeleton() {
             <span className="rf-skel-dot" />
             <span className="rf-skel-bar rf-w40" />
           </div>
-          <span className="rf-skel-bar rf-w90" />
-          <span className="rf-skel-bar rf-w60" />
         </div>
       </div>
     </div>
@@ -1424,10 +1524,11 @@ const MEDIA_LAYER = { position: 'absolute', inset: 0, zIndex: 2, overflow: 'hidd
  * Native HTML5 video. Plays when its slide is the SETTLED play slide, pauses +
  * rewinds when it leaves, follows the global mute / pause state. Only the settled
  * slide and its +/-1 neighbours are mounted, so a fast flick never opens a socket
- * for a reel it flies past. A playback error is only REPORTED upward (onFail):
- * this component never removes anything and never retries on its own.
+ * for a reel it flies past. The NEXT reel preloads fully, so the swipe is instant.
+ * A playback error is only REPORTED upward (onFail): this component never removes
+ * anything and never retries on its own.
  */
-function NativeVideo({ reel, src, isPlaying, near, muted, paused, onRegister, onForceMute, onFail }) {
+function NativeVideo({ reel, src, isPlaying, isNext, near, muted, paused, onRegister, onForceMute, onFail }) {
   const ref = useRef(null);
   const wasPlaying = useRef(false);
   const [shown, setShown] = useState(false);
@@ -1495,7 +1596,7 @@ function NativeVideo({ reel, src, isPlaying, near, muted, paused, onRegister, on
       loop
       muted={muted}
       autoPlay={isPlaying}
-      preload={isPlaying ? 'auto' : 'metadata'}
+      preload={isPlaying || (isNext && !isLiteConnection()) ? 'auto' : 'metadata'}
       disablePictureInPicture
       controlsList="nodownload noplaybackrate noremoteplayback"
       onLoadedData={() => setShown(true)}
@@ -1545,6 +1646,7 @@ const ReelSlide = React.memo(function ReelSlide({
   light,
   isActive,
   isPlaying,
+  isNext,
   nearVideo,
   muted,
   paused,
@@ -1602,7 +1704,6 @@ const ReelSlide = React.memo(function ReelSlide({
 
   const hasNative = Boolean(reel.directVideo) && !videoFailed;
   const showEmbed = ALLOW_EMBED_FALLBACK && !reel.videoId && !hasNative && Boolean(reel.embedUrl) && isPlaying;
-  const hasMoreCaption = Boolean(reel.description) || reel.title.length > 70;
   const unavailable = Boolean(failed) || videoFailed;
   const externalUrl = reel.shareUrl || '';
   const videoSrc = withRetryParam(reel.directVideo, retryKey);
@@ -1635,6 +1736,7 @@ const ReelSlide = React.memo(function ReelSlide({
             reel={reel}
             src={videoSrc}
             isPlaying={isPlaying}
+            isNext={isNext}
             near={nearVideo}
             muted={muted}
             paused={paused}
@@ -1701,9 +1803,9 @@ const ReelSlide = React.memo(function ReelSlide({
               </button>
             </div>
 
+            {/* Bottom-left: CHANNEL ONLY. The title stays hidden until the viewer taps "Title". */}
             <div className="rf-meta">
-              <div className="rf-clean-meta">
-                {/* Row 1: 32px avatar, verified badge, @handle, Follow pill */}
+              <div className={`rf-clean-meta${expanded ? ' is-open' : ''}`}>
                 <div className="rf-creator">
                   <button type="button" className="rf-creator-main" onClick={() => onOpenChannel(reel)} aria-label={`View ${nameOf(reel)} profile`}>
                     <Avatar name={nameOf(reel)} src={reel.channelLogo} />
@@ -1720,26 +1822,25 @@ const ReelSlide = React.memo(function ReelSlide({
                   </button>
                 </div>
 
-                {/* Row 2: transparent 2-line caption, tap for ...more */}
                 <button
                   type="button"
-                  className={`rf-caption${expanded ? ' is-open' : ''}`}
-                  onClick={() => (hasMoreCaption ? setExpanded((v) => !v) : onOpenDetails(reel.id))}
-                  aria-expanded={hasMoreCaption ? expanded : undefined}
+                  className="rf-readmore"
+                  aria-expanded={expanded}
+                  onClick={() => setExpanded((v) => !v)}
                 >
-                  <span className="rf-caption-text">{titleOf(reel)}</span>
-                  {expanded && reel.description ? <span className="rf-caption-desc">{reel.description}</span> : null}
-                  {!expanded && hasMoreCaption ? <span className="rf-caption-more">...more</span> : null}
+                  <span>{expanded ? 'Hide' : 'Title'}</span>
+                  <ChevronIcon up={expanded} />
                 </button>
 
-                {/* Row 3: audio ticker */}
-                <div className="rf-sound-line">
-                  <div className="rf-marquee">
-                    <span>
-                      {`🎵 Original audio • ${nameOf(reel)}`}&nbsp;&nbsp;&nbsp;&nbsp;{`🎵 Original audio • ${nameOf(reel)}`}
-                    </span>
+                {expanded && (
+                  <div className="rf-readpanel">
+                    <p className="rf-read-title">{titleOf(reel)}</p>
+                    {reel.description ? <p className="rf-read-desc">{reel.description}</p> : null}
+                    <button type="button" className="rf-read-details" onClick={() => onOpenDetails(reel.id)}>
+                      Details
+                    </button>
                   </div>
-                </div>
+                )}
               </div>
             </div>
           </div>
@@ -1788,14 +1889,8 @@ class FeedErrorBoundary extends React.Component {
  * ------------------------------------------------------------------------- */
 
 function ReelsFeedInner() {
-  const [reels, setReels] = useState(() => {
-    try {
-      const cached = window.sessionStorage.getItem('rcm_shorts_cache');
-      return cached ? JSON.parse(cached) : [];
-    } catch (e) {
-      return [];
-    }
-  });
+  // Last visit's first page: the first video starts before the network even answers.
+  const [reels, setReels] = useState(readFeedCache);
   const [status, setStatus] = useState(() => (reels.length > 0 ? 'ready' : 'loading'));
   // activeIndex: follows the scroll position immediately (drives UI + gesture layer).
   // playIndex:   the SETTLED index (drives YouTube loads, <video> mounting, seen pings).
@@ -1823,6 +1918,7 @@ function ReelsFeedInner() {
   const userPausedRef = useRef(userPaused);
   // true while the browser (not the user) is the reason we are muted
   const soundBlockedRef = useRef(shouldStartMuted());
+  const userMovedRef = useRef(false);
   const aliveRef = useRef(true);
   const pendingLikes = useRef(new Set());
   const lastSheet = useRef(null);
@@ -1888,10 +1984,7 @@ function ReelsFeedInner() {
     aliveRef.current = true;
     document.documentElement.classList.add('rf-body');
     document.body.classList.add('rf-body');
-    addPreconnect('https://www.youtube.com');
-    addPreconnect('https://i.ytimg.com');
-    addPreconnect('https://www.google.com');
-    ensureYT(); // start downloading the player API before the first reel needs it
+    warmUpReels(); // connections + YouTube API start loading before the first reel needs them
     const onHide = () => {
       if (document.hidden) flushSeen();
     };
@@ -1924,11 +2017,13 @@ function ReelsFeedInner() {
     if (fetchingRef.current) return;
     if (!initial && (!hasMoreRef.current || Date.now() < cooldownRef.current)) return;
     fetchingRef.current = true;
+    // With a cached first page the refresh is silent: no skeleton, no flicker, video already playing.
+    const silent = initial && reelsRef.current.length > 0;
     if (initial) {
       pageRef.current = 0;
       cursorRef.current = null;
       hasMoreRef.current = true;
-      setStatus('loading');
+      if (!silent) setStatus('loading');
     }
     const pageNum = initial ? 1 : pageRef.current + 1;
     const params = new URLSearchParams({ limit: String(PAGE_SIZE) });
@@ -1942,11 +2037,12 @@ function ReelsFeedInner() {
       const items = rawItems.map(normalizeReel).filter(Boolean);
 
       setReels((prev) => {
-        if (initial) return items;
+        if (initial) return silent ? mergeFresh(prev, items, userMovedRef.current) : items;
         const seen = new Set(prev.map((r) => r.id));
         return [...prev, ...items.filter((r) => !seen.has(r.id))];
       });
       if (initial) {
+        if (items.length > 0) writeFeedCache(items);
         items.slice(0, 3).forEach((r) => {
           if (!r.thumb) return;
           const im = new Image();
@@ -1971,7 +2067,7 @@ function ReelsFeedInner() {
     } catch (err) {
       if (!aliveRef.current) return;
       if (initial) {
-        setStatus('error');
+        if (!silent) setStatus('error'); // a silent refresh failing keeps the cached reels playing
       } else {
         // Do NOT skip the page: pageRef is only advanced on success.
         const wait = Math.max(RETRY_COOLDOWN_MS, (err && err.retryAfterMs) || 0);
@@ -2017,6 +2113,9 @@ function ReelsFeedInner() {
 
   /* ---------- active slide detection (>= 0.6 intersection, no debounce) ---------- */
 
+  // Re-observe whenever the SET of reels changes (not only its length).
+  const reelIdsKey = useMemo(() => reels.map((r) => r.id).join('|'), [reels]);
+
   useEffect(() => {
     const root = scrollerRef.current;
     if (!root || reels.length === 0 || typeof IntersectionObserver === 'undefined') return undefined;
@@ -2035,7 +2134,8 @@ function ReelsFeedInner() {
     );
     root.querySelectorAll('[data-index]').forEach((node) => observer.observe(node));
     return () => observer.disconnect();
-  }, [reels.length]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reelIdsKey]);
 
   useEffect(() => {
     if (reels.length > 0 && activeIndex > reels.length - 1) setActiveIndex(reels.length - 1);
@@ -2045,6 +2145,7 @@ function ReelsFeedInner() {
   // plays instantly. Changes arriving in quick succession (a flick through many
   // reels) are collapsed: only the index that holds still for SETTLE_MS is played.
   useEffect(() => {
+    if (activeIndex > 0) userMovedRef.current = true;
     const now = Date.now();
     const rapid = now - lastIndexChangeRef.current < RAPID_MS;
     lastIndexChangeRef.current = now;
@@ -2435,6 +2536,7 @@ function ReelsFeedInner() {
                 light={Math.abs(i - activeIndex) > RENDER_WINDOW}
                 isActive={i === activeIndex}
                 isPlaying={i === playIndex}
+                isNext={i === playIndex + 1}
                 nearVideo={Math.abs(i - playIndex) <= VIDEO_WINDOW}
                 muted={muted}
                 paused={pausedNow}

@@ -1,53 +1,36 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>TeamDekho</title>
+  <meta name="description" content="TeamDekho - Your AI Assistant for Team Management and Business Network" />
 
-    <title>TeamDekho</title>
+  <!-- Same colour as the Android splash background, so there is no dark flash -->
+  <meta name="theme-color" content="#f5f6fc" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="TeamDekho" />
 
-    <!-- SEO -->
-    <meta name="description" content="TeamDekho - Your AI Assistant for Team Management and Business Network" />
+  <link rel="icon" type="image/svg+xml" href="%PUBLIC_URL%/teamdekho-icon.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="%PUBLIC_URL%/favicon-32.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="%PUBLIC_URL%/apple-touch-icon.png" />
+  <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
 
-    <!-- PWA -->
-    <meta name="theme-color" content="y#f7fafd" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="TeamDekho" />
+  <link rel="dns-prefetch" href="https://www.youtube.com" />
+  <link rel="dns-prefetch" href="https://i.ytimg.com" />
+  <link rel="dns-prefetch" href="https://yt3.ggpht.com" />
 
-    <!-- Icons -->
-    <link rel="icon" href="%PUBLIC_URL%/rcm_logo.png" />
-    <link rel="apple-touch-icon" href="%PUBLIC_URL%/teamdekhologo.png" />
-
-    <!-- Manifest -->
-    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
-
-    <!-- Performance -->
-    <!--
-      API origin comes from the same REACT_APP_API_URL the app itself uses
-      (Create React App substitutes it at build time), so this can never point
-      at a stale host. `crossorigin` is required: the app talks to the API with
-      fetch() (a CORS request) and a preconnect without it is never reused.
-    -->
-    <link rel="preconnect" href="%REACT_APP_API_URL%" crossorigin />
-    <!-- Cheap DNS warm-up for the Shorts/Reels feed (YouTube player, thumbnails, channel logos). -->
-    <link rel="dns-prefetch" href="https://www.youtube.com" />
-    <link rel="dns-prefetch" href="https://i.ytimg.com" />
-    <link rel="dns-prefetch" href="https://yt3.ggpht.com" />
-  </head>
-
-  <body>
-    <noscript>You need to enable JavaScript to run this app.</noscript>
-    <div id="root"></div>
-
-    <!--
-      Razorpay checkout.js is intentionally NOT loaded here.
-      PaymentPage.js loads it on demand (only when the payment page opens), so
-      it no longer downloads on every route (including /shorts).
-    -->
-
-    <!-- Optional: particles.js (see notes: load only where it is used, or remove) -->
-    <script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script>
-  </body>
+  <style>
+    /* paints instantly, before the JS bundle loads */
+    html, body { margin: 0; height: 100%; background: #f5f6fc; }
+  </style>
+</head>
+<body>
+  <noscript>You need to enable JavaScript to run this app.</noscript>
+  <div id="root"></div>
+  <script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script>
+  <!-- Create React App injects the hashed main.js / main.css here at build time -->
+</body>
 </html>

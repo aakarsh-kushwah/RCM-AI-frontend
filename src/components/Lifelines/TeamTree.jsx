@@ -167,17 +167,15 @@ const makeLimiter = (max) => {
       if (hi.length && active < max) job = hi.shift();
       else if (lo.length && active < max - 1) job = lo.shift();
       if (!job) return;
-      // eslint-disable-next-line no-loop-func
       active += 1;
       job.fn().then(job.res, job.rej).finally(() => { active -= 1; next(); });
     }
   };
-  return (fn, lane = 'lo') => new Promise((res, rej) => {
-    (lane === 'hi' ? hi : lo).push({ fn, res, rej });
+  return (fn, prio = 'hi') => new Promise((res, rej) => {
+    (prio === 'lo' ? lo : hi).push({ fn, res, rej });
     next();
   });
 };
-
 const limitTreeCalls = makeLimiter(MAX_PARALLEL);
 
 // ---------------------------------------------------------------------------
@@ -258,13 +256,9 @@ function useCrawler(kidsRef, ensureKids, sessionRef) {
       if (!alive() || done) return;
       while (active < CRAWL_WORKERS && queue.length && !truncated) {
         const item = queue.shift();
-        // eslint-disable-next-line no-loop-func
         active += 1;
         run(item)
-          .catch(() => {
-            // eslint-disable-next-line no-loop-func
-            failed += 1;
-          })
+          .catch(() => { failed += 1; })
           .finally(() => { active -= 1; schedule(); pump(); });
       }
       if (!active && (!queue.length || truncated)) {
