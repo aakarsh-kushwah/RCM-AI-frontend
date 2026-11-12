@@ -1,0 +1,174 @@
+/* ==========================================================================
+   Team Tree - Luxe theme (ivory canvas, ink-navy chrome, champagne gold)
+   Load AFTER TeamTree.css:  import './TeamTree.css'; import './TeamTree.luxe.css';
+   Status colours stay the same: green = bought, grey = no purchase, red = terminated.
+   ========================================================================== */
+
+.tdt {
+    --indigo: #1b2050;
+    --violet: #2e2a66;
+    --aqua: #c9a24b;
+    --gold: #c9a24b;
+    --gold2: #f3dfa2;
+    --pearl: #f6f4ef;
+    --tx: #0f1226;
+    --mu: #667085;
+    --bd: rgba(150, 125, 60, 0.24);
+    --line: #cdbd8f;
+}
+.tdt :focus-visible { outline-color: rgba(201, 162, 75, 0.9); }
+
+/* ---------- top bar ---------- */
+.tdt-top {
+    color: #fff;
+    border-bottom: 0;
+    background: radial-gradient(420px 160px at 100% 0, rgba(201, 162, 75, 0.35), transparent 65%), linear-gradient(135deg, #0b0e26, #1b2050 60%, #2b2461);
+}
+.tdt-top::after {
+    content: '';
+    position: absolute;
+    left: 8%;
+    right: 8%;
+    bottom: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--gold), transparent);
+}
+.tdt-title { color: #fff; }
+.tdt-top .tdt-btn.ic { color: #fff; border-color: rgba(255, 255, 255, 0.22); background: rgba(255, 255, 255, 0.1); box-shadow: none; }
+.tdt-top .tdt-in { border-color: rgba(255, 255, 255, 0.22); background: rgba(255, 255, 255, 0.1); color: #fff; }
+.tdt-top .tdt-in::placeholder { color: rgba(255, 255, 255, 0.65); }
+.tdt-top .tdt-in:focus { border-color: var(--gold); box-shadow: 0 0 0 4px rgba(201, 162, 75, 0.22); }
+.tdt-sbox > svg { color: rgba(255, 255, 255, 0.75); }
+.tdt-sres b { color: var(--tx); }
+
+/* ---------- gold primary actions ---------- */
+.tdt-btn.p,
+.tdt-crumb.on {
+    color: #3b2a00;
+    background: linear-gradient(135deg, #f7e7b4, #d9b45a);
+    box-shadow: 0 12px 22px -12px rgba(201, 162, 75, 0.95);
+}
+.tdt-seg button.on { color: #1b2050; }
+.tdt-fchip.on { color: #1b2050; border-color: rgba(201, 162, 75, 0.7); background: rgba(201, 162, 75, 0.14); }
+.tdt-leg-badge,
+.tdt-sres .ico { color: #3b2a00; background: linear-gradient(135deg, #f7e7b4, #d9b45a); }
+.tdt-leg-meta,
+.tdt-kidhint,
+.tdt-link,
+.tdt-xsum-text em { color: #8a6a1f; }
+.tdt-xloc { color: #8a6a1f; background: #f4efe0; }
+.tdt-xloc:hover,
+.tdt-leg-find:hover { color: #3b2a00; background: #e9cf86; }
+.tdt-rfill,
+.tdt-thumb { background: linear-gradient(180deg, #d9b45a, #1b2050); }
+.tdt-tick.on { border-color: var(--gold); }
+
+/* ---------- guide row ---------- */
+.tdt-crumbbar { background: #fff; }
+.tdt-legend {
+    padding: 6px 12px;
+    border: 1px solid var(--bd);
+    border-radius: 999px;
+    background: #fff;
+}
+.tdt-hint {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 12px;
+    padding: 8px 12px;
+    border: 1px solid #f0e2b4;
+    border-radius: 12px;
+    background: #fff8e1;
+    font-size: 12.5px;
+    font-weight: 600;
+    line-height: 1.4;
+    color: #6b5200;
+}
+.tdt-hint svg { flex: none; }
+
+/* ---------- canvas: always centred; wide trees scroll from the middle ---------- */
+.tdt-stage {
+    padding: 16px 62px 110px;
+    background:
+        radial-gradient(760px 420px at 50% -6%, rgba(201, 162, 75, 0.2), transparent 70%),
+        radial-gradient(rgba(150, 125, 60, 0.2) 1px, transparent 1.4px) 0 0 / 22px 22px,
+        var(--pearl);
+}
+.tdt-inner,
+.tdt-inner.left { width: max-content; min-width: 100%; margin: 0; align-items: center; }
+.tdt-inner.legs { width: 100%; min-width: 0; margin: 0 auto; }
+.tdt-spine { display: none; }
+.tdt-vline { border-left: 2.5px solid var(--line); }
+.tdt-st { border-left: 2.5px solid var(--line); }
+.tdt-hl { border-top: 2.5px solid var(--line); }
+
+/* opened member: the centre of attention */
+.tdt-fcard {
+    padding: 16px 10px 12px;
+    border-radius: 26px;
+    background:
+        linear-gradient(165deg, #ffffff, #fbf8ee) padding-box,
+        linear-gradient(135deg, var(--fc, #9aa3bd), #d9b45a 60%, var(--fc, #9aa3bd)) border-box;
+    box-shadow: 0 0 0 6px var(--fs, rgba(154, 163, 189, 0.2)), 0 30px 46px -24px rgba(27, 32, 80, 0.55);
+}
+.tdt-fcard .nm { font-size: 15px; }
+.tdt-lvl {
+    position: absolute;
+    top: -11px;
+    left: 50%;
+    padding: 3px 11px;
+    border-radius: 999px;
+    font-size: 10.5px;
+    font-weight: 800;
+    white-space: nowrap;
+    color: #3b2a00;
+    background: linear-gradient(135deg, #f7e7b4, #d9b45a);
+    transform: translateX(-50%);
+    box-shadow: 0 8px 14px -8px rgba(201, 162, 75, 0.9);
+}
+.tdt-mix { display: flex; gap: 6px; margin-top: 8px; }
+.tdt-mix span {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 800;
+    background: #f4f1e8;
+}
+.tdt-mix i { width: 8px; height: 8px; border-radius: 50%; }
+.tdt-mix .g { color: #0f7d49; }
+.tdt-mix .g i { background: #12a35e; }
+.tdt-mix .n { color: #667085; }
+.tdt-mix .n i { background: #9aa3bd; }
+.tdt-mix .r { color: #b3243f; }
+.tdt-mix .r i { background: #e03655; }
+
+/* members: clear status ring + soft halo */
+.tdt-node { border-radius: 18px; background: linear-gradient(180deg, #fff, #fcfaf3); }
+.tdt-node.t { background: #fff3f5; }
+.tdt-node .nm { font-size: 11.5px; }
+.tdt-node:hover { box-shadow: 0 0 0 4px var(--fs, transparent), 0 18px 26px -14px rgba(27, 32, 80, 0.55); }
+.tdt-apill { background: #fff; box-shadow: 0 8px 14px -10px rgba(27, 32, 80, 0.5); }
+.tdt-apill.t { background: #fff3f5; }
+
+/* legs gallery + find panel */
+.tdt-leg { background: linear-gradient(180deg, #fff, #fcfaf3); }
+.tdt-leg.t { background: #fff3f5; }
+.tdt-xp { background: var(--pearl); }
+.tdt-xrow { background: #fff; }
+.tdt-xrow.t { background: #fff3f5; }
+.tdt-xbar::after { background: linear-gradient(90deg, transparent, #c9a24b, #f3dfa2, transparent); }
+.tdt-spin { border-color: rgba(201, 162, 75, 0.25); border-top-color: var(--gold); }
+.tdt-dr { background: linear-gradient(180deg, #fbf4dc 0, #fff 190px); }
+.tdt-kv { background: #fffdf7; }
+.tdt-xov,
+.tdt-ov { background: rgba(11, 14, 38, 0.55); }
+
+@media (max-width: 760px) {
+    .tdt-stage { padding: 14px 56px 110px 10px; }
+    .tdt-hint { margin: 0 10px; font-size: 12px; }
+    .tdt-fcard { padding: 16px 8px 10px; }
+}

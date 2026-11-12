@@ -6,6 +6,7 @@ import {
 import { getTreeChildren, getMemberFullProfile, searchLifelines } from '../../services/lifelinesApiClient';
 import BrandLogo from '../BrandLogo/BrandLogo';
 import './TeamTree.css';
+import './TeamTree.luxe.css';
 
 /**
  * TreestructureUI - full screen downline tree (separate from LifelinesPage).
@@ -13,26 +14,37 @@ import './TeamTree.css';
  * Props:
  *  buyerId       : logged-in leader id (string)
  *  rootInfo      : { name, photo_url, max_pin, curr_pin, self_pv, total_group_pv, children_count }
- *  startNode     : optional leg head node to open directly (from "Direct leg heads")
+ *  startNode     : optional leg head node to open directly
  *  crawlRunning  : bool, true while the backend is still syncing the team
- *  refreshToken  : number; change it to clear the cache and reload (after re-sync / refresh)
+ *  refreshToken  : number; change it to clear caches and reload
  *  onClose       : go back to the Lifelines page
- *  onUnauthorized: optional, called on 401 (token expired)
+ *  onUnauthorized: optional, called ONCE per session on 401
+ *
+ * Scale notes (high traffic):
+ *  - All network calls go through one limiter (max 4 parallel per browser, 2 lanes).
+ *  - Jobs of a dead session / stopped scan are dropped before they hit the network.
+ *  - Child lists live in bounded LRU caches, so memory can never grow without limit.
+ *  - One automatic retry with jitter for network / 5xx / 429 errors only.
  */
 
 const COLORS = { green: '#12A35E', red: '#E03655', slate: '#9AA3BD', mu: '#6B7296' };
 const SOFT = { g: 'rgba(18,163,94,.16)', n: 'rgba(154,163,189,.22)', r: 'rgba(224,54,85,.16)' };
 
-const TREE_PAGE = 40;      // direct children shown per "page" under the focused member
-const LEG_PAGE = 48;       // leg cards shown per page in Legs view
-const CAP = 4;             // children shown per node on deeper levels (rest = "+N")
-const MAX_DEPTH = 6;       // levels auto-opened under the focused member
-const MAX_PARALLEL = 4;    // simultaneous tree requests from one browser
-const CRAWL_WORKERS = 6;   // background scan workers (they share the 4 request slots, low priority)
-const MAX_CRAWL = 20000;   // safety cap for one background scan
-const ROW_H = 76;          // fixed row height of the virtual member list
+const TREE_PAGE = 40;       // direct children shown per "page" under the focused member
+const LEG_PAGE = 48;        // leg cards per page in Legs view
+const CAP = 4;              // children shown per node on deeper levels (rest = "+N")
+const MAX_DEPTH = 6;        // levels auto-opened under the focused member
+const MAX_PARALLEL = 4;     // simultaneous tree requests from one browser
+const CRAWL_WORKERS = 6;    // background scan workers (share the request slots, low priority)
+const MAX_CRAWL = 20000;    // safety cap for one background scan
+const CACHE_MAX = 2500;     // child lists kept for the tree view
+const SCAN_CACHE_MAX = 6000; // child lists kept for the background scan
+const PUBLISH_MS = 350;     // how often scan progress repaints the list
+const ROW_H = 76;           // fixed row height of the virtual member list
 const EMPTY = [];
-const PHOTO_ORIGIN = 'https://www.rcmworld.com'; // host that serves relative photo paths
+const SKIPPED = Symbol('skipped');
+const PHOTO_ORIGIN = 'https://www.rcmworld.com';
+const HINT_KEY = 'tdt_hint_hidden';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -42,6 +54,12 @@ const formatNumber = (v) => numberFmt.format(Number(v || 0));
 const nid = (n) => String(n?.buyer_id ?? n?.buyerId ?? n?.distno ?? n?.id ?? '');
 const photoOf = (n) => n?.photo_url ?? n?.photoUrl ?? null;
 const getPv = (n) => Number(n?.self_pv ?? n?.selfPv ?? n?.current_pv ?? 0) || 0;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const store = {
+  get: (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* private mode */ } }
+};
 
 const cleanUrl = (u) => {
   if (!u) return null;
@@ -83,26 +101,23 @@ const toWhatsappNumber = (m) => {
   return d.length >= 11 ? d : '';
 };
 
-// Leg names: A, B, C ... Z, AA, AB ...
 const legLabel = (i) => {
   let s = '';
   let n = i;
   do { s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26) - 1; } while (n >= 0);
   return s;
 };
-
 const apiLeg = (n) => {
   const t = String(n?.leg ?? n?.leg_type ?? '').replace(/^leg\s*/i, '').trim().toUpperCase();
   return /^[A-Z]{1,2}$/.test(t) ? t : '';
 };
-
 const legNamesFor = (list) => {
   const api = list.map(apiLeg);
   if (api.length && api.every(Boolean) && new Set(api).size === api.length) return api;
   return list.map((_, i) => legLabel(i));
 };
 
-// colour + tag of a member: red = terminated, green = has PV, grey = 0 PV
+// red = terminated, green = has PV, grey = 0 PV
 const getStatus = (n) => {
   if (Number(n.status ?? 1) === 0) return { key: 'r', cls: 'r', color: COLORS.red, soft: SOFT.r, tag: 'Terminated' };
   const pv = getPv(n);
@@ -138,32 +153,52 @@ const useDebounced = (value, ms) => {
   return v;
 };
 
-// Request limiter with two lanes
+// Bounded cache: oldest-used entries are dropped, so memory stays flat for any team size.
+class LruMap {
+  constructor(max) { this.max = max; this.m = new Map(); }
+  get(k) {
+    if (!this.m.has(k)) return undefined;
+    const v = this.m.get(k);
+    this.m.delete(k);
+    this.m.set(k, v);
+    return v;
+  }
+  has(k) { return this.m.has(k); }
+  set(k, v) {
+    this.m.delete(k);
+    this.m.set(k, v);
+    if (this.m.size > this.max) this.m.delete(this.m.keys().next().value);
+    return this;
+  }
+}
+
+// Two-lane limiter. Jobs whose owner is gone (`live()` false) are dropped without a network call.
 const makeLimiter = (max) => {
   let active = 0;
   const hi = [];
   const lo = [];
-  const next = () => {
-    while (true) {
+  const pump = () => {
+    while (active < max) {
       let job = null;
-      if (hi.length && active < max) job = hi.shift();
+      if (hi.length) job = hi.shift();
       else if (lo.length && active < max - 1) job = lo.shift();
       if (!job) return;
+      if (job.live && !job.live()) { job.res(SKIPPED); continue; }
       active += 1;
-      job.fn().then(job.res, job.rej).finally(() => { active -= 1; next(); });
+      job.fn().then(job.res, job.rej).finally(() => { active -= 1; pump(); });
     }
   };
-  return (fn, prio = 'hi') => new Promise((res, rej) => {
-    (prio === 'lo' ? lo : hi).push({ fn, res, rej });
-    next();
+  return (fn, prio = 'hi', live) => new Promise((res, rej) => {
+    (prio === 'lo' ? lo : hi).push({ fn, res, rej, live });
+    pump();
   });
 };
 const limitTreeCalls = makeLimiter(MAX_PARALLEL);
 
 // ---------------------------------------------------------------------------
-// Background scanner
+// Background scanner (powers "Find members")
 // ---------------------------------------------------------------------------
-function useCrawler(kidsRef, ensureKids, sessionRef) {
+function useCrawler(ensureKids, sessionRef) {
   const [state, setState] = useState({ running: false, count: 0, level: 0, truncated: false, failed: 0, version: 0 });
   const membersRef = useRef([]);
   const indexRef = useRef(new Map());
@@ -171,7 +206,7 @@ function useCrawler(kidsRef, ensureKids, sessionRef) {
   const timerRef = useRef(null);
   const verRef = useRef(0);
   const ensureRef = useRef(ensureKids);
-  ensureRef.current = ensureKids;
+  useEffect(() => { ensureRef.current = ensureKids; }, [ensureKids]);
 
   const stop = useCallback(() => {
     tokenRef.current += 1;
@@ -179,6 +214,13 @@ function useCrawler(kidsRef, ensureKids, sessionRef) {
     timerRef.current = null;
     setState((s) => (s.running ? { ...s, running: false } : s));
   }, []);
+
+  const reset = useCallback(() => {
+    stop();
+    membersRef.current = [];
+    indexRef.current = new Map();
+    verRef.current += 1;
+  }, [stop]);
 
   const start = useCallback((head, markLegs) => {
     tokenRef.current += 1;
@@ -206,15 +248,14 @@ function useCrawler(kidsRef, ensureKids, sessionRef) {
     };
     const schedule = () => {
       if (timerRef.current) return;
-      timerRef.current = setTimeout(() => { timerRef.current = null; if (alive() && !done) publish(true); }, 180);
+      timerRef.current = setTimeout(() => { timerRef.current = null; if (alive() && !done) publish(true); }, PUBLISH_MS);
     };
     const expandable = (n) => n.has_children || Number(n.children_count) > 0
       || (n.has_children === undefined && n.children_count === undefined);
 
     const run = async (item) => {
       const pid = nid(item.node);
-      let kids = kidsRef.current.get(pid);
-      if (!kids) kids = await ensureRef.current(pid, 'lo');
+      const kids = await ensureRef.current(pid, 'lo', alive);
       if (!alive()) return;
       if (!kids) { failed += 1; return; }
       for (let i = 0; i < kids.length; i += 1) {
@@ -252,15 +293,15 @@ function useCrawler(kidsRef, ensureKids, sessionRef) {
 
     publish(true);
     pump();
-  }, [kidsRef, sessionRef]);
+  }, [sessionRef]);
 
   useEffect(() => () => { tokenRef.current += 1; clearTimeout(timerRef.current); }, []);
 
-  return { state, membersRef, indexRef, start, stop };
+  return { state, membersRef, indexRef, start, stop, reset };
 }
 
 // ---------------------------------------------------------------------------
-// Avatar + Legend
+// Small shared pieces
 // ---------------------------------------------------------------------------
 const Avatar = memo(function Avatar({ name, id, photoUrl, color, size = 56, fontSize = 16 }) {
   const [failed, setFailed] = useState(false);
@@ -281,6 +322,19 @@ const Legend = memo(function Legend() {
       <span><i style={{ background: COLORS.green }} />Bought</span>
       <span><i style={{ background: COLORS.slate }} />No purchase</span>
       <span><i style={{ background: COLORS.red }} />Terminated</span>
+    </div>
+  );
+});
+
+// Direct members of the opened person: how many bought / did not buy / terminated
+const Mix = memo(function Mix({ kids }) {
+  const c = { g: 0, n: 0, r: 0 };
+  for (let i = 0; i < kids.length; i += 1) c[getStatus(kids[i]).key] += 1;
+  return (
+    <div className="tdt-mix" aria-label="Direct members by status">
+      <span className="g" title="Bought"><i />{formatNumber(c.g)}</span>
+      <span className="n" title="No purchase"><i />{formatNumber(c.n)}</span>
+      <span className="r" title="Terminated"><i />{formatNumber(c.r)}</span>
     </div>
   );
 });
@@ -327,7 +381,7 @@ function buildPlan(focus, getKids, availW, slot, visible, crawl) {
   return { maxLevel, widest, need };
 }
 
-function Subtree({ node, chain, index, count, level, plan, getKids, onPick }) {
+const Subtree = memo(function Subtree({ node, chain, index, count, level, plan, getKids, onPick }) {
   const id = nid(node);
   const st = getStatus(node);
   const showKids = level + 1 <= plan.maxLevel;
@@ -341,6 +395,7 @@ function Subtree({ node, chain, index, count, level, plan, getKids, onPick }) {
     <div className="tdt-col">
       <Branch index={index} count={count} />
       <div className={`tdt-node${st.cls === 'r' ? ' t' : ''}`} style={{ '--fc': st.color, '--fs': st.soft }} role="button" tabIndex={0}
+        aria-label={`${node.name || id}, ${st.tag}. Open team`}
         onClick={() => onPick(chain)} onKeyDown={(e) => { if (e.key === 'Enter') onPick(chain); }}>
         <Avatar name={node.name} id={id} photoUrl={photoOf(node)} color={st.color} size={36} fontSize={11} />
         <div className="nm">{node.name || `#${id}`}</div>
@@ -367,7 +422,7 @@ function Subtree({ node, chain, index, count, level, plan, getKids, onPick }) {
       )}
     </div>
   );
-}
+});
 
 function DepthRail({ trail, idx, onChange }) {
   const trackRef = useRef(null);
@@ -422,10 +477,11 @@ const LegsGallery = memo(function LegsGallery({ kids, onOpen, onExplore }) {
   const [sort, setSort] = useState('order');
   const [stat, setStat] = useState({ g: true, n: true, r: true });
   const [limit, setLimit] = useState(LEG_PAGE);
+  const dq = useDebounced(q, 150);
   const names = useMemo(() => legNamesFor(kids), [kids]);
 
   const { items, counts } = useMemo(() => {
-    const ql = q.trim().toLowerCase();
+    const ql = dq.trim().toLowerCase();
     const c = { g: 0, n: 0, r: 0 };
     const list = [];
     kids.forEach((k, index) => {
@@ -439,19 +495,15 @@ const LegsGallery = memo(function LegsGallery({ kids, onOpen, onExplore }) {
     else if (sort === 'name') list.sort((a, b) => String(a.k.name || '').localeCompare(String(b.k.name || '')));
     else if (sort === 'team') list.sort((a, b) => b.kc - a.kc || a.index - b.index);
     return { items: list, counts: c };
-  }, [kids, q, sort, stat]);
+  }, [kids, dq, sort, stat]);
 
-  useEffect(() => { setLimit(LEG_PAGE); }, [q, sort, stat]);
-
-  const toggle = (key) => setStat((s) => ({ ...s, [key]: !s[key] }));
+  useEffect(() => { setLimit(LEG_PAGE); }, [dq, sort, stat]);
 
   return (
     <section className="tdt-legs" aria-label="Choose a leg">
       <div className="tdt-legs-head">
-        <div>
-          <h3>Choose a leg</h3>
-          <p>{formatNumber(kids.length)} legs · tap one to open its tree</p>
-        </div>
+        <h3>Choose a leg</h3>
+        <p>{formatNumber(kids.length)} legs · tap one to open its team</p>
       </div>
 
       <div className="tdt-legs-tools">
@@ -469,7 +521,8 @@ const LegsGallery = memo(function LegsGallery({ kids, onOpen, onExplore }) {
 
       <div className="tdt-chips">
         {STATUS_CHIPS.map((c) => (
-          <button key={c.key} type="button" className={`tdt-fchip${stat[c.key] ? ' on' : ''}`} onClick={() => toggle(c.key)} aria-pressed={stat[c.key]}>
+          <button key={c.key} type="button" className={`tdt-fchip${stat[c.key] ? ' on' : ''}`} aria-pressed={stat[c.key]}
+            onClick={() => setStat((s) => ({ ...s, [c.key]: !s[c.key] }))}>
             <i style={{ background: c.color }} />{c.label}<b>{formatNumber(counts[c.key])}</b>
           </button>
         ))}
@@ -526,7 +579,11 @@ const PV_PRESETS = [
   { label: '≥ 5,000', op: 'ge', pv: '5000' }
 ];
 
-const csvCell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+const csvCell = (v) => {
+  let s = String(v ?? '');
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`; // stop spreadsheet formula injection
+  return `"${s.replace(/"/g, '""')}"`;
+};
 
 const MemberRow = memo(function MemberRow({ entry, top, parentName, legText, onProfile, onLocate }) {
   const st = getStatus(entry.node);
@@ -623,7 +680,8 @@ function LegExplorer({ focus, legs, initial, crawler, onClose, onLocate, onProfi
   }, []);
 
   const view = useMemo(
-    () => buildView(membersRef.current, { version: state.version, dq, dpv, op, stat, sort }),
+    () => buildView(membersRef.current, { dq, dpv, op, stat, sort }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [membersRef, state.version, dq, dpv, op, stat, sort]
   );
 
@@ -639,9 +697,8 @@ function LegExplorer({ focus, legs, initial, crawler, onClose, onLocate, onProfi
 
   const focusName = focus.name || `#${nid(focus)}`;
   const scopeText = scope === 'all' ? `${focusName}'s whole team` : `Leg ${legNames[scope]} · ${legs[scope]?.name || nid(legs[scope] || {})}`;
-  const pvActive = dpv !== '';
   const filterText = [
-    pvActive ? `${OP_TEXT[op]} ${formatNumber(dpv)} PV` : 'Any PV',
+    dpv !== '' ? `${OP_TEXT[op]} ${formatNumber(dpv)} PV` : 'Any PV',
     dq.trim() ? `“${dq.trim()}”` : null
   ].filter(Boolean).join(' · ');
 
@@ -658,11 +715,9 @@ function LegExplorer({ focus, legs, initial, crawler, onClose, onLocate, onProfi
   const clearFilters = () => { setQ(''); setPv(''); setOp('eq'); setStat({ g: true, n: true, r: true }); };
 
   const exportCsv = () => {
-    const head = ['Name', 'ID', 'Level', 'Leg', 'PV', 'Status'];
-    const lines = [head.map(csvCell).join(',')];
+    const lines = [['Name', 'ID', 'Level', 'Leg', 'PV', 'Status'].map(csvCell).join(',')];
     view.list.forEach((e) => {
-      const st = getStatus(e.node);
-      const status = st.key === 'g' ? 'Bought' : st.key === 'r' ? 'Terminated' : 'No purchase';
+      const status = e.key === 'g' ? 'Bought' : e.key === 'r' ? 'Terminated' : 'No purchase';
       lines.push([e.node.name, e.id, e.depth, e.leg >= 0 ? (legNames[e.leg] || legLabel(e.leg)) : '', e.pv, status].map(csvCell).join(','));
     });
     const blob = new Blob([`\uFEFF${lines.join('\n')}`], { type: 'text/csv;charset=utf-8' });
@@ -692,7 +747,7 @@ function LegExplorer({ focus, legs, initial, crawler, onClose, onLocate, onProfi
 
         <div className={`tdt-xprog${state.running ? ' run' : ''}`}>
           <span className="tdt-xbar" aria-hidden="true" />
-          <span className="tdt-xmsg">
+          <span className="tdt-xmsg" role="status">
             {state.running
               ? `Scanning level ${state.level || 1} · ${formatNumber(state.count)} members found`
               : `${formatNumber(state.count)} members scanned · ${state.level} levels deep`}
@@ -802,14 +857,14 @@ function MemberSheet({ member, onClose }) {
   const terminated = Number(member.status) === 0;
   const ring = terminated ? COLORS.red : Number(member.self_pv) > 0 ? COLORS.green : COLORS.slate;
   const items = [
+    { k: 'Self PV', v: `${formatNumber(member.self_pv)} PV` },
+    { k: 'Group PV', v: `${formatNumber(member.total_group_pv)} PV` },
     { k: 'Current Pin', v: member.curr_pin || '—' },
     { k: 'Highest Pin', v: member.max_pin || '—' },
     { k: 'KYC Status', v: formatKyc(member.kyc_status) },
     { k: 'Join date', v: formatJoinDate(member.join_date) },
-    { k: 'Self purchase', v: `${formatNumber(member.self_pv)} PV` },
-    { k: 'Re-purchase amount', v: `₹${formatNumber(member.repurchase_amt)}` },
-    { k: 'Group volume', v: `${formatNumber(member.total_group_pv)} PV` },
     { k: 'Direct downlines', v: formatNumber(member.children_count) },
+    { k: 'Purchase amount', v: `₹ ${formatNumber(member.repurchase_amt)}` },
     { k: 'District / State', v: [member.district, member.state].filter(Boolean).join(', ') || '—' }
   ];
   return (
@@ -823,7 +878,7 @@ function MemberSheet({ member, onClose }) {
           <Avatar name={member.name} id={member.buyer_id} photoUrl={photoOf(member)} color={ring} size={80} fontSize={26} />
           <div className="tdt-dr-name">{member.name}</div>
           <div className="tdt-dr-id">Buyer ID {member.buyer_id}</div>
-          <span className={`tdt-chip ${terminated ? 'r' : 'g'}`}>{terminated ? 'Terminated' : formatKyc(member.kyc_status)}</span>
+          <span className={`tdt-chip ${terminated ? 'r' : 'g'}`}>{terminated ? 'Terminated' : `KYC ${formatKyc(member.kyc_status)}`}</span>
         </div>
         <div className="tdt-grid2">
           {items.map((it) => <div key={it.k} className="tdt-kv"><div className="k">{it.k}</div><div className="v">{it.v}</div></div>)}
@@ -860,8 +915,10 @@ export default function TreestructureUI({
   const [notice, setNotice] = useState('');
   const [viewPref, setViewPref] = useState({ fid: '', mode: 'auto' });
   const [explorer, setExplorer] = useState(null);
+  const [hintOn, setHintOn] = useState(() => store.get(HINT_KEY) !== '1');
 
-  const kidsRef = useRef(new Map());
+  const kidsRef = useRef(new LruMap(CACHE_MAX));
+  const scanRef = useRef(new LruMap(SCAN_CACHE_MAX));
   const inflightRef = useRef(new Map());
   const failedRef = useRef(new Set());
   const sessionRef = useRef(0);
@@ -871,14 +928,18 @@ export default function TreestructureUI({
   const crumbsRef = useRef(null);
   const dirRef = useRef('');
   const firstRefresh = useRef(true);
+  const unauthRef = useRef(false);
+  const profileBusyRef = useRef(false);
 
   useEffect(() => { buyerRef.current = buyerId; }, [buyerId]);
 
+  const startId = startNode ? nid(startNode) : '';
+  const startMounted = useRef(true);
   useEffect(() => {
-    if (startNode) {
-      setNav({ path: [startNode], idx: 1 });
-    }
-  }, [startNode]);
+    if (startMounted.current) { startMounted.current = false; return; }
+    if (startNode) setNav({ path: [startNode], idx: 1 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startId]);
 
   const scheduleRender = useCallback(() => {
     if (bumpRef.current) return;
@@ -890,28 +951,59 @@ export default function TreestructureUI({
   const isLoading = useCallback((id) => inflightRef.current.has(String(id)), []);
   const isFailed = useCallback((id) => failedRef.current.has(String(id)), []);
 
-  const ensureKids = useCallback((parentId, prio = 'hi') => {
+  const reportUnauthorized = useCallback(() => {
+    if (unauthRef.current) return;
+    unauthRef.current = true;
+    if (onUnauthorized) onUnauthorized();
+  }, [onUnauthorized]);
+
+  // One automatic retry (with jitter) for network errors, 5xx and 429. Never for 401 / other 4xx.
+  const fetchKids = useCallback(async (pid, live) => {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await getTreeChildren(buyerRef.current, pid);
+      } catch (e) {
+        const s = e?.status;
+        const fatal = s === 401 || (s >= 400 && s < 500 && s !== 429);
+        if (fatal || attempt >= 1 || !live()) throw e;
+        await sleep(500 + Math.random() * 800);
+        if (!live()) throw e;
+      }
+    }
+  }, []);
+
+  const ensureKids = useCallback((parentId, prio = 'hi', extraLive) => {
     const pid = String(parentId);
     if (!pid || !buyerRef.current) return Promise.resolve(null);
-    if (kidsRef.current.has(pid)) return Promise.resolve(kidsRef.current.get(pid));
+    const hit = kidsRef.current.get(pid);
+    if (hit) return Promise.resolve(hit);
+    const scanHit = scanRef.current.get(pid);
+    if (scanHit) {
+      if (prio === 'hi') { kidsRef.current.set(pid, scanHit); scheduleRender(); }
+      return Promise.resolve(scanHit);
+    }
     if (inflightRef.current.has(pid)) {
       const existing = inflightRef.current.get(pid);
       if (prio === 'hi') existing.then(scheduleRender);
       return existing;
     }
     const sid = sessionRef.current;
+    const live = () => sid === sessionRef.current && (!extraLive || extraLive());
     failedRef.current.delete(pid);
-    const p = limitTreeCalls(() => getTreeChildren(buyerRef.current, pid), prio)
+    const p = limitTreeCalls(() => fetchKids(pid, live), prio, live)
       .then((json) => {
-        if (sid !== sessionRef.current) return null;
-        if (json?.success && Array.isArray(json.data)) { kidsRef.current.set(pid, json.data); return json.data; }
+        if (json === SKIPPED || sid !== sessionRef.current) return null;
+        if (json?.success && Array.isArray(json.data)) {
+          (prio === 'hi' ? kidsRef.current : scanRef.current).set(pid, json.data);
+          return json.data;
+        }
         failedRef.current.add(pid);
         return null;
       })
       .catch((e) => {
         if (sid === sessionRef.current) {
           failedRef.current.add(pid);
-          if (e?.status === 401 && onUnauthorized) onUnauthorized();
+          if (e?.status === 401) reportUnauthorized();
         }
         return null;
       })
@@ -922,21 +1014,32 @@ export default function TreestructureUI({
     inflightRef.current.set(pid, p);
     if (prio === 'hi') scheduleRender();
     return p;
-  }, [scheduleRender, onUnauthorized]);
+  }, [scheduleRender, fetchKids, reportUnauthorized]);
 
   const retry = useCallback((id) => { failedRef.current.delete(String(id)); ensureKids(id); }, [ensureKids]);
 
-  const crawler = useCrawler(kidsRef, ensureKids, sessionRef);
+  const crawler = useCrawler(ensureKids, sessionRef);
+  const { reset: resetCrawler } = crawler;
 
+  // Re-sync / refresh: drop every cache, cancel queued work, start clean
   useEffect(() => {
     if (firstRefresh.current) { firstRefresh.current = false; return; }
     sessionRef.current += 1;
-    kidsRef.current = new Map();
+    unauthRef.current = false;
+    kidsRef.current = new LruMap(CACHE_MAX);
+    scanRef.current = new LruMap(SCAN_CACHE_MAX);
     inflightRef.current = new Map();
     failedRef.current = new Set();
+    resetCrawler();
     setExplorer(null);
     scheduleRender();
-  }, [refreshToken, scheduleRender]);
+  }, [refreshToken, scheduleRender, resetCrawler]);
+
+  // Leaving the screen: cancel everything that is still queued
+  useEffect(() => () => {
+    sessionRef.current += 1;
+    clearTimeout(bumpRef.current);
+  }, []);
 
   const rootNode = useMemo(() => ({
     buyer_id: buyerId,
@@ -1009,6 +1112,7 @@ export default function TreestructureUI({
     if (active?.scrollIntoView) active.scrollIntoView({ inline: 'center', block: 'nearest' });
   }, [idx, trail.length]);
 
+  // Global search (name / ID) or PV shortcut
   const pvIntent = useMemo(() => parsePvQuery(search), [search]);
   useEffect(() => {
     const q = search.trim();
@@ -1023,26 +1127,30 @@ export default function TreestructureUI({
         setResults(list.slice(0, 20));
       } catch (e) {
         if (sid === sessionRef.current) setResults([]);
+        if (e?.status === 401) reportUnauthorized();
       } finally {
         if (sid === sessionRef.current) setSearching(false);
       }
     }, 400);
     return () => clearTimeout(timer);
-  }, [search, buyerId, pvIntent]);
+  }, [search, buyerId, pvIntent, reportUnauthorized]);
 
   const openProfile = useCallback(async (node) => {
     const memberId = nid(node);
-    if (!memberId || !buyerRef.current) return;
+    if (!memberId || !buyerRef.current || profileBusyRef.current) return;
+    profileBusyRef.current = true;
     const sid = sessionRef.current;
     try {
       const json = await getMemberFullProfile(buyerRef.current, memberId);
       if (sid !== sessionRef.current) return;
       if (json?.success) setMember(json.data);
     } catch (e) {
-      if (e?.status === 401 && onUnauthorized) onUnauthorized();
+      if (e?.status === 401) reportUnauthorized();
       else setNotice(e?.message || 'Could not open member profile.');
+    } finally {
+      profileBusyRef.current = false;
     }
-  }, [onUnauthorized]);
+  }, [reportUnauthorized]);
 
   useEffect(() => {
     if (!notice) return undefined;
@@ -1062,9 +1170,11 @@ export default function TreestructureUI({
   }, [member, explorer, onClose]);
 
   const openExplorer = useCallback((init) => setExplorer({ id: Date.now(), init }), []);
-  const closeExplorer = useCallback(() => setExplorer(null), []);
+  const closeExplorer = useCallback(() => { setExplorer(null); resetCrawler(); }, [resetCrawler]);
   const closeMember = useCallback(() => setMember(null), []);
+  const dismissHint = useCallback(() => { setHintOn(false); store.set(HINT_KEY, '1'); }, []);
 
+  // "Show in tree": rebuild the path from the scan index, then free the scan memory
   const locate = useCallback((entry, headPath) => {
     const index = crawler.indexRef.current;
     const chain = [];
@@ -1075,11 +1185,11 @@ export default function TreestructureUI({
     const add = headPath.concat(chain);
     setNav((n) => ({ path: n.path.slice(0, n.idx).concat(add), idx: n.idx + add.length }));
     setExplorer(null);
-  }, [crawler.indexRef]);
+    resetCrawler();
+  }, [crawler.indexRef, resetCrawler]);
 
   const st = getStatus(focus);
-  const shownKids = kids ? kids.slice(0, visible) : [];
-  const leftMode = mode === 'tree' && plan.widest * slot > availW;
+  const shownKids = kids ? kids.slice(0, visible) : EMPTY;
   const ancestors = trail.slice(Math.max(0, idx - 2), idx);
   const hiddenAbove = Math.max(0, idx - 2);
   const selfPv = getPv(focus);
@@ -1087,12 +1197,22 @@ export default function TreestructureUI({
   const groupPv = focus.total_group_pv ?? focus.groupPv ?? focus.group_pv;
   const focusLegs = kids || EMPTY;
 
+  // The opened member always sits in the middle of the screen (wide trees scroll from the centre)
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!el) return undefined;
+    const raf = requestAnimationFrame(() => {
+      el.scrollLeft = Math.max(0, (el.scrollWidth - el.clientWidth) / 2);
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [fid, shownKids.length, mode, winW]);
+
   return (
     <div className="tdt" style={{ '--slot': `${slot}px`, '--upw': `${upW}px` }}>
       <header className="tdt-top">
         <button type="button" className="tdt-btn ic" onClick={onClose} aria-label="Close tree"><ArrowLeft size={18} /></button>
         <div className="tdt-brand"><BrandLogo tagline={false} /></div>
-        <h2 className="tdt-title">Team Tree</h2>
+        <h2 className="tdt-title">Your Group</h2>
         <div className="tdt-sbox">
           <Search size={16} />
           <input className="tdt-in" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, ID or PV"
@@ -1101,6 +1221,7 @@ export default function TreestructureUI({
             <div className="tdt-sres" onPointerDown={(e) => e.preventDefault()}>
               {pvIntent && (
                 <div className="it pv" role="button" tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { setSearch(''); setResults([]); openExplorer({ scope: 'all', op: pvIntent.op, pv: pvIntent.pv }); } }}
                   onClick={() => { setSearch(''); setResults([]); openExplorer({ scope: 'all', op: pvIntent.op, pv: pvIntent.pv }); }}>
                   <span className="ico"><SlidersHorizontal size={15} /></span>
                   <span>
@@ -1113,7 +1234,9 @@ export default function TreestructureUI({
               {searching && <div className="msg">Searching...</div>}
               {!searching && results.length === 0 && !(pvIntent && pvIntent.only) && <div className="msg">No members found.</div>}
               {results.map((r) => (
-                <div key={nid(r)} className="it" role="button" tabIndex={0} onClick={() => { setSearch(''); setResults([]); openProfile(r); }}>
+                <div key={nid(r)} className="it" role="button" tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { setSearch(''); setResults([]); openProfile(r); } }}
+                  onClick={() => { setSearch(''); setResults([]); openProfile(r); }}>
                   <span>
                     <b>{r.name || `Associate #${nid(r)}`}</b>
                     <small>ID {nid(r)}</small>
@@ -1165,8 +1288,19 @@ export default function TreestructureUI({
         </div>
       </div>
 
+      {hintOn && (
+        <div className="tdt-hint" role="note">
+          <Info size={13} />
+          <span style={{ flex: 1 }}>Tap any member to open their team. The opened member stays in the centre.</span>
+          <button type="button" aria-label="Hide tip" onClick={dismissHint}
+            style={{ display: 'grid', placeItems: 'center', border: 0, background: 'none', padding: 2, color: 'inherit', cursor: 'pointer' }}>
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
       <div className="tdt-stage" ref={stageRef}>
-        <div className={`tdt-inner ${mode === 'legs' ? 'legs' : leftMode ? 'left' : ''} ${dirRef.current}`} key={fid}>
+        <div className={`tdt-inner ${mode === 'legs' ? 'legs' : ''} ${dirRef.current}`} key={fid}>
           <div className="tdt-up">
             {hiddenAbove > 0 && (
               <>
@@ -1189,6 +1323,7 @@ export default function TreestructureUI({
             })}
 
             <div className={`tdt-fcard${st.cls === 'r' ? ' t' : ''}`} style={{ '--fc': st.color, '--fs': st.soft }}>
+              {idx > 0 && <span className="tdt-lvl">Level {idx}</span>}
               <button type="button" className="inf" aria-label="View profile" onClick={() => openProfile(focus)}><Info size={14} /></button>
               <Avatar name={focus.name} id={fid} photoUrl={photoOf(focus)} color={st.color} size={52} fontSize={16} />
               <div className="nm">{focus.name || `Associate #${fid}`}{idx === 0 ? ' (You)' : ''}</div>
@@ -1198,11 +1333,12 @@ export default function TreestructureUI({
                 {groupPv !== undefined && groupPv !== null && Number(groupPv) > 0 && <span className="tdt-tag">GV {formatNumber(groupPv)}</span>}
                 {kids && <span className="tdt-tag">{formatNumber(kids.length)} direct</span>}
               </div>
+              {kids && kids.length > 0 && <Mix kids={kids} />}
             </div>
             {mode === 'tree' && kids && kids.length > 0 && <div className="tdt-vline" style={{ '--h': '18px' }} />}
           </div>
 
-          {!kids && isLoading(fid) && <div className="tdt-loading"><span className="tdt-spin" />Loading downline...</div>}
+          {!kids && isLoading(fid) && <div className="tdt-loading" role="status"><span className="tdt-spin" />Loading downline...</div>}
           {!kids && !isLoading(fid) && isFailed(fid) && (
             <div className="tdt-fail">
               <div>Could not load this downline.</div>
@@ -1210,19 +1346,15 @@ export default function TreestructureUI({
             </div>
           )}
           {kids && kids.length === 0 && (
-            <div className="tdt-note">{crawlRunning ? 'Team is still syncing...' : 'No downline enrolled yet'}</div>
+            <div className="tdt-note">{crawlRunning ? 'Your group is still updating...' : 'No downline enrolled yet'}</div>
           )}
 
           {mode === 'legs' && kids && kids.length > 0 && (
-            <LegsGallery key={fid} kids={kids} onOpen={openLeg}
-              onExplore={(i) => openExplorer({ scope: i })} />
+            <LegsGallery key={fid} kids={kids} onOpen={openLeg} onExplore={(i) => openExplorer({ scope: i })} />
           )}
 
           {mode === 'tree' && shownKids.length > 0 && (
             <div className="tdt-row">
-              {leftMode && upW / 2 > slot / 2 && (
-                <div className="tdt-spine" style={{ left: slot / 2, width: upW / 2 - slot / 2 }} />
-              )}
               {shownKids.map((k, i) => (
                 <Subtree key={nid(k)} node={k} chain={[k]} index={i} count={shownKids.length}
                   level={1} plan={plan} getKids={getKids} onPick={onPick} />
@@ -1246,4 +1378,4 @@ export default function TreestructureUI({
       {member && <MemberSheet member={member} onClose={closeMember} />}
     </div>
   );
-} 
+}
