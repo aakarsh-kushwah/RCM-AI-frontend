@@ -4,13 +4,13 @@ import {
   Network, LayoutGrid, SlidersHorizontal, Download, Crosshair, ChevronRight
 } from 'lucide-react';
 import { getTreeChildren, getMemberFullProfile, searchLifelines } from '../../services/lifelinesApiClient';
-import BrandLogo from '../BrandLogo/BrandLogo'; // adjust path if your BrandLogo lives elsewhere
+import BrandLogo from '../BrandLogo/BrandLogo';
 import './TeamTree.css';
 
 /**
  * TreestructureUI - full screen downline tree (separate from LifelinesPage).
  *
- * Props (unchanged)
+ * Props:
  *  buyerId       : logged-in leader id (string)
  *  rootInfo      : { name, photo_url, max_pin, curr_pin, self_pv, total_group_pv, children_count }
  *  startNode     : optional leg head node to open directly (from "Direct leg heads")
@@ -18,17 +18,6 @@ import './TeamTree.css';
  *  refreshToken  : number; change it to clear the cache and reload (after re-sync / refresh)
  *  onClose       : go back to the Lifelines page
  *  onUnauthorized: optional, called on 401 (token expired)
- *
- * How big teams stay easy
- *  1. Tree view   - used automatically when the legs fit on screen.
- *  2. Legs view   - used automatically when they do not (10, 50, 200 legs). One tidy card per
- *                   leg (A, B, C...), filter / sort them, tap a leg to open ITS tree.
- *  3. Find members- scans a whole team or one leg in the background (low priority, 4 requests at a
- *                   time, never blocks the tree) and lets you filter by PV (= / >= / <=), name, ID
- *                   and status. Results are virtualised, so 20,000 rows scroll smoothly.
- *                   "Locate" jumps the tree straight to that member.
- *
- * Colours: green = bought (PV > 0), grey = no purchase (0 PV), red = terminated.
  */
 
 const COLORS = { green: '#12A35E', red: '#E03655', slate: '#9AA3BD', mu: '#6B7296' };
@@ -102,12 +91,11 @@ const legLabel = (i) => {
   return s;
 };
 
-// Leg names for a list of sibling legs. If the API tags every sibling with its own distinct
-// letter (leg / leg_type = "A", "Leg B" ...) we show those, otherwise we count A, B, C by position.
 const apiLeg = (n) => {
   const t = String(n?.leg ?? n?.leg_type ?? '').replace(/^leg\s*/i, '').trim().toUpperCase();
   return /^[A-Z]{1,2}$/.test(t) ? t : '';
 };
+
 const legNamesFor = (list) => {
   const api = list.map(apiLeg);
   if (api.length && api.every(Boolean) && new Set(api).size === api.length) return api;
@@ -123,11 +111,6 @@ const getStatus = (n) => {
     : { key: 'n', cls: '', color: COLORS.slate, soft: SOFT.n, tag: '0 PV' };
 };
 
-/**
- * "1500", "pv 1500", "pv>=1500", ">1500", "1500pv" ...
- * only:true  -> clearly a PV query (has "pv" or an operator)
- * only:false -> plain digits, could also be a buyer ID (we offer both)
- */
 const parsePvQuery = (raw) => {
   const s = String(raw || '').trim().toLowerCase();
   const m = s.match(/^(?:pv\s*)?(>=|<=|=|>|<)?\s*(\d+)\s*(?:pv)?$/);
@@ -155,14 +138,13 @@ const useDebounced = (value, ms) => {
   return v;
 };
 
-// Request limiter with two lanes. The tree UI ("hi") always goes first; the background scan
-// ("lo") may use every slot except the last one, so tapping a node never waits behind a scan.
+// Request limiter with two lanes
 const makeLimiter = (max) => {
   let active = 0;
   const hi = [];
   const lo = [];
   const next = () => {
-    while (true) { // eslint-disable-line no-constant-condition
+    while (true) {
       let job = null;
       if (hi.length && active < max) job = hi.shift();
       else if (lo.length && active < max - 1) job = lo.shift();
@@ -179,7 +161,7 @@ const makeLimiter = (max) => {
 const limitTreeCalls = makeLimiter(MAX_PARALLEL);
 
 // ---------------------------------------------------------------------------
-// Background scanner (powers "Find members")
+// Background scanner
 // ---------------------------------------------------------------------------
 function useCrawler(kidsRef, ensureKids, sessionRef) {
   const [state, setState] = useState({ running: false, count: 0, level: 0, truncated: false, failed: 0, version: 0 });
@@ -226,7 +208,6 @@ function useCrawler(kidsRef, ensureKids, sessionRef) {
       if (timerRef.current) return;
       timerRef.current = setTimeout(() => { timerRef.current = null; if (alive() && !done) publish(true); }, 180);
     };
-    // only open nodes that say they have children (or do not say anything while the backend is syncing)
     const expandable = (n) => n.has_children || Number(n.children_count) > 0
       || (n.has_children === undefined && n.children_count === undefined);
 
@@ -279,7 +260,7 @@ function useCrawler(kidsRef, ensureKids, sessionRef) {
 }
 
 // ---------------------------------------------------------------------------
-// Avatar + small pieces
+// Avatar + Legend
 // ---------------------------------------------------------------------------
 const Avatar = memo(function Avatar({ name, id, photoUrl, color, size = 56, fontSize = 16 }) {
   const [failed, setFailed] = useState(false);
@@ -314,7 +295,6 @@ const Branch = ({ index, count }) => (
   </>
 );
 
-// Decides how many levels fit on screen and which parents still need their children fetched.
 function buildPlan(focus, getKids, availW, slot, visible, crawl) {
   const need = [];
   let level = [focus];
@@ -330,7 +310,6 @@ function buildPlan(focus, getKids, availW, slot, visible, crawl) {
       const id = nid(n);
       const kids = getKids(id);
       if (kids === undefined) {
-        // while the backend crawls we also probe nodes without a child hint, but only 2 levels deep
         if (d === 1 || n.has_children || Number(n.children_count) > 0 || (crawl && d <= 2)) { need.push(id); unknown = true; }
       } else {
         const take = Math.min(kids.length, cap);
@@ -421,7 +400,7 @@ function DepthRail({ trail, idx, onChange }) {
         <div className={`tdt-thumb${drag === null ? ' s' : ''}`} style={{ top: `${ratio * 100}%` }} />
         {drag !== null && (
           <div className="tdt-bubble" style={{ top: `${ratio * 100}%` }}>
-            L{idx} • {trail[idx]?.name || nid(trail[idx])}
+            L{idx} · {trail[idx]?.name || nid(trail[idx])}
           </div>
         )}
       </div>
@@ -430,7 +409,7 @@ function DepthRail({ trail, idx, onChange }) {
 }
 
 // ---------------------------------------------------------------------------
-// Legs view: one clean card per leg, for focus nodes with many direct children
+// Legs view
 // ---------------------------------------------------------------------------
 const STATUS_CHIPS = [
   { key: 'g', label: 'Bought', color: COLORS.green },
@@ -502,7 +481,7 @@ const LegsGallery = memo(function LegsGallery({ kids, onOpen, onExplore }) {
         <div className="tdt-legs-grid">
           {items.slice(0, limit).map(({ k, index, st, kc }) => {
             const id = nid(k);
-            const gv = k.total_group_pv;
+            const gv = k.total_group_pv ?? k.groupPv ?? k.group_pv;
             return (
               <div key={id} className={`tdt-leg${st.cls === 'r' ? ' t' : ''}`} style={{ '--fc': st.color, '--fs': st.soft }}>
                 <button type="button" className="tdt-leg-main" onClick={() => onOpen(k)} aria-label={`Open leg ${names[index]}, ${k.name || id}`}>
@@ -513,7 +492,7 @@ const LegsGallery = memo(function LegsGallery({ kids, onOpen, onExplore }) {
                   <span className={`tdt-tag ${st.cls}`}>{st.tag}</span>
                   <span className="tdt-leg-meta">
                     {kc > 0 ? `${formatNumber(kc)} direct` : 'No downline'}
-                    {gv !== undefined && gv !== null ? ` · GV ${formatNumber(gv)}` : ''}
+                    {gv !== undefined && gv !== null && Number(gv) > 0 ? ` · GV ${formatNumber(gv)}` : ''}
                   </span>
                 </button>
                 <button type="button" className="tdt-leg-find" onClick={() => onExplore(index)} aria-label={`Find members in leg ${names[index]}`} title="Find members in this leg">
@@ -535,7 +514,7 @@ const LegsGallery = memo(function LegsGallery({ kids, onOpen, onExplore }) {
 });
 
 // ---------------------------------------------------------------------------
-// Find members: background scan + PV / name / ID / status filters + virtual list
+// Find members: background scan + virtual list
 // ---------------------------------------------------------------------------
 const PV_PRESETS = [
   { label: 'Any', op: 'eq', pv: '' },
@@ -573,7 +552,6 @@ const MemberRow = memo(function MemberRow({ entry, top, parentName, legText, onP
   );
 });
 
-// Filters + sorts the scanned members. `version` only tells React "the scan added more rows".
 function buildView(all, { dq, dpv, op, stat, sort }) {
   const ql = dq.trim().toLowerCase();
   const pvn = dpv === '' ? null : Number(dpv);
@@ -608,7 +586,7 @@ function LegExplorer({ focus, legs, initial, crawler, onClose, onLocate, onProfi
   focusRef.current = focus;
   legsRef.current = legs;
 
-  const [scope, setScope] = useState(initial.scope ?? 'all'); // 'all' | leg index
+  const [scope, setScope] = useState(initial.scope ?? 'all');
   const [q, setQ] = useState('');
   const [op, setOp] = useState(initial.op || 'eq');
   const [pv, setPv] = useState(initial.pv || '');
@@ -623,14 +601,12 @@ function LegExplorer({ focus, legs, initial, crawler, onClose, onLocate, onProfi
   const dq = useDebounced(q, 150);
   const dpv = useDebounced(pv, 150);
 
-  // (re)start the scan when the scope changes; cached branches are reused, so this is cheap
   useEffect(() => {
     const head = scope === 'all' ? focusRef.current : legsRef.current[scope];
     if (head) start(head, scope === 'all');
     return stop;
   }, [scope, start, stop]);
 
-  // list height for virtualisation
   useEffect(() => {
     const el = listRef.current;
     if (!el || typeof ResizeObserver === 'undefined') return undefined;
@@ -651,7 +627,6 @@ function LegExplorer({ focus, legs, initial, crawler, onClose, onLocate, onProfi
     [membersRef, state.version, dq, dpv, op, stat, sort]
   );
 
-  // new filters -> back to the top of the list
   useEffect(() => {
     if (listRef.current) listRef.current.scrollTop = 0;
     setScrollTop(0);
@@ -715,7 +690,6 @@ function LegExplorer({ focus, legs, initial, crawler, onClose, onLocate, onProfi
           <button type="button" className="tdt-btn ic" onClick={onClose} aria-label="Close"><X size={18} /></button>
         </header>
 
-        {/* scan progress */}
         <div className={`tdt-xprog${state.running ? ' run' : ''}`}>
           <span className="tdt-xbar" aria-hidden="true" />
           <span className="tdt-xmsg">
@@ -821,7 +795,7 @@ function LegExplorer({ focus, legs, initial, crawler, onClose, onLocate, onProfi
 }
 
 // ---------------------------------------------------------------------------
-// Member profile (drawer on desktop, bottom sheet on mobile)
+// Member profile
 // ---------------------------------------------------------------------------
 function MemberSheet({ member, onClose }) {
   const phone = toWhatsappNumber(member.mobile || member.mobile_no);
@@ -900,6 +874,12 @@ export default function TreestructureUI({
 
   useEffect(() => { buyerRef.current = buyerId; }, [buyerId]);
 
+  useEffect(() => {
+    if (startNode) {
+      setNav({ path: [startNode], idx: 1 });
+    }
+  }, [startNode]);
+
   const scheduleRender = useCallback(() => {
     if (bumpRef.current) return;
     bumpRef.current = setTimeout(() => { bumpRef.current = null; setVer((v) => v + 1); }, 60);
@@ -948,7 +928,6 @@ export default function TreestructureUI({
 
   const crawler = useCrawler(kidsRef, ensureKids, sessionRef);
 
-  // Parent asked for a fresh load (Refresh / Re-sync finished): drop cache and refetch what is on screen
   useEffect(() => {
     if (firstRefresh.current) { firstRefresh.current = false; return; }
     sessionRef.current += 1;
@@ -959,7 +938,6 @@ export default function TreestructureUI({
     scheduleRender();
   }, [refreshToken, scheduleRender]);
 
-  // root node (the logged in leader)
   const rootNode = useMemo(() => ({
     buyer_id: buyerId,
     name: rootInfo?.name || `Leader #${buyerId}`,
@@ -984,14 +962,12 @@ export default function TreestructureUI({
   const setIdx = useCallback((i) => setNav((n) => (n.idx === i ? n : { ...n, idx: i })), []);
   const openLeg = useCallback((k) => onPick([k]), [onPick]);
 
-  // animation direction (grow when going deeper, shrink when going up)
   const lastRef = useRef({ fid, idx });
   if (lastRef.current.fid !== fid) {
     dirRef.current = idx > lastRef.current.idx ? 'grow' : 'shrink';
     lastRef.current = { fid, idx };
   }
 
-  // resize (throttled with rAF)
   useEffect(() => {
     let raf = 0;
     const f = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => setWinW(window.innerWidth)); };
@@ -999,7 +975,6 @@ export default function TreestructureUI({
     return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', f); };
   }, []);
 
-  // lock page scroll behind the tree
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -1015,7 +990,6 @@ export default function TreestructureUI({
   const upW = winW < 761 ? 156 : 204;
   const availW = winW - 68;
 
-  // Tree when the legs fit on screen, Legs view when they do not (user can switch any time)
   const kidsTotal = kids ? kids.length : (Number(focus.children_count) || 0);
   const pref = viewPref.fid === fid ? viewPref.mode : 'auto';
   const mode = pref === 'auto' ? (kidsTotal * slot <= availW ? 'tree' : 'legs') : pref;
@@ -1035,7 +1009,6 @@ export default function TreestructureUI({
     if (active?.scrollIntoView) active.scrollIntoView({ inline: 'center', block: 'nearest' });
   }, [idx, trail.length]);
 
-  // search (debounced). Pure PV queries ("pv>=1500") never hit the server, they open Find members.
   const pvIntent = useMemo(() => parsePvQuery(search), [search]);
   useEffect(() => {
     const q = search.trim();
@@ -1077,7 +1050,6 @@ export default function TreestructureUI({
     return () => clearTimeout(t);
   }, [notice]);
 
-  // Esc: profile first, then Find members, then the tree
   useEffect(() => {
     const onKey = (e) => {
       if (e.key !== 'Escape') return;
@@ -1093,7 +1065,6 @@ export default function TreestructureUI({
   const closeExplorer = useCallback(() => setExplorer(null), []);
   const closeMember = useCallback(() => setMember(null), []);
 
-  // jump the tree to a member found in Find members (path is rebuilt from the scan's parent links)
   const locate = useCallback((entry, headPath) => {
     const index = crawler.indexRef.current;
     const chain = [];
@@ -1113,7 +1084,7 @@ export default function TreestructureUI({
   const hiddenAbove = Math.max(0, idx - 2);
   const selfPv = getPv(focus);
   const pinText = focus.max_pin || focus.pin || focus.curr_pin || '';
-  const groupPv = focus.total_group_pv;
+  const groupPv = focus.total_group_pv ?? focus.groupPv ?? focus.group_pv;
   const focusLegs = kids || EMPTY;
 
   return (
@@ -1275,4 +1246,4 @@ export default function TreestructureUI({
       {member && <MemberSheet member={member} onClose={closeMember} />}
     </div>
   );
-}
+} 
