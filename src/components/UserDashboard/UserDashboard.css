@@ -287,6 +287,13 @@
     border-top-color: var(--indigo);
     animation: tdud-rotate 0.8s linear infinite;
 }
+.tdud-spin--inline {
+    position: static;
+    display: inline-block;
+    flex: none;
+    width: 16px;
+    height: 16px;
+}
 @keyframes tdud-rotate { to { transform: rotate(360deg); } }
 
 .tdud-avatar-btn {
@@ -296,6 +303,22 @@
         linear-gradient(#fff, #fff) padding-box,
         linear-gradient(135deg, var(--indigo), var(--violet), var(--aqua), var(--champagne)) border-box;
     border: 2px solid transparent;
+}
+
+/* "your app went in here" hint, shown after the install card flew into the avatar */
+.tdud-avatar-btn.has-hint::after {
+    content: '';
+    position: absolute;
+    top: -2px; right: -2px;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #2fcf94, #17a673);
+    border: 2px solid #fff;
+    animation: tdud-hint 1.6s ease-in-out infinite;
+}
+@keyframes tdud-hint {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.28); }
 }
 
 /* avatar */
@@ -373,6 +396,44 @@
 .tdud-sheet-pins li { display: flex; justify-content: space-between; gap: 12px; font-size: 13.5px; }
 .tdud-sheet-pins span { color: var(--ink-3); font-weight: 600; }
 .tdud-sheet-pins strong { font-weight: 700; text-align: right; }
+
+/* the install card's new home inside the profile menu */
+.tdud-sheet-app {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(23, 166, 115, 0.1), rgba(18, 198, 216, 0.1));
+    border: 1px solid rgba(23, 166, 115, 0.28);
+}
+.tdud-sheet-app-icon {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 36px; height: 36px;
+    border-radius: 12px;
+    color: #fff;
+    background: linear-gradient(135deg, var(--indigo), var(--aqua));
+}
+.tdud-sheet-app-copy { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.tdud-sheet-app-copy strong { font-size: 14px; font-weight: 700; }
+.tdud-sheet-app-copy em { font-style: normal; font-size: 12.5px; font-weight: 600; color: var(--ink-3); }
+.tdud-sheet-app-ok {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    color: #fff;
+    background: linear-gradient(135deg, #2fcf94, #17a673);
+}
+.tdud-sheet-app.is-fresh { animation: tdud-arrive 0.9s 0.1s cubic-bezier(0.2, 0.9, 0.3, 1.15) backwards; }
+@keyframes tdud-arrive {
+    0% { opacity: 0; transform: translateY(-10px) scale(0.94); box-shadow: 0 0 0 0 rgba(23, 166, 115, 0.5); }
+    60% { opacity: 1; transform: scale(1.02); box-shadow: 0 0 0 9px rgba(23, 166, 115, 0); }
+    100% { opacity: 1; transform: none; box-shadow: 0 0 0 0 rgba(23, 166, 115, 0); }
+}
 
 /* ==========================================================================
    Content + reveal
@@ -548,8 +609,11 @@
 }
 
 /* ==========================================================================
-   Install strip + upgrade banner
+   Install card (idle -> prompting -> installing -> success -> bubbles)
    ========================================================================== */
+
+/* the wrapper is what collapses at the end, so the page below glides up smoothly */
+.tdud-install-wrap { position: relative; }
 
 .tdud-install {
     display: flex;
@@ -561,7 +625,18 @@
     background: #fff;
     border: 1px solid var(--line);
     box-shadow: var(--card-shadow);
+    transition: border-color 0.4s ease, background 0.4s ease;
 }
+.tdud-install.is-installing,
+.tdud-install.is-prompting {
+    border-color: rgba(79, 107, 255, 0.35);
+    background: linear-gradient(135deg, #ffffff 0%, #f1f3ff 100%);
+}
+.tdud-install.is-success {
+    border-color: #bfeed6;
+    background: linear-gradient(135deg, #ffffff 0%, #eafaf3 100%);
+}
+
 .tdud-install-icon {
     flex: none;
     display: grid;
@@ -571,11 +646,23 @@
     color: #fff;
     background: linear-gradient(135deg, var(--indigo), var(--aqua));
     box-shadow: 0 10px 20px -10px rgba(79, 107, 255, 0.8);
+    transition: background 0.4s ease, box-shadow 0.4s ease;
 }
-.tdud-install.is-done .tdud-install-icon {
+.tdud-install.is-success .tdud-install-icon {
     background: linear-gradient(135deg, #2fcf94, #17a673);
     box-shadow: 0 10px 20px -10px rgba(23, 166, 115, 0.8);
+    animation: tdud-pop-in 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.4);
 }
+.tdud-install.is-installing .tdud-install-icon svg { animation: tdud-bob 1s ease-in-out infinite; }
+@keyframes tdud-bob {
+    0%, 100% { transform: translateY(-2px); }
+    50% { transform: translateY(3px); }
+}
+@keyframes tdud-pop-in {
+    from { transform: scale(0.6); }
+    to { transform: none; }
+}
+
 .tdud-install-copy { display: flex; flex-direction: column; flex: 1 1 200px; min-width: 0; gap: 2px; }
 .tdud-install-copy strong { font-size: 15.5px; font-weight: 700; }
 .tdud-install-copy em { font-style: normal; font-size: 13.5px; line-height: 1.45; color: var(--ink-3); }
@@ -594,15 +681,99 @@
 }
 .tdud-install-btn:hover { transform: translateY(-1px); box-shadow: 0 16px 26px -12px rgba(79, 107, 255, 1); }
 .tdud-install-btn:active { transform: scale(0.97); }
-.tdud-install-state {
-    padding: 7px 14px;
+
+.tdud-install-wait {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 16px;
     border-radius: 999px;
-    font-size: 13px;
+    font-size: 13.5px;
     font-weight: 700;
-    color: #0e7a55;
-    background: #e5f8ef;
-    border: 1px solid #bfeed6;
+    color: var(--indigo);
+    background: rgba(79, 107, 255, 0.09);
+    border: 1px solid rgba(79, 107, 255, 0.25);
 }
+
+/* download-style progress bar; the fill is moved with transform only (written by JS) */
+.tdud-progress {
+    flex: 1 1 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.tdud-progress-track {
+    position: relative;
+    flex: 1;
+    height: 10px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: rgba(79, 107, 255, 0.12);
+}
+.tdud-progress-fill {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    overflow: hidden;
+    transform-origin: left center;
+    transform: scaleX(0);
+    will-change: transform;
+    background: linear-gradient(90deg, var(--indigo), var(--violet), var(--aqua));
+}
+.tdud-progress-fill::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.65), transparent);
+    transform: translateX(-100%);
+    animation: tdud-sheen 1.4s ease-in-out infinite;
+}
+@keyframes tdud-sheen { to { transform: translateX(100%); } }
+.tdud-install.is-success .tdud-progress-fill { background: linear-gradient(90deg, #2fcf94, #17a673); }
+.tdud-progress-pct {
+    min-width: 42px;
+    text-align: right;
+    font-family: var(--font-display);
+    font-size: 13px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--indigo);
+}
+.tdud-install.is-success .tdud-progress-pct { color: #0e7a55; }
+
+/* ==========================================================================
+   Install animation layer (bubbles flying into the avatar)
+   ========================================================================== */
+
+.tdud-fx {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    overflow: hidden;
+    pointer-events: none;
+}
+.tdud-fx-bubble {
+    position: absolute;
+    top: 0; left: 0;
+    border-radius: 50%;
+    opacity: 0;
+    will-change: transform, opacity;
+    box-shadow: 0 0 8px rgba(79, 107, 255, 0.45);
+}
+.tdud-fx-ring {
+    position: absolute;
+    width: 50px; height: 50px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    background:
+        linear-gradient(transparent, transparent) padding-box,
+        linear-gradient(135deg, var(--indigo), var(--aqua), var(--champagne)) border-box;
+    opacity: 0;
+}
+
+/* ==========================================================================
+   Upgrade banner
+   ========================================================================== */
 
 .tdud-upgrade {
     display: flex;
@@ -800,6 +971,7 @@
 .tdud-live-dot {
     position: relative;
     display: inline-block;
+    flex: none;
     width: 8px; height: 8px;
     border-radius: 50%;
     background: #1fc77e;
@@ -818,7 +990,7 @@
 }
 
 /* ==========================================================================
-   Module cards
+   Module cards – every card has the same size (2 columns phone, 3 desktop)
    ========================================================================== */
 
 .tdud-app-grid {
@@ -901,11 +1073,20 @@
 }
 .tdud-app:active { transform: scale(0.98); }
 
-.tdud-app-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.tdud-app-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; min-width: 0; }
+
+/* slightly smaller tile on phones so tile + badge always fit one row in a 2-column grid */
+.tdud-app .tdud-tile { width: 44px; height: 44px; border-radius: 16px; }
+@media (min-width: 760px) {
+    .tdud-app .tdud-tile { width: 50px; height: 50px; border-radius: 18px; }
+}
+
 .tdud-badge {
     display: inline-flex;
     align-items: center;
     gap: 6px;
+    min-width: 0;
+    max-width: 100%;
     padding: 4px 10px;
     border-radius: 999px;
     font-size: 12px;
@@ -914,6 +1095,8 @@
     background: rgba(var(--t-rgb), 0.1);
     border: 1px solid rgba(var(--t-rgb), 0.25);
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .tdud-app-body { display: flex; flex-direction: column; gap: 4px; flex: 1; }
@@ -955,22 +1138,6 @@
     transition: transform 0.3s ease, background 0.3s ease, color 0.3s ease;
 }
 
-/* full-width card (Official Channels) */
-.tdud-app.is-wide { grid-column: 1 / -1; min-height: 0; }
-@media (min-width: 640px) {
-    .tdud-app.is-wide {
-        display: grid;
-        grid-template-columns: auto minmax(0, 1fr) auto;
-        align-items: center;
-        gap: 22px;
-        min-height: 128px;
-    }
-    .tdud-app.is-wide .tdud-app-head { flex-direction: column; align-items: flex-start; gap: 10px; }
-    .tdud-app.is-wide .tdud-app-body { flex: none; }
-    .tdud-app.is-wide .tdud-app-sub { -webkit-line-clamp: 2; max-width: 56ch; }
-    .tdud-app.is-wide .tdud-app-foot { gap: 14px; }
-}
-
 /* ==========================================================================
    Accessibility + motion
    ========================================================================== */
@@ -998,4 +1165,5 @@
         transition-delay: 0s !important;
     }
     .tdud-main.is-armed [data-reveal]:not(.is-in) { opacity: 1; }
+    .tdud-fx { display: none; }
 }

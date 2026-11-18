@@ -11,6 +11,14 @@
  *  - Reveal animation is toggled on the DOM (zero React renders) and is armed before first paint.
  *  - Cards are real <Link>/<a> elements: native prefetch-friendly, middle-click, right-click,
  *    no popup-blocker issue for the meeting link, and no button-inside-button nesting.
+ *
+ * Install flow (PWA):
+ *  - Not installed  -> the install card is always shown on the dashboard (also after logout/login).
+ *  - Click          -> native install dialog, then a live progress bar inside the card.
+ *  - Installed      -> the card burns out into bubbles that fly into the profile avatar, the avatar
+ *                      squishes like a stuffed bag, and the card collapses. From then on the
+ *                      "Team Dekho app" row lives in the profile menu.
+ *  - Progress is written straight to the DOM (refs), so the 60fps bar never re-renders React.
  */
 
 import React, {
@@ -30,6 +38,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import usePushNotification from '../../hooks/usePushNotification';
 import useInstallPrompt from '../../hooks/useInstallPrompt';
+import { playInstallAbsorb } from '../../utils/installFx';
 import BrandLogo from '../../components/BrandLogo/BrandLogo'; // <- adjust path to where you put BrandLogo.jsx
 import './UserDashboard.css';
 
@@ -45,14 +54,25 @@ const NAV_BG = '#f4f5fc'; // status-bar colour
 
 const NAV_ITEMS = [{ path: '/chat', label: 'Assistant', icon: Zap }];
 
+// All six cards share one size: 2 columns on phones, 3 on desktop (two even rows).
 const MODULES = [
     { path: '/lifelines', title: 'Lifelines', alt: 'लाइफ लाइन', sub: 'Sync and explore your network tree with live stats', cta: 'Open Lifelines', icon: TrendingUp, tone: 'violet', badge: 'Tree' },
     { path: '/shorts', title: 'Shorts', sub: '60s micro-learning and sales hacks', cta: 'Explore Feed', icon: Film, tone: 'rose' },
     { path: '/leaders-videos', title: 'Leader Academy', sub: 'Training from top direct-selling leaders', cta: 'Watch Classes', icon: Star, tone: 'teal', badge: 'Academy' },
     { path: '/products-videos', title: 'Product Catalog', sub: 'Browse items with visual guides and demos', cta: 'Browse Products', icon: Package, tone: 'orange', badge: 'Catalog' },
     { path: '/daily-report', title: 'Growth & PV', sub: "Full breakdown of this month's numbers", cta: 'View Reports', icon: TrendingUp, tone: 'green', badge: 'Analytics' },
-    { path: '/channels-videos', title: 'Official Channels', sub: 'Auto-synced YouTube feeds and live broadcasts', cta: 'Open Channels', icon: Youtube, tone: 'sky', badge: 'Synced live', live: true, wide: true },
+    { path: '/channels-videos', title: 'Official Channels', sub: 'Auto-synced YouTube feeds and live broadcasts', cta: 'Open Channels', icon: Youtube, tone: 'sky', badge: 'Live', live: true },
 ];
+
+const INSTALL_COPY = {
+    prompting: ['Confirm to continue', 'Tap “Install” in the dialog your browser just opened.'],
+    installing: ['Installing Team Dekho…', 'Setting things up on your device. Keep this screen open.'],
+    success: ['Team Dekho is installed', 'Moving it to your profile menu…'],
+};
+
+const HINT_IOS = 'Tap the Share button in Safari, then choose “Add to Home Screen”.';
+const HINT_OTHER = 'Open your browser menu (⋮) and tap “Install app” or “Add to Home screen”.';
+const HINT_DEFAULT = 'Launches faster and opens full screen, just like a native app.';
 
 /* ------------------------------------------------------------------ */
 /* Helpers / hooks                                                     */
@@ -273,34 +293,176 @@ const Hero = memo(({ greeting, firstName, initial, image, role, premium, pins })
     </section>
 ));
 
-const InstallCard = memo(({ installed, canInstall, showHint, onInstall }) => (
-    <section
-        className={`tdud-install ${installed ? 'is-done' : ''}`}
-        data-reveal
-        style={{ '--i': 1 }}
-        aria-label="Install app"
-    >
-        <span className="tdud-install-icon">
-            {installed ? <Check size={20} strokeWidth={2.4} /> : <Download size={20} strokeWidth={2} />}
+/**
+ * Install card. Owns its whole life-cycle:
+ *   idle -> prompting -> installing (live progress) -> success -> leaving (bubbles) -> gone
+ * `stage` is local; the install facts come in as primitives from the shared install store.
+ */
+const InstallCard = memo(({ status, installed, canInstall, isIOS, onInstall, targetRef, fxRef, onDocked }) => {
+    const wrapRef = useRef(null);
+    const cardRef = useRef(null);
+    const barRef = useRef(null);
+    const pctRef = useRef(null);
+    const progress = useRef(0);
+    const prevStatus = useRef(status);
+    const alive = useRef(true);
+
+    const [stage, setStage] = useState('live'); // live | success | leaving
+    const [showHint, setShowHint] = useState(false);
+
+    useEffect(() => {
+        alive.current = true;
+        return () => {
+            alive.current = false;
+        };
+    }, []);
+
+    /** Writes progress straight to the DOM: zero React renders while the bar moves. */
+    const paint = useCallback((p) => {
+        progress.current = p;
+        if (barRef.current) barRef.current.style.transform = `scaleX(${p})`;
+        if (pctRef.current) pctRef.current.textContent = `${Math.round(p * 100)}%`;
+    }, []);
+
+    // The user closed the browser dialog: show the manual steps instead of a dead button.
+    useEffect(() => {
+        if (prevStatus.current === 'prompting' && status === 'idle') setShowHint(true);
+        prevStatus.current = status;
+    }, [status]);
+
+    // While the browser installs, creep towards 92% (the real finish arrives via `installed`).
+    useEffect(() => {
+        if (status !== 'installing' || installed) return undefined;
+        const t0 = performance.now();
+        let raf = 0;
+        const tick = (now) => {
+            paint(0.92 * (1 - Math.exp(-(now - t0) / 6000)));
+            raf = requestAnimationFrame(tick);
+        };
+        raf = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(raf);
+    }, [status, installed, paint]);
+
+    // Installed: finish the bar quickly, then show the success state.
+    useEffect(() => {
+        if (!installed) return undefined;
+        const from = progress.current;
+        const t0 = performance.now();
+        let raf = 0;
+        const tick = (now) => {
+            const k = Math.min(1, (now - t0) / 450);
+            paint(from + (1 - from) * (1 - Math.pow(1 - k, 3)));
+            if (k < 1) raf = requestAnimationFrame(tick);
+            else setStage('success');
+        };
+        raf = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(raf);
+    }, [installed, paint]);
+
+    // Success: hold for a beat, then burn out into the profile avatar.
+    useEffect(() => {
+        if (stage !== 'success') return undefined;
+        const timer = setTimeout(async () => {
+            if (!alive.current) return;
+            setStage('leaving');
+            if (!prefersReducedMotion()) {
+                try {
+                    await playInstallAbsorb({
+                        wrapper: wrapRef.current,
+                        card: cardRef.current,
+                        target: targetRef.current,
+                        layer: fxRef.current,
+                    });
+                } catch {
+                    /* animation is decoration: never block the flow */
+                }
+            }
+            if (alive.current) onDocked();
+        }, 650);
+        return () => clearTimeout(timer);
+    }, [stage, targetRef, fxRef, onDocked]);
+
+    const toggleHint = useCallback(() => setShowHint((v) => !v), []);
+
+    const mode =
+        stage !== 'live' ? 'success'
+            : installed || status === 'installing' ? 'installing'
+                : status === 'prompting' ? 'prompting'
+                    : 'idle';
+
+    let title = 'Get the Team Dekho app';
+    let sub = HINT_DEFAULT;
+    if (mode === 'idle') {
+        if (showHint && !canInstall) sub = isIOS ? HINT_IOS : HINT_OTHER;
+    } else {
+        [title, sub] = INSTALL_COPY[mode];
+    }
+
+    const showProgress = mode === 'installing' || mode === 'success';
+
+    return (
+        <div className="tdud-install-wrap" ref={wrapRef}>
+            <section
+                ref={cardRef}
+                className={`tdud-install is-${mode}`}
+                data-reveal
+                style={{ '--i': 1 }}
+                aria-label="Install app"
+                aria-busy={mode === 'installing' || mode === 'prompting'}
+            >
+                <span className="tdud-install-icon">
+                    {mode === 'success'
+                        ? <Check size={22} strokeWidth={2.6} />
+                        : <Download size={21} strokeWidth={2} />}
+                </span>
+
+                <span className="tdud-install-copy" aria-live="polite">
+                    <strong>{title}</strong>
+                    <em>{sub}</em>
+                </span>
+
+                {mode === 'idle' && (
+                    <button
+                        type="button"
+                        className="tdud-install-btn"
+                        onClick={canInstall ? onInstall : toggleHint}
+                    >
+                        {canInstall ? 'Install app' : 'How to install'}
+                    </button>
+                )}
+
+                {mode === 'prompting' && (
+                    <span className="tdud-install-wait">
+                        <i className="tdud-spin tdud-spin--inline" aria-hidden="true" />
+                        Waiting…
+                    </span>
+                )}
+
+                {showProgress && (
+                    <div className="tdud-progress" role="progressbar" aria-label="Installing Team Dekho" aria-valuemin={0} aria-valuemax={100}>
+                        <span className="tdud-progress-track">
+                            <span className="tdud-progress-fill" ref={barRef} />
+                        </span>
+                        <span className="tdud-progress-pct" ref={pctRef}>0%</span>
+                    </div>
+                )}
+            </section>
+        </div>
+    );
+});
+
+/** Where the install card lives after installation: inside the profile menu. */
+const InstalledRow = memo(({ fresh, standalone }) => (
+    <div className={`tdud-sheet-app ${fresh ? 'is-fresh' : ''}`}>
+        <span className="tdud-sheet-app-icon"><Download size={17} strokeWidth={2} /></span>
+        <span className="tdud-sheet-app-copy">
+            <strong>Team Dekho app</strong>
+            <em>{standalone ? 'You are using the app' : 'Installed on this device'}</em>
         </span>
-        <span className="tdud-install-copy" aria-live="polite">
-            <strong>{installed ? 'Team Dekho app is installed' : 'Get the Team Dekho app'}</strong>
-            <em>
-                {installed
-                    ? 'You are all set. Launch it from your home screen.'
-                    : showHint && !canInstall
-                        ? 'Open your browser menu (⋮ or Share) and tap “Add to Home screen”.'
-                        : 'Faster launch and full screen, just like a native app.'}
-            </em>
+        <span className="tdud-sheet-app-ok" role="img" aria-label="Installed">
+            <Check size={14} strokeWidth={3} />
         </span>
-        {installed ? (
-            <span className="tdud-install-state">Installed</span>
-        ) : (
-            <button type="button" className="tdud-install-btn" onClick={onInstall}>
-                {canInstall ? 'Install app' : 'How to install'}
-            </button>
-        )}
-    </section>
+    </div>
 ));
 
 const AiCard = memo(({ isPremium }) => (
@@ -370,7 +532,7 @@ const ModuleCard = memo(({ item, index }) => {
     return (
         <Link
             to={item.path}
-            className={`tdud-app ${item.wide ? 'is-wide' : ''}`}
+            className="tdud-app"
             data-tone={item.tone}
             data-spot
             data-reveal
@@ -407,14 +569,19 @@ const UserDashboard = () => {
     const location = useLocation();
     const { user, logout } = useAuth();
     const { supported, permission, enabled, loading, enable, disable } = usePushNotification();
-    const { deferredPrompt, isAppInstalled, promptInstall } = useInstallPrompt();
+    const { status, canInstall, installed, standalone, isIOS, promptInstall } = useInstallPrompt();
 
     const [scrolled, setScrolled] = useState(false);
     const [profileOpen, setProfileOpen] = useState(false);
     const [confirmingLogout, setConfirmingLogout] = useState(false);
-    const [showHint, setShowHint] = useState(false);
+    // Already installed when the dashboard opens (e.g. after logout/login): card stays docked.
+    const [docked, setDocked] = useState(installed);
+    // True right after the card flew into the avatar: shows a hint dot until the menu is opened.
+    const [freshDock, setFreshDock] = useState(false);
 
     const profileRef = useRef(null);
+    const avatarBtnRef = useRef(null);
+    const fxRef = useRef(null);
     const mainRef = useRef(null);
     const sentinelRef = useRef(null);
     const loggingOutRef = useRef(false);
@@ -429,7 +596,8 @@ const UserDashboard = () => {
     const initial = firstName.charAt(0).toUpperCase();
     const role = user?.role === 'ADMIN' ? 'Admin' : isPremium ? 'Premium Partner' : 'Partner';
     const image = user?.user_image || '';
-    const canInstall = !!deferredPrompt && !isAppInstalled;
+    const appInstalledInMenu = docked && installed;
+    const showInstallCard = !appInstalledInMenu;
 
     const pins = useMemo(() => {
         const current = user?.pin_data?.current_pin_name?.pin_description;
@@ -467,6 +635,7 @@ const UserDashboard = () => {
         return () => {
             document.removeEventListener('pointerdown', onPointerDown);
             document.removeEventListener('keydown', onKey);
+            setFreshDock(false); // the user has seen where the app went
         };
     }, [profileOpen]);
 
@@ -490,7 +659,7 @@ const UserDashboard = () => {
         );
         nodes.forEach((n) => io.observe(n));
         return () => io.disconnect();
-    }, [isPremium]); // the upgrade banner mounts/unmounts with premium status
+    }, [isPremium, showInstallCard]); // the upgrade banner and the install card mount/unmount
 
     /* ----- actions ----- */
     const performLogout = useCallback(async () => {
@@ -506,9 +675,14 @@ const UserDashboard = () => {
     }, [logout, navigate]);
 
     const handleInstall = useCallback(() => {
-        if (deferredPrompt) promptInstall();
-        else setShowHint((v) => !v);
-    }, [deferredPrompt, promptInstall]);
+        // Straight from the click: the native dialog needs the user gesture.
+        promptInstall();
+    }, [promptInstall]);
+
+    const handleDocked = useCallback(() => {
+        setDocked(true);
+        setFreshDock(true);
+    }, []);
 
     const handleNotificationToggle = useCallback(async () => {
         if (loading || permission === 'denied') return;
@@ -593,9 +767,10 @@ const UserDashboard = () => {
                         <div className="tdud-profile" ref={profileRef}>
                             <button
                                 type="button"
-                                className="tdud-avatar-btn"
+                                ref={avatarBtnRef}
+                                className={`tdud-avatar-btn ${freshDock && !profileOpen ? 'has-hint' : ''}`}
                                 onClick={toggleProfile}
-                                aria-label="Account menu"
+                                aria-label={freshDock && !profileOpen ? 'Account menu, app installed' : 'Account menu'}
                                 aria-expanded={profileOpen}
                                 aria-haspopup="dialog"
                             >
@@ -622,6 +797,8 @@ const UserDashboard = () => {
                                             ))}
                                         </ul>
                                     )}
+
+                                    {appInstalledInMenu && <InstalledRow fresh={freshDock} standalone={standalone} />}
 
                                     {!confirmingLogout ? (
                                         <button type="button" className="tdud-sheet-signout" onClick={askLogout}>
@@ -650,13 +827,19 @@ const UserDashboard = () => {
                         pins={pins}
                     />
 
-                    {/* Always visible install card */}
-                    <InstallCard
-                        installed={isAppInstalled}
-                        canInstall={canInstall}
-                        showHint={showHint}
-                        onInstall={handleInstall}
-                    />
+                    {/* Shown until the app is installed; afterwards it lives in the profile menu */}
+                    {showInstallCard && (
+                        <InstallCard
+                            status={status}
+                            installed={installed}
+                            canInstall={canInstall}
+                            isIOS={isIOS}
+                            onInstall={handleInstall}
+                            targetRef={avatarBtnRef}
+                            fxRef={fxRef}
+                            onDocked={handleDocked}
+                        />
+                    )}
 
                     <section aria-labelledby="tdud-h-quick">
                         <h2 className="tdud-h2" id="tdud-h-quick">Quick access</h2>
@@ -678,6 +861,9 @@ const UserDashboard = () => {
                     </section>
                 </div>
             </main>
+
+            {/* bubble layer for the install animation */}
+            <div className="tdud-fx" ref={fxRef} aria-hidden="true" />
         </div>
     );
 };

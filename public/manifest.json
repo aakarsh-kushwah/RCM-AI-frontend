@@ -2,6 +2,8 @@
   "name": "TeamDekho",
   "short_name": "TeamDekho",
   "description": "TeamDekho - Your AI Assistant for Team Management and Business Network",
+  "lang": "en",
+  "dir": "ltr",
 
   "gcm_sender_id": "103953800507",
 
@@ -15,6 +17,8 @@
 
   "background_color": "#f5f6fc",
   "theme_color": "#f5f6fc",
+
+  "prefer_related_applications": false,
 
   "icons": [
     { "src": "/icons/splash-192.png",   "sizes": "192x192", "type": "image/png", "purpose": "any" },

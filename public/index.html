@@ -22,12 +22,15 @@
   <link rel="dns-prefetch" href="https://i.ytimg.com" />
   <link rel="dns-prefetch" href="https://yt3.ggpht.com" />
 
+  <!--
+    Catch the install event as early as possible. Chrome fires it once, often before the
+    React bundle is parsed. useInstallPrompt.js picks it up from window.__pwaPrompt.
+  -->
   <script>
     window.__pwaPrompt = null;
-    window.addEventListener('beforeinstallprompt', function(e) {
+    window.addEventListener('beforeinstallprompt', function (e) {
       e.preventDefault();
       window.__pwaPrompt = e;
-      window.dispatchEvent(new Event('td-pwa-ready'));
     });
   </script>
 
