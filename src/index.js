@@ -12,6 +12,14 @@ if (!googleClientId) {
   console.error("🚨 CRITICAL ERROR: REACT_APP_GOOGLE_CLIENT_ID is missing from .env file!");
 }
 
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch((err) => {
+      console.log('SW registration failed: ', err);
+    });
+  });
+}
+
 // Root element ko select karein
 const rootElement = document.getElementById('root');
 

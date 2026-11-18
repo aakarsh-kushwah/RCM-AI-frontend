@@ -22,6 +22,15 @@
   <link rel="dns-prefetch" href="https://i.ytimg.com" />
   <link rel="dns-prefetch" href="https://yt3.ggpht.com" />
 
+  <script>
+    window.__pwaPrompt = null;
+    window.addEventListener('beforeinstallprompt', function(e) {
+      e.preventDefault();
+      window.__pwaPrompt = e;
+      window.dispatchEvent(new Event('td-pwa-ready'));
+    });
+  </script>
+
   <style>
     /* paints instantly, before the JS bundle loads */
     html, body { margin: 0; height: 100%; background: #f5f6fc; }
