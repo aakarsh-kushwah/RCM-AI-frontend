@@ -154,7 +154,12 @@
     background: linear-gradient(180deg, var(--indigo), var(--violet), var(--aqua));
 }
 
-.tdud-signout-zone { margin-top: auto; }
+.tdud-signout-zone {
+    margin-top: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
 .tdud-signout,
 .tdud-sheet-signout {
     display: flex;
@@ -202,6 +207,31 @@
     border: 0;
     color: #fff;
     background: linear-gradient(135deg, #e5486d, #c0294a);
+}
+
+/* share rows (profile menu + sidebar) */
+.tdud-share-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid rgba(79, 107, 255, 0.28);
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(79, 107, 255, 0.07), rgba(18, 198, 216, 0.08));
+    font-size: 14.5px;
+    font-weight: 700;
+    text-align: left;
+    color: var(--indigo);
+    cursor: pointer;
+    transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+.tdud-share-row:hover { border-color: rgba(79, 107, 255, 0.5); transform: translateY(-1px); }
+.tdud-share-row:active { transform: scale(0.98); }
+.tdud-share-row.is-copied {
+    color: #0e7a55;
+    border-color: rgba(23, 166, 115, 0.4);
+    background: linear-gradient(135deg, rgba(23, 166, 115, 0.1), rgba(18, 198, 216, 0.08));
 }
 
 /* ==========================================================================
@@ -400,13 +430,14 @@
 /* the install card's new home inside the profile menu */
 .tdud-sheet-app {
     display: flex;
-    align-items: center;
-    gap: 12px;
+    flex-direction: column;
+    gap: 10px;
     padding: 12px 14px;
     border-radius: 16px;
     background: linear-gradient(135deg, rgba(23, 166, 115, 0.1), rgba(18, 198, 216, 0.1));
     border: 1px solid rgba(23, 166, 115, 0.28);
 }
+.tdud-sheet-app-top { display: flex; align-items: center; gap: 12px; }
 .tdud-sheet-app-icon {
     flex: none;
     display: grid;
@@ -428,12 +459,77 @@
     color: #fff;
     background: linear-gradient(135deg, #2fcf94, #17a673);
 }
+.tdud-sheet-app-how {
+    margin: 0;
+    padding-top: 10px;
+    border-top: 1px dashed rgba(23, 166, 115, 0.35);
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--ink-2);
+}
+.tdud-sheet-app-how b { color: #0e7a55; font-weight: 800; }
 .tdud-sheet-app.is-fresh { animation: tdud-arrive 0.9s 0.1s cubic-bezier(0.2, 0.9, 0.3, 1.15) backwards; }
 @keyframes tdud-arrive {
     0% { opacity: 0; transform: translateY(-10px) scale(0.94); box-shadow: 0 0 0 0 rgba(23, 166, 115, 0.5); }
     60% { opacity: 1; transform: scale(1.02); box-shadow: 0 0 0 9px rgba(23, 166, 115, 0); }
     100% { opacity: 1; transform: none; box-shadow: 0 0 0 0 rgba(23, 166, 115, 0); }
 }
+
+/* tip bubble under the avatar, shown right after the app flew in */
+.tdud-tip {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 14px);
+    z-index: 45;
+    width: min(320px, calc(100vw - 32px));
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 12px;
+    padding: 16px;
+    border-radius: 22px;
+    background: #fff;
+    border: 1px solid rgba(23, 166, 115, 0.32);
+    box-shadow: 0 30px 60px -24px rgba(23, 130, 100, 0.55), 0 2px 6px rgba(40, 50, 140, 0.06);
+    transform-origin: top right;
+    animation: tdud-pop 0.4s 0.05s cubic-bezier(0.2, 0.9, 0.3, 1.2) backwards;
+}
+.tdud-tip::before {
+    content: '';
+    position: absolute;
+    top: -8px;
+    right: 16px;
+    width: 14px; height: 14px;
+    background: #fff;
+    border-left: 1px solid rgba(23, 166, 115, 0.32);
+    border-top: 1px solid rgba(23, 166, 115, 0.32);
+    transform: rotate(45deg);
+}
+.tdud-tip-check {
+    display: grid;
+    place-items: center;
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    color: #fff;
+    background: linear-gradient(135deg, #2fcf94, #17a673);
+}
+.tdud-tip-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.tdud-tip-copy strong { font-family: var(--font-display); font-size: 15px; font-weight: 600; }
+.tdud-tip-copy span { font-size: 13.5px; line-height: 1.55; color: var(--ink-2); }
+.tdud-tip-copy b { color: var(--ink); font-weight: 800; }
+.tdud-tip-btn {
+    grid-column: 1 / -1;
+    justify-self: end;
+    padding: 9px 18px;
+    border: 0;
+    border-radius: 999px;
+    font-size: 13.5px;
+    font-weight: 700;
+    color: #fff;
+    background: linear-gradient(135deg, #2fcf94, #17a673);
+    box-shadow: 0 10px 18px -10px rgba(23, 166, 115, 0.9);
+    cursor: pointer;
+}
+.tdud-tip-btn:active { transform: scale(0.97); }
 
 /* ==========================================================================
    Content + reveal
@@ -609,48 +705,53 @@
 }
 
 /* ==========================================================================
-   Install card (idle -> prompting -> installing -> success -> bubbles)
+   Install card (idle -> prompting -> installing -> success -> smoke)
    ========================================================================== */
 
 /* the wrapper is what collapses at the end, so the page below glides up smoothly */
 .tdud-install-wrap { position: relative; }
 
 .tdud-install {
+    position: relative;
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 12px 14px;
-    padding: 14px 16px;
-    border-radius: 24px;
-    background: #fff;
-    border: 1px solid var(--line);
+    gap: 14px;
+    padding: 18px 18px 16px;
+    border-radius: 26px;
+    border: 1.5px solid transparent;
+    background:
+        linear-gradient(135deg, #ffffff 0%, #f7f5ff 100%) padding-box,
+        linear-gradient(135deg, rgba(79, 107, 255, 0.55), rgba(154, 92, 255, 0.4), rgba(18, 198, 216, 0.5), rgba(233, 194, 122, 0.75)) border-box;
     box-shadow: var(--card-shadow);
-    transition: border-color 0.4s ease, background 0.4s ease;
 }
-.tdud-install.is-installing,
-.tdud-install.is-prompting {
-    border-color: rgba(79, 107, 255, 0.35);
-    background: linear-gradient(135deg, #ffffff 0%, #f1f3ff 100%);
+.tdud-install.is-prompting,
+.tdud-install.is-installing {
+    background:
+        linear-gradient(135deg, #ffffff 0%, #f1f3ff 100%) padding-box,
+        linear-gradient(135deg, rgba(79, 107, 255, 0.6), rgba(18, 198, 216, 0.55)) border-box;
 }
-.tdud-install.is-success {
-    border-color: #bfeed6;
-    background: linear-gradient(135deg, #ffffff 0%, #eafaf3 100%);
+.tdud-install.is-success,
+.tdud-install.is-leaving {
+    background:
+        linear-gradient(135deg, #ffffff 0%, #eafaf3 100%) padding-box,
+        linear-gradient(135deg, rgba(47, 207, 148, 0.7), rgba(23, 166, 115, 0.55)) border-box;
 }
 
 .tdud-install-icon {
     flex: none;
     display: grid;
     place-items: center;
-    width: 46px; height: 46px;
-    border-radius: 16px;
+    width: 50px; height: 50px;
+    border-radius: 18px;
     color: #fff;
     background: linear-gradient(135deg, var(--indigo), var(--aqua));
-    box-shadow: 0 10px 20px -10px rgba(79, 107, 255, 0.8);
-    transition: background 0.4s ease, box-shadow 0.4s ease;
+    box-shadow: 0 12px 22px -10px rgba(79, 107, 255, 0.8), 0 1px 0 rgba(255, 255, 255, 0.5) inset;
 }
-.tdud-install.is-success .tdud-install-icon {
+.tdud-install.is-success .tdud-install-icon,
+.tdud-install.is-leaving .tdud-install-icon {
     background: linear-gradient(135deg, #2fcf94, #17a673);
-    box-shadow: 0 10px 20px -10px rgba(23, 166, 115, 0.8);
+    box-shadow: 0 12px 22px -10px rgba(23, 166, 115, 0.8), 0 1px 0 rgba(255, 255, 255, 0.5) inset;
     animation: tdud-pop-in 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.4);
 }
 .tdud-install.is-installing .tdud-install-icon svg { animation: tdud-bob 1s ease-in-out infinite; }
@@ -663,24 +764,82 @@
     to { transform: none; }
 }
 
-.tdud-install-copy { display: flex; flex-direction: column; flex: 1 1 200px; min-width: 0; gap: 2px; }
-.tdud-install-copy strong { font-size: 15.5px; font-weight: 700; }
-.tdud-install-copy em { font-style: normal; font-size: 13.5px; line-height: 1.45; color: var(--ink-3); }
+.tdud-install-copy { display: flex; flex-direction: column; flex: 1 1 220px; min-width: 0; gap: 3px; }
+.tdud-install-copy strong {
+    font-family: var(--font-display);
+    font-size: 16.5px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+}
+.tdud-install-copy em { font-style: normal; font-size: 13.5px; line-height: 1.5; color: var(--ink-3); }
 
-.tdud-install-btn {
-    padding: 11px 18px;
-    border: 0;
+/* actions: Install + Share side by side */
+.tdud-install-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+@media (max-width: 560px) {
+    .tdud-install-actions { flex: 1 1 100%; }
+    .tdud-install-actions > * { flex: 1 1 0; justify-content: center; }
+}
+
+.tdud-install-btn,
+.tdud-share-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 20px;
     border-radius: 999px;
-    font-size: 14px;
+    font-size: 14.5px;
     font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+.tdud-install-btn {
+    border: 0;
     color: #fff;
     background: linear-gradient(135deg, var(--indigo), var(--violet));
-    box-shadow: 0 12px 22px -12px rgba(79, 107, 255, 0.9);
-    cursor: pointer;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    box-shadow: 0 14px 24px -12px rgba(79, 107, 255, 0.95), 0 1px 0 rgba(255, 255, 255, 0.35) inset;
 }
-.tdud-install-btn:hover { transform: translateY(-1px); box-shadow: 0 16px 26px -12px rgba(79, 107, 255, 1); }
+.tdud-install-btn:hover { transform: translateY(-1px); box-shadow: 0 18px 28px -12px rgba(79, 107, 255, 1); }
 .tdud-install-btn:active { transform: scale(0.97); }
+
+.tdud-share-btn {
+    color: var(--indigo);
+    background: #fff;
+    border: 1px solid rgba(79, 107, 255, 0.32);
+    box-shadow: 0 8px 16px -12px rgba(50, 62, 170, 0.5);
+}
+.tdud-share-btn:hover { transform: translateY(-1px); border-color: rgba(79, 107, 255, 0.55); }
+.tdud-share-btn:active { transform: scale(0.97); }
+.tdud-share-btn.is-copied {
+    color: #0e7a55;
+    border-color: rgba(23, 166, 115, 0.45);
+    background: #eafaf3;
+}
+
+/* small perks row under the buttons */
+.tdud-perks {
+    flex: 1 1 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0;
+    padding: 12px 0 0;
+    list-style: none;
+    border-top: 1px dashed var(--line);
+}
+.tdud-perks li {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 11px;
+    border-radius: 999px;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--ink-2);
+    background: rgba(79, 107, 255, 0.07);
+}
+.tdud-perks svg { color: var(--indigo); }
 
 .tdud-install-wait {
     display: inline-flex;
@@ -694,6 +853,43 @@
     background: rgba(79, 107, 255, 0.09);
     border: 1px solid rgba(79, 107, 255, 0.25);
 }
+
+/* 3-step tracker */
+.tdud-steps {
+    flex: 1 1 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.tdud-step {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--ink-3);
+    white-space: nowrap;
+}
+.tdud-step-dot {
+    display: grid;
+    place-items: center;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    font-size: 11.5px;
+    font-weight: 800;
+    color: var(--ink-3);
+    background: #e9ebf7;
+}
+.tdud-step.is-active { color: var(--indigo); }
+.tdud-step.is-active .tdud-step-dot {
+    color: #fff;
+    background: linear-gradient(135deg, var(--indigo), var(--violet));
+    box-shadow: 0 0 0 4px rgba(79, 107, 255, 0.15);
+}
+.tdud-step.is-done { color: #0e7a55; }
+.tdud-step.is-done .tdud-step-dot { color: #fff; background: linear-gradient(135deg, #2fcf94, #17a673); }
+.tdud-step-bar { flex: 1; min-width: 12px; height: 2px; border-radius: 2px; background: #e3e6f5; }
+.tdud-step-bar.is-done { background: linear-gradient(90deg, #2fcf94, #17a673); }
 
 /* download-style progress bar; the fill is moved with transform only (written by JS) */
 .tdud-progress {
@@ -729,7 +925,8 @@
     animation: tdud-sheen 1.4s ease-in-out infinite;
 }
 @keyframes tdud-sheen { to { transform: translateX(100%); } }
-.tdud-install.is-success .tdud-progress-fill { background: linear-gradient(90deg, #2fcf94, #17a673); }
+.tdud-install.is-success .tdud-progress-fill,
+.tdud-install.is-leaving .tdud-progress-fill { background: linear-gradient(90deg, #2fcf94, #17a673); }
 .tdud-progress-pct {
     min-width: 42px;
     text-align: right;
@@ -739,10 +936,12 @@
     font-variant-numeric: tabular-nums;
     color: var(--indigo);
 }
-.tdud-install.is-success .tdud-progress-pct { color: #0e7a55; }
+.tdud-install.is-success .tdud-progress-pct,
+.tdud-install.is-leaving .tdud-progress-pct { color: #0e7a55; }
 
 /* ==========================================================================
-   Install animation layer (bubbles flying into the avatar)
+   Install animation layer (smoke puffs + orb flying into the avatar)
+   Everything inside is created by utils/installFx.js and removed afterwards.
    ========================================================================== */
 
 .tdud-fx {
@@ -752,23 +951,26 @@
     overflow: hidden;
     pointer-events: none;
 }
-.tdud-fx-bubble {
+.tdud-fx-puff,
+.tdud-fx-orb,
+.tdud-fx-ring {
     position: absolute;
     top: 0; left: 0;
     border-radius: 50%;
     opacity: 0;
+    pointer-events: none;
+}
+.tdud-fx-puff { will-change: transform, opacity; }
+.tdud-fx-orb {
     will-change: transform, opacity;
-    box-shadow: 0 0 8px rgba(79, 107, 255, 0.45);
+    background: radial-gradient(circle, #ffffff 0%, #d4ecff 34%, rgba(120, 160, 255, 0) 72%);
+    box-shadow: 0 0 18px 6px rgba(120, 160, 255, 0.65), 0 0 36px 12px rgba(233, 194, 122, 0.4);
 }
 .tdud-fx-ring {
-    position: absolute;
-    width: 50px; height: 50px;
-    border-radius: 50%;
     border: 2px solid transparent;
     background:
         linear-gradient(transparent, transparent) padding-box,
-        linear-gradient(135deg, var(--indigo), var(--aqua), var(--champagne)) border-box;
-    opacity: 0;
+        linear-gradient(135deg, var(--indigo, #4f6bff), var(--aqua, #12c6d8), var(--champagne, #e9c27a)) border-box;
 }
 
 /* ==========================================================================
@@ -1152,6 +1354,7 @@
 @media (prefers-contrast: more) {
     .tdud-feature-sub,
     .tdud-app-sub,
+    .tdud-tip-copy span,
     .tdud-install-copy em { color: #2c3354; }
 }
 
